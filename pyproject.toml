@@ -1,0 +1,40 @@
+[project]
+name = "pdfsys-mnbvc"
+version = "0.0.1"
+description = "PB-scale PDF -> pretraining-data pipeline (MNBVC edition). Workspace root."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "MNBVC Contributors" }]
+
+# Root depends on every workspace package so that `uv sync` at the repo
+# root installs the entire pipeline in one shot.
+dependencies = [
+    "pdfsys-core",
+    "pdfsys-router",
+    "pdfsys-layout-analyser",
+    "pdfsys-parser-mupdf",
+    "pdfsys-parser-pipeline",
+    "pdfsys-parser-vlm",
+    "pdfsys-bench",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+pdfsys-core             = { workspace = true }
+pdfsys-router           = { workspace = true }
+pdfsys-layout-analyser  = { workspace = true }
+pdfsys-parser-mupdf     = { workspace = true }
+pdfsys-parser-pipeline  = { workspace = true }
+pdfsys-parser-vlm       = { workspace = true }
+pdfsys-bench            = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Root is a virtual meta-package — no source of its own.
+bypass-selection = true

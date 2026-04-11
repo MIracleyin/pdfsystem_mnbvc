@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdfsys-parser-pipeline"
+version = "0.0.1"
+description = "OCR pipeline backend: consumes cached LayoutDocument + region-level OCR engine (RapidOCR / PaddleOCR-classic)."
+requires-python = ">=3.11"
+dependencies = [
+    "pdfsys-core",
+]
+
+[tool.uv.sources]
+pdfsys-core = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdfsys_parser_pipeline"]

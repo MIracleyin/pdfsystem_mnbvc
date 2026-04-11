@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdfsys-bench"
+version = "0.0.1"
+description = "Cross-backend benchmarking — throughput, latency, and F1 on a small sample set."
+requires-python = ">=3.11"
+dependencies = [
+    "pdfsys-core",
+]
+
+[tool.uv.sources]
+pdfsys-core = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdfsys_bench"]

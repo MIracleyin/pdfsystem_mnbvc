@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdfsys-core"
+version = "0.0.1"
+description = "Shared data contracts (PdfRecord, LayoutDocument, Manifest) for pdfsys."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdfsys_core"]

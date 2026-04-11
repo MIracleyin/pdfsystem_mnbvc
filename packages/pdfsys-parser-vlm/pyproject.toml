@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdfsys-parser-vlm"
+version = "0.0.1"
+description = "VLM backend: complex-content pages handed to MinerU 2.5 / PaddleOCR-VL."
+requires-python = ">=3.11"
+dependencies = [
+    "pdfsys-core",
+]
+
+[tool.uv.sources]
+pdfsys-core = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdfsys_parser_vlm"]

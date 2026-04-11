@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# uv / virtualenv
+.venv/
+venv/
+uv.lock
+
+# local pipeline scratch
+work/
+output/
+.cache/
+samples/
+bench_data/
+*.layout.json
+
+# models / weights (too big for git)
+models/
+*.onnx
+*.safetensors
+*.bin
+*.pt
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
