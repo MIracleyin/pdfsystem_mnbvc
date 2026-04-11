@@ -1,0 +1,4 @@
+# External model weights downloaded by pdfsys_router.download_weights.
+# The xgb_classifier.ubj file is FinePDFs IP and should not be
+# committed. Run `python -m pdfsys_router.download_weights` to fetch it.
+xgb_classifier.ubj

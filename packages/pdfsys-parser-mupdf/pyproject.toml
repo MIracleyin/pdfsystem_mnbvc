@@ -9,6 +9,7 @@ description = "Text-ok backend: PyMuPDF extraction + reading order + Markdown em
 requires-python = ">=3.11"
 dependencies = [
     "pdfsys-core",
+    "pymupdf>=1.24",
 ]
 
 [tool.uv.sources]

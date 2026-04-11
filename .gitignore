@@ -16,10 +16,15 @@ uv.lock
 # local pipeline scratch
 work/
 output/
+out/
 .cache/
 samples/
 bench_data/
 *.layout.json
+
+# bench datasets — large binary corpora, distributed out of band
+packages/pdfsys-bench/omnidocbench_100/
+packages/pdfsys-bench/olmocr_bench_50/
 
 # models / weights (too big for git)
 models/
