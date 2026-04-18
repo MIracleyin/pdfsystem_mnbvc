@@ -128,7 +128,7 @@ def process_pdf(
             "_No markdown yet._",
             empty_segments,
             empty_features,
-            {},
+            "{}",
         )
 
     pdf_path = Path(pdf_file)
@@ -154,7 +154,7 @@ def process_pdf(
             f"```\n{tb}\n```",
             empty_segments,
             empty_features,
-            err_json,
+            json.dumps(err_json, indent=2, ensure_ascii=False),
         )
 
     # ------------------------------------------------------------- summary
@@ -225,6 +225,7 @@ def process_pdf(
     raw = result.to_record()
     raw["router_features_full"] = result.router_features
     raw["segments_full"] = result.segments
+    raw_json_str = json.dumps(raw, indent=2, ensure_ascii=False, default=str)
 
     return (
         summary_md,
@@ -237,7 +238,7 @@ def process_pdf(
         md_text,
         seg_rows,
         feat_rows,
-        raw,
+        raw_json_str,
     )
 
 
@@ -279,7 +280,6 @@ def build_demo() -> gr.Blocks:
             with gr.Column(scale=2, min_width=520):
                 summary_md = gr.Markdown(
                     "Upload a PDF and click **Run Pipeline**.",
-                    label="Summary",
                 )
 
                 with gr.Row():
@@ -327,7 +327,7 @@ def build_demo() -> gr.Blocks:
                             label="Curated subset (full 124-dim vector in Raw JSON)",
                         )
                     with gr.Tab("Raw JSON"):
-                        raw_json = gr.JSON(label="All pipeline outputs")
+                        raw_json = gr.Code(label="All pipeline outputs", language="json")
 
         # ----------------------------------------------------------- wiring
         outputs = [

@@ -51,7 +51,7 @@ The root `README.md` already contains the required [Spaces YAML config](https://
 ---
 title: PDFSystem MNBVC Demo
 sdk: gradio
-sdk_version: 4.44.0
+sdk_version: 6.12.0
 app_file: app.py
 license: apache-2.0
 ---
