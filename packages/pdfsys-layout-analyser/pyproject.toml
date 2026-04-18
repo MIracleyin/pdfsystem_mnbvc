@@ -9,6 +9,11 @@ description = "Layout model runner: emits LayoutDocument to cache, runs once per
 requires-python = ">=3.11"
 dependencies = [
     "pdfsys-core",
+    "pymupdf>=1.25",
+    "doclayout-yolo>=0.0.2",
+    "numpy>=1.24",
+    "Pillow>=10.0",
+    "huggingface-hub>=0.20",
 ]
 
 [tool.uv.sources]

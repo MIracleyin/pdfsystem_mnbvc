@@ -9,6 +9,10 @@ description = "VLM backend: complex-content pages handed to MinerU 2.5 / PaddleO
 requires-python = ">=3.11"
 dependencies = [
     "pdfsys-core",
+    "pymupdf>=1.25",
+    "magic-pdf>=1.0",
+    "numpy>=1.24",
+    "Pillow>=10.0",
 ]
 
 [tool.uv.sources]
