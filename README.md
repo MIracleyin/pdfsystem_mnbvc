@@ -16,9 +16,11 @@ short_description: FinePDFs-style PDF pipeline demo for MNBVC
 PB-scale PDF → pretraining-data pipeline for the [MNBVC](https://github.com/esbatmop/MNBVC) corpus project.
 FinePDFs-inspired architecture adapted for Chinese-heavy, mixed-quality input.
 
-> **Try it:** `python app.py` locally, or deploy to Hugging Face Spaces with one click
-> — the YAML header above is all the Space config needed. See [`demo/README.md`](demo/README.md)
-> for both paths.
+> **Try it:** 
+> - 🚀 **在线 Demo**: [Hugging Face Spaces](https://huggingface.co/spaces/roger1024/DocPipe) - 直接上传 PDF 体验完整流程
+> - 💻 **本地运行**: `python app.py` - 详见下方 [Quick start](#quick-start)
+> 
+> 部署到 Hugging Face Spaces 只需一键，YAML header 就是全部配置。详见 [`demo/README.md`](demo/README.md)
 
 ## Current status: MVP closed loop ✅
 
@@ -26,19 +28,29 @@ The first end-to-end path — **Router → MuPDF parser → OCR quality scorer**
 
 ## Quick start
 
+### 方式一：在线体验（最快）
+
+直接访问 [Hugging Face Spaces Demo](https://huggingface.co/spaces/roger1024/DocPipe) 上传 PDF 即可体验，无需安装任何环境。
+
+### 方式二：本地运行
+
 ```bash
 # 1. Install uv (>= 0.4)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 2. Clone the repo and sync all workspace packages
-git clone <this-repo-url>
+git clone https://github.com/MIracleyin/pdfsystem_mnbvc.git
 cd pdfsystem_mnbvc
 uv sync
 
 # 3. Fetch the XGBoost router weights (257 KB, one-time)
 python -m pdfsys_router.download_weights
 
-# 4. Run the MVP closed loop on the bench dataset
+# 4. Run Gradio demo
+python app.py
+# 访问 http://localhost:7860
+
+# 5. Or run the MVP closed loop on the bench dataset
 python -m pdfsys_bench \
   --pdf-dir packages/pdfsys-bench/omnidocbench_100/pdfs \
   --out out/bench_omnidoc100.jsonl \
@@ -236,12 +248,34 @@ The JSONL output (`--out`) has one JSON object per PDF:
 
 A companion `.summary.json` file is also written with aggregate statistics.
 
-## Docs
+## Demo 功能说明
 
-- [`docs/PRD.md`](docs/PRD.md) — full PRD with resource budgets and architectural rationale (the "what & why").
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — prioritised implementation plan with work-estimates and acceptance criteria (the "how & when").
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — naming, parity rules, commit scopes.
-- [`demo/README.md`](demo/README.md) — Gradio demo + Hugging Face Spaces deploy guide.
+在线 Demo 展示了完整的 MVP 流程，包含以下功能：
+
+| 功能 | 描述 |
+|------|------|
+| **PDF 上传** | 支持拖拽或点击上传 PDF 文件 |
+| **路由决策** | 实时显示 XGBoost 路由器的 OCR 概率和选择的 Backend |
+| **页面预览** | 第一页渲染并叠加提取的文本块边界框（颜色标识 Backend） |
+| **Markdown 输出** | PyMuPDF 提取的文本内容 |
+| **Segments 表格** | 详细的块级提取信息（类型、坐标、字符数等） |
+| **Router Features** | 精选的 124 维特征子集展示 |
+| **Raw JSON** | 完整的 pipeline 输出数据 |
+| **OCR 质量评分** | 可选的 ModernBERT 质量评分（默认关闭，约 3-5 秒） |
+
+### Demo 技术栈
+- **Frontend**: Gradio 6.12.0
+- **Backend**: Python 3.11 + PyMuPDF + XGBoost
+- **部署**: Hugging Face Spaces (CPU)
+
+## 文档索引
+
+| 文档 | 内容 |
+|------|------|
+| [`docs/PRD.md`](docs/PRD.md) | 完整产品需求文档，包含资源预算和架构原理 |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 优先级排序的实现计划、工作量估算和验收标准 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 命名规范、一致性规则、提交格式 |
+| [`demo/README.md`](demo/README.md) | Gradio Demo 详情 + Hugging Face Spaces 部署指南 |
 
 ## Collaborating with Cursor
 
