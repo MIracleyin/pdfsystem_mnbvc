@@ -1,16 +1,3 @@
----
-title: "PDFSystem: PB-Scale PDF Processing Pipeline"
-emoji: 🚀
-colorFrom: green
-colorTo: purple
-sdk: gradio
-sdk_version: 6.12.0
-app_file: app.py
-pinned: false
-license: apache-2.0
-short_description: "PDF to Markdown pipeline with ML-powered routing"
----
-
 # PDFSystem for MNBVC
 
 <p align="center">
