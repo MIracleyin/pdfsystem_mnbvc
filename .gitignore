@@ -7,6 +7,8 @@ __pycache__/
 .eggs/
 build/
 dist/
+.cursor/
+scripts/
 
 # uv / virtualenv
 .venv/
@@ -38,3 +40,8 @@ models/
 .idea/
 .vscode/
 *.swp
+
+# Gradio / HF Spaces runtime artifacts
+flagged/
+gradio_cached_examples/
+.gradio/

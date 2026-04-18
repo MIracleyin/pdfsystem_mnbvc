@@ -12,39 +12,50 @@ Usage::
 
 from __future__ import annotations
 
+import socket
 import sys
 import urllib.request
 from pathlib import Path
 
-# media.githubusercontent.com serves the actual LFS payload directly,
-# bypassing the pointer file that raw.githubusercontent.com returns.
-WEIGHTS_URL = (
-    "https://media.githubusercontent.com/media/huggingface/finepdfs/main/"
-    "blocks/predictor/xgb.ubj"
-)
+# GitHub raw download URL for XGBoost router weights
+WEIGHTS_URLS = [
+    "https://github.com/huggingface/finepdfs/raw/main/models/xgb_ocr_classifier/xgb_classifier.ubj",
+    "https://raw.githubusercontent.com/huggingface/finepdfs/main/models/xgb_ocr_classifier/xgb_classifier.ubj",
+]
 
 
 def target_path() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "models" / "xgb_classifier.ubj"
 
 
-def download(force: bool = False) -> Path:
+def download(force: bool = False, timeout: int = 30) -> Path:
     dst = target_path()
     if dst.exists() and not force:
         print(f"[download_weights] already present: {dst}")
         return dst
     dst.parent.mkdir(parents=True, exist_ok=True)
-    print(f"[download_weights] fetching {WEIGHTS_URL}")
-    with urllib.request.urlopen(WEIGHTS_URL) as r:  # noqa: S310 — pinned URL
-        data = r.read()
-    if len(data) < 10_000:
-        raise RuntimeError(
-            f"downloaded blob is suspiciously small ({len(data)} bytes) — "
-            "likely an LFS pointer, not the binary"
-        )
-    dst.write_bytes(data)
-    print(f"[download_weights] wrote {len(data)} bytes -> {dst}")
-    return dst
+    
+    last_error = None
+    for url in WEIGHTS_URLS:
+        print(f"[download_weights] fetching {url}")
+        try:
+            # 设置超时
+            with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310 — pinned URL
+                data = r.read()
+            if len(data) < 10_000:
+                raise RuntimeError(
+                    f"downloaded blob is suspiciously small ({len(data)} bytes) — "
+                    "likely an LFS pointer, not the binary"
+                )
+            dst.write_bytes(data)
+            print(f"[download_weights] wrote {len(data)} bytes -> {dst}")
+            return dst
+        except (urllib.error.URLError, socket.timeout) as e:
+            last_error = e
+            print(f"[download_weights] failed for {url}: {e}")
+            continue
+    
+    raise RuntimeError(f"Failed to download weights from all URLs: {last_error}")
 
 
 if __name__ == "__main__":

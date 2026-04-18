@@ -1,7 +1,24 @@
+---
+title: PDFSystem MNBVC Demo
+emoji: 📄
+colorFrom: green
+colorTo: purple
+sdk: gradio
+sdk_version: 5.12.0
+app_file: app.py
+pinned: false
+license: apache-2.0
+short_description: FinePDFs-style PDF pipeline demo for MNBVC
+---
+
 # pdfsys-mnbvc
 
 PB-scale PDF → pretraining-data pipeline for the [MNBVC](https://github.com/esbatmop/MNBVC) corpus project.
 FinePDFs-inspired architecture adapted for Chinese-heavy, mixed-quality input.
+
+> **Try it:** `python app.py` locally, or deploy to Hugging Face Spaces with one click
+> — the YAML header above is all the Space config needed. See [`demo/README.md`](demo/README.md)
+> for both paths.
 
 ## Current status: MVP closed loop ✅
 
@@ -221,7 +238,64 @@ A companion `.summary.json` file is also written with aggregate statistics.
 
 ## Docs
 
-- `docs/PRD.md` — full PRD with resource budgets and roadmap.
+- [`docs/PRD.md`](docs/PRD.md) — full PRD with resource budgets and architectural rationale (the "what & why").
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — prioritised implementation plan with work-estimates and acceptance criteria (the "how & when").
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — naming, parity rules, commit scopes.
+- [`demo/README.md`](demo/README.md) — Gradio demo + Hugging Face Spaces deploy guide.
+
+## Collaborating with Cursor
+
+This repo ships a full set of [Cursor project rules](https://docs.cursor.com/context/rules) under `.cursor/rules/`. They give the AI agent the same mental model senior contributors have — including the non-obvious bits (FinePDFs feature parity, `pdfsys-core` zero-dep rule, Gradio UI/logic separation) that a new collaborator would otherwise step on.
+
+### Quick start
+
+```bash
+# One-shot bootstrap: checks python/uv, syncs workspace, downloads router weights.
+bash scripts/setup_cursor.sh
+```
+
+Then open the repo in Cursor (≥ 0.50, which supports `.cursor/rules/*.mdc`). The always-on rules activate immediately; file-specific rules attach as you open matching files.
+
+### Active rules
+
+| Rule | Scope | What it enforces |
+|------|-------|------------------|
+| `00-project-context.mdc` | always | Project goals, tech stack, must-read docs, explicit non-goals. |
+| `01-architecture-invariants.mdc` | always | 7 load-bearing invariants (zero-dep core, stateless processing, normalized bbox, etc.). |
+| `02-commit-workflow.mdc` | always | Conventional commits with package-scoped names; pre-commit checklist. |
+| `03-doc-sync.mdc` | always | Doc-sync mapping table: which code change forces which doc update. Cursor proactively scans after edits. |
+| `10-python-standards.mdc` | `**/*.py` | Type hints, frozen dataclass, lazy imports for heavy deps. |
+| `20-core-contracts.mdc` | `packages/pdfsys-core/**` | Zero external deps; no I/O; schema change ripple rules. |
+| `21-router-parity.mdc` | `packages/pdfsys-router/**` | FinePDFs 124-feature parity is sacred; how to verify. |
+| `22-parser-backends.mdc` | `packages/pdfsys-parser-*/**` | All three backends must emit identical `ExtractedDoc`. |
+| `23-bench-scorer.mdc` | `packages/pdfsys-bench/**` | torch/transformers lazy load; bf16 default; loop never raises. |
+| `30-gradio-demo.mdc` | `demo/**,app.py` | UI layer has no business logic; callbacks never raise; lazy singletons. |
+
+### Recommended Cursor workflow
+
+1. **Before touching `pdfsys-core`** — read `20-core-contracts.mdc`. The AI will refuse to add third-party deps here and surface schema-ripple questions.
+2. **Before touching `feature_extractor.py`** — `21-router-parity.mdc` kicks in; the AI will suggest running the parity check before you commit.
+3. **When building a new parser backend** — `22-parser-backends.mdc` walks through the 6-step addition procedure and refuses partial impls.
+4. **When writing demo UI** — `30-gradio-demo.mdc` rejects `import pymupdf` in `demo/app.py` (belongs in `demo/pipeline.py`).
+
+### Authoring new rules
+
+Rules live in `.cursor/rules/*.mdc`. Format:
+
+```yaml
+---
+description: Short description shown in the rule picker
+globs: packages/<pkg>/**/*.py    # omit for always-on rules
+alwaysApply: false                # true = always loaded
+---
+
+# Rule Title
+
+- Bullet rule 1 (with ✅/❌ example)
+- Bullet rule 2
+```
+
+Keep each rule under 100 lines, one concern per file. See existing rules for patterns.
 
 ## License
 
