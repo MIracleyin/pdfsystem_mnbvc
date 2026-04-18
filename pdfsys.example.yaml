@@ -1,0 +1,48 @@
+# pdfsys pipeline configuration
+# Docs: see packages/pdfsys-cli/README.md
+
+# Which stages to run (in order: router → layout → extract → quality)
+# Omit stages to skip them; dependencies auto-included.
+stages:
+  - router
+  - layout
+  - extract
+  - quality
+
+input:
+  pdf_dir: ./data/pdfs          # directory of source PDFs (recursive)
+  limit: null                   # max PDFs to process; null = no cap
+
+output:
+  dir: ./out/run_001            # output root directory
+  jsonl: results.jsonl          # per-PDF results (relative to dir)
+  markdown_dir: markdown        # dump extracted markdown (relative to dir); null = skip
+  cache_dir: .cache             # LayoutCache directory (relative to dir)
+
+router:
+  ocr_threshold: 0.5            # P(ocr) above this → needs-ocr path
+  weights: null                 # XGBoost weights path; null = bundled default
+
+layout:
+  model: juliozhao/DocLayout-YOLO-DocStructBench
+  conf_threshold: 0.25
+  iou_threshold: 0.45
+  render_dpi: 200
+
+pipeline:
+  ocr_engine: rapidocr          # rapidocr | paddleocr
+  languages: [ch, en]
+  render_dpi: 200
+
+vlm:
+  model: mineru-2.5
+  enabled: false                # set true to enable MinerU VLM lane
+
+quality:
+  enabled: true
+  model: HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn
+  max_tokens: 512
+  device: null                  # null = auto (cuda if available, else cpu)
+
+runtime:
+  omp_threads: 1                # OMP_NUM_THREADS (prevent deadlocks on macOS)

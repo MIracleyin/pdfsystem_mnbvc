@@ -1,14 +1,18 @@
-"""pdfsys-bench CLI — run the MVP closed loop on a directory of PDFs.
+"""pdfsys-bench CLI — run the closed-loop pipeline on a directory of PDFs.
 
 Usage::
 
+    # MVP mode (mupdf only):
     python -m pdfsys_bench \\
         --pdf-dir packages/pdfsys-bench/omnidocbench_100/pdfs \\
-        --out out/bench_omnidoc100.jsonl \\
-        --limit 20
+        --out out/bench_omnidoc100.jsonl
 
-Flags exposed here are intentionally minimal — anything more is the job
-of a proper runner package. This CLI is meant for smoke-testing.
+    # Full pipeline (layout + OCR + optional VLM):
+    python -m pdfsys_bench \\
+        --pdf-dir packages/pdfsys-bench/omnidocbench_100/pdfs \\
+        --out out/bench_full.jsonl \\
+        --full-pipeline \\
+        --limit 10
 """
 
 from __future__ import annotations
@@ -21,7 +25,10 @@ from .loop import run_loop
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="pdfsys-bench", description="Run the MVP pdfsys closed loop.")
+    p = argparse.ArgumentParser(
+        prog="pdfsys-bench",
+        description="Run the pdfsys closed-loop pipeline.",
+    )
     p.add_argument(
         "--pdf-dir",
         type=Path,
@@ -68,6 +75,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.5,
         help="P(ocr) threshold above which a PDF is routed off the text-ok path.",
     )
+    # --- Full pipeline flags ---
+    p.add_argument(
+        "--full-pipeline",
+        action="store_true",
+        help="Enable the full pipeline: layout analyser → Stage-B → pipeline/VLM parser.",
+    )
+    p.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help="LayoutCache directory. Defaults to <out-dir>/.cache.",
+    )
+    p.add_argument(
+        "--vlm",
+        action="store_true",
+        dest="vlm_enabled",
+        help="Enable the VLM lane (MinerU) for complex-content pages.",
+    )
     return p
 
 
@@ -82,15 +107,20 @@ def main(argv: list[str] | None = None) -> int:
         quality_model=args.quality_model,
         markdown_dir=args.markdown_dir,
         ocr_threshold=args.ocr_threshold,
+        full_pipeline=args.full_pipeline,
+        cache_dir=args.cache_dir,
+        vlm_enabled=args.vlm_enabled,
     )
 
-    print(f"[pdfsys-bench] processed {summary['num_pdfs']} PDFs in {summary['wall_seconds']:.1f}s")
+    print(f"\n[pdfsys-bench] processed {summary['num_pdfs']} PDFs in {summary['wall_seconds']:.1f}s")
     print(f"[pdfsys-bench] by_backend: {summary['by_backend']}")
+    if summary.get("by_stage_b"):
+        print(f"[pdfsys-bench] stage_b:    {summary['by_stage_b']}")
     print(f"[pdfsys-bench] extracted={summary['num_extracted']} scored={summary['num_scored']} errors={summary['num_errors']}")
     if summary.get("avg_quality") is not None:
         print(f"[pdfsys-bench] avg_quality={summary['avg_quality']:.3f}")
-    print(f"[pdfsys-bench] jsonl: {summary['out_path']}")
-    print(f"[pdfsys-bench] summary: {summary['summary_path']}")
+    print(f"[pdfsys-bench] jsonl:    {summary['out_path']}")
+    print(f"[pdfsys-bench] summary:  {summary['summary_path']}")
     return 0
 
 
