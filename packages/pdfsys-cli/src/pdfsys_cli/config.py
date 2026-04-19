@@ -44,6 +44,7 @@ class RouterCfg:
 @dataclass(slots=True)
 class LayoutCfg:
     model: str = "juliozhao/DocLayout-YOLO-DocStructBench"
+    backend: str | None = None  # auto-detect from model, or "yolo" / "pp-doclayoutv3"
     conf_threshold: float = 0.25
     iou_threshold: float = 0.45
     render_dpi: int = 200
@@ -239,6 +240,8 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
 
     layout:
       model: juliozhao/DocLayout-YOLO-DocStructBench
+      # model: PaddlePaddle/PP-DocLayoutV3_safetensors  # alternative: RT-DETR based
+      backend: null                 # auto-detect from model, or: yolo | pp-doclayoutv3
       conf_threshold: 0.25
       iou_threshold: 0.45
       render_dpi: 200

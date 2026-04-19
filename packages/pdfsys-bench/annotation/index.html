@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Router 标注工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --text: #eee;
+    --text-dim: #999;
+    --green: #4caf50;
+    --yellow: #ffc107;
+    --red: #f44336;
+    --blue: #2196f3;
+    --orange: #ff9800;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid #333;
+    height: 48px;
+  }
+  .topbar h1 { font-size: 16px; white-space: nowrap; }
+  .progress-text { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: #333;
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 100px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--green);
+    transition: width 0.3s;
+  }
+  .topbar-actions { display: flex; gap: 8px; margin-left: auto; }
+  .topbar-actions button {
+    padding: 4px 12px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .topbar-actions button:hover { background: #1a4a80; }
+
+  /* Main layout */
+  .main {
+    display: flex;
+    height: calc(100vh - 48px);
+  }
+
+  /* Left: sidebar */
+  .sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--surface);
+    border-right: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-header {
+    padding: 8px 12px;
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid #333;
+  }
+  .sidebar-header input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #111;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .sidebar-header select {
+    padding: 4px 6px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #111;
+    color: var(--text);
+    font-size: 12px;
+  }
+  .pdf-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  .pdf-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pdf-item:hover { background: rgba(255,255,255,0.05); }
+  .pdf-item.active { background: rgba(233,69,96,0.15); border-left-color: var(--accent); }
+  .pdf-item .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot-none { background: #555; }
+  .dot-text_ok { background: var(--green); }
+  .dot-need_ocr { background: var(--red); }
+  .dot-ambiguous { background: var(--yellow); }
+  .dot-unusable { background: #666; }
+  .dot-discard { background: #880000; }
+  .dot-hold { background: var(--orange); }
+  .dot-keep { background: var(--blue); }
+  .pdf-item .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pdf-item .src-tag {
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.1);
+    flex-shrink: 0;
+  }
+
+  /* Center: viewer area (PDF + text preview split) */
+  .center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .viewer-tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid #333;
+    padding: 0 12px;
+    gap: 2px;
+    height: 36px;
+    align-items: stretch;
+  }
+  .viewer-tab {
+    padding: 0 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 2px solid transparent;
+  }
+  .viewer-tab:hover { color: var(--text); }
+  .viewer-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .viewer-split {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .viewer {
+    flex: 1;
+    background: #222;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    gap: 12px;
+    min-width: 0;
+  }
+  .viewer canvas {
+    max-width: 100%;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  }
+  .page-container {
+    position: relative;
+    display: inline-block;
+  }
+  .page-container canvas {
+    display: block;
+  }
+  .layout-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .layout-box {
+    position: absolute;
+    border: 2px solid;
+    border-radius: 2px;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .layout-box:hover {
+    background: rgba(255,255,255,0.1);
+  }
+  .layout-box .layout-label {
+    position: absolute;
+    top: -18px; left: 0;
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    white-space: nowrap;
+    color: #fff;
+    font-weight: bold;
+  }
+  .layout-box[data-type="text"]    { border-color: #4caf50; }
+  .layout-box[data-type="text"] .layout-label { background: #4caf50; }
+  .layout-box[data-type="image"]   { border-color: #2196f3; }
+  .layout-box[data-type="image"] .layout-label { background: #2196f3; }
+  .layout-box[data-type="table"]   { border-color: #ff9800; }
+  .layout-box[data-type="table"] .layout-label { background: #ff9800; }
+  .layout-box[data-type="formula"] { border-color: #e91e63; }
+  .layout-box[data-type="formula"] .layout-label { background: #e91e63; }
+  .layout-loading {
+    color: var(--text-dim);
+    text-align: center;
+    padding: 20px;
+    font-size: 14px;
+  }
+  .layout-summary {
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    border-bottom: 1px solid #333;
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .layout-summary .ls-chip {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    color: #fff;
+  }
+  .text-preview {
+    width: 50%;
+    min-width: 0;
+    background: #0a0a0a;
+    overflow: auto;
+    padding: 16px;
+    border-left: 1px solid #333;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #ddd;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .text-preview .page-sep {
+    color: var(--text-dim);
+    font-style: italic;
+    margin: 12px 0 4px;
+    padding-top: 8px;
+    border-top: 1px dashed #333;
+  }
+  .text-preview .empty {
+    color: var(--red);
+    font-style: italic;
+  }
+  .preview-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .stat-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid #444;
+  }
+  .stat-badge.good { background: rgba(76,175,80,0.15); border-color: var(--green); color: var(--green); }
+  .stat-badge.bad { background: rgba(244,67,54,0.15); border-color: var(--red); color: var(--red); }
+  .stat-badge.warn { background: rgba(255,193,7,0.15); border-color: var(--yellow); color: var(--yellow); }
+  .hint {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .hint.good { background: rgba(76,175,80,0.1); color: var(--green); border-left: 3px solid var(--green); }
+  .hint.bad { background: rgba(244,67,54,0.1); color: var(--red); border-left: 3px solid var(--red); }
+  .hint.warn { background: rgba(255,193,7,0.1); color: var(--yellow); border-left: 3px solid var(--yellow); }
+  .viewer-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(34,34,34,0.95);
+    padding: 6px 12px;
+    border-radius: 6px;
+  }
+  .viewer-toolbar button {
+    padding: 4px 10px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .viewer-toolbar span { font-size: 13px; color: var(--text-dim); }
+  .no-pdf {
+    color: var(--text-dim);
+    font-size: 15px;
+    margin-top: 40vh;
+  }
+
+  /* Right: annotation panel */
+  .panel {
+    width: 340px;
+    min-width: 340px;
+    background: var(--surface);
+    border-left: 1px solid #333;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .panel h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .panel .meta {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    line-height: 1.6;
+  }
+  .meta span { color: var(--text); }
+
+  /* Step sections */
+  .step {
+    margin-bottom: 20px;
+    padding: 12px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+  }
+  .step-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--surface2);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  /* Label buttons */
+  .label-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .label-btn {
+    padding: 6px 14px;
+    border: 2px solid #444;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  .label-btn:hover { border-color: #888; }
+  .label-btn.selected { border-color: var(--accent); background: rgba(233,69,96,0.15); }
+  .label-btn[data-val="text_ok"].selected { border-color: var(--green); background: rgba(76,175,80,0.15); }
+  .label-btn[data-val="need_ocr"].selected { border-color: var(--red); background: rgba(244,67,54,0.15); }
+  .label-btn[data-val="ambiguous"].selected { border-color: var(--yellow); background: rgba(255,193,7,0.15); }
+  .label-btn[data-val="unusable"].selected { border-color: #666; background: rgba(100,100,100,0.2); }
+  .label-btn[data-val="discard"].selected { border-color: #880000; background: rgba(136,0,0,0.2); }
+  .label-btn[data-val="hold"].selected { border-color: var(--orange); background: rgba(255,152,0,0.15); }
+  .label-btn[data-val="keep"].selected { border-color: var(--blue); background: rgba(33,150,243,0.15); }
+
+  /* Checkboxes */
+  .check-group { display: flex; flex-direction: column; gap: 6px; }
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .check-item input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+  }
+
+  /* Inputs */
+  .field { margin-top: 10px; }
+  .field label { font-size: 12px; color: var(--text-dim); display: block; margin-bottom: 4px; }
+  .field input, .field textarea {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #111;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+
+  /* Nav buttons */
+  .nav-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .nav-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .nav-btn:hover { opacity: 0.85; }
+  .nav-btn.prev { background: var(--surface2); color: var(--text); }
+  .nav-btn.next { background: var(--accent); color: #fff; }
+
+  /* Keyboard hints */
+  .kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border: 1px solid #555;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.05);
+  }
+  .shortcuts {
+    margin-top: 16px;
+    padding: 10px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.8;
+  }
+
+  /* Conditional visibility */
+  .hidden { display: none !important; }
+
+  /* Tag chips */
+  .tag-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 10px;
+    background: rgba(33,150,243,0.15);
+    border: 1px solid var(--blue);
+    color: var(--blue);
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>PDF Router 标注工具</h1>
+  <span class="progress-text" id="progressText">0 / 0</span>
+  <div class="progress-bar"><div class="progress-bar-fill" id="progressFill"></div></div>
+  <div class="topbar-actions">
+    <button onclick="loadMetadata()">加载 metadata.json</button>
+    <button onclick="importAnnotations()">导入标注</button>
+    <button onclick="exportAnnotations()">导出标注</button>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Sidebar: PDF list -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <input type="text" id="searchInput" placeholder="搜索文件名..." oninput="filterList()">
+      <select id="filterLabel" onchange="filterList()">
+        <option value="">全部</option>
+        <option value="unlabeled">未标注</option>
+        <option value="text_ok">text_ok</option>
+        <option value="need_ocr">need_ocr</option>
+        <option value="ambiguous">ambiguous</option>
+        <option value="unusable">unusable</option>
+        <option value="discard">discard</option>
+        <option value="hold">hold</option>
+        <option value="keep">keep</option>
+      </select>
+    </div>
+    <div class="pdf-list" id="pdfList"></div>
+  </div>
+
+  <!-- Center: viewer with tabs for PDF / text / side-by-side -->
+  <div class="center">
+    <div class="viewer-tabs">
+      <button class="viewer-tab active" data-view="pdf" onclick="setView('pdf')">PDF</button>
+      <button class="viewer-tab" data-view="text" onclick="setView('text')">提取文本</button>
+      <button class="viewer-tab" data-view="split" onclick="setView('split')">并排对比</button>
+      <span style="margin-left:auto; display:flex; align-items:center; gap:4px;">
+        <select id="layoutModel" style="background:var(--surface2); color:var(--text); border:1px solid #555; border-radius:4px; padding:2px 6px; font-size:12px;">
+          <option value="yolo">DocLayout-YOLO</option>
+          <option value="pp-doclayoutv3">PP-DocLayoutV3</option>
+        </select>
+        <button class="viewer-tab" data-view="layout" onclick="setView('layout')" style="border:1px solid #555;">版面分析</button>
+      </span>
+    </div>
+    <div class="viewer-split" id="viewerSplit">
+      <div class="viewer" id="viewer">
+        <div class="no-pdf" id="noPdf">请先加载 metadata.json，然后选择一个 PDF</div>
+      </div>
+      <div class="text-preview" id="textPreview" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Right: annotation panel -->
+  <div class="panel" id="panel">
+    <h3>文件信息</h3>
+    <div class="meta" id="metaInfo">选择一个 PDF 开始标注</div>
+
+    <!-- Step 1: Quick judgment -->
+    <div class="step">
+      <div class="step-title"><span class="step-num">1</span> 快速判断</div>
+      <div class="label-group">
+        <button class="label-btn" data-val="unusable" onclick="setLabel('unusable')">
+          unusable <span class="kbd">U</span>
+        </button>
+        <button class="label-btn" data-val="discard" onclick="setLabel('discard')">
+          discard <span class="kbd">D</span>
+        </button>
+        <button class="label-btn" data-val="hold" onclick="setLabel('hold')">
+          hold <span class="kbd">H</span>
+        </button>
+        <button class="label-btn" data-val="keep" onclick="setLabel('keep')">
+          keep <span class="kbd">K</span>
+        </button>
+      </div>
+      <div style="font-size:12px; color:var(--text-dim); margin-top:6px;">
+        PDF 损坏/完全空白 → unusable；质量太差直接丢弃 → discard；拿不准先跳过 → hold；特别想保留入测试集 → keep
+      </div>
+    </div>
+
+    <!-- Step 2: Router label -->
+    <div class="step">
+      <div class="step-title"><span class="step-num">2</span> 是否需要 OCR？</div>
+      <div class="label-group">
+        <button class="label-btn" data-val="text_ok" onclick="setLabel('text_ok')">
+          text_ok <span class="kbd">T</span>
+        </button>
+        <button class="label-btn" data-val="need_ocr" onclick="setLabel('need_ocr')">
+          need_ocr <span class="kbd">O</span>
+        </button>
+        <button class="label-btn" data-val="ambiguous" onclick="setLabel('ambiguous')">
+          ambiguous <span class="kbd">A</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: OCR reasons (shown when need_ocr) -->
+    <div class="step hidden" id="ocrReasonsSection">
+      <div class="step-title"><span class="step-num">3</span> OCR 原因（可多选）</div>
+      <div class="check-group" id="ocrReasons">
+        <label class="check-item">
+          <input type="checkbox" value="scan_no_ocr_layer" onchange="syncReasons()">
+          明显扫描件，无 OCR 层
+        </label>
+        <label class="check-item">
+          <input type="checkbox" value="three_plus_column" onchange="syncReasons()">
+          分栏（三栏或更多）
+        </label>
+        <label class="check-item">
+          <input type="checkbox" value="has_tables" onchange="syncReasons()">
+          包含表格
+        </label>
+        <label class="check-item">
+          <input type="checkbox" value="image_with_text" onchange="syncReasons()">
+          插图中含有文字
+        </label>
+        <label class="check-item">
+          <input type="checkbox" value="complex_formula" onchange="syncReasons()">
+          复杂公式
+        </label>
+        <label class="check-item">
+          <input type="checkbox" value="handwriting" onchange="syncReasons()">
+          手写字迹
+        </label>
+        <label class="check-item">
+          <input type="checkbox" value="pages_gt_10" onchange="syncReasons()">
+          总页数超过 10 页
+        </label>
+        <label class="check-item">
+          <input type="checkbox" value="all_pages_empty" onchange="syncReasons()">
+          所有页面为空 / 无文字
+        </label>
+      </div>
+      <div class="field">
+        <label>需要 OCR 的页数</label>
+        <input type="number" id="nOcrPages" min="0" placeholder="填写页数" oninput="syncNOcrPages()">
+      </div>
+    </div>
+
+    <!-- Step 4: Reason / notes -->
+    <div class="step" id="reasonSection">
+      <div class="step-title"><span class="step-num">4</span> 备注 & 标签</div>
+      <div class="field">
+        <label>reason_short（原因简述，ambiguous / need_ocr 时填写）</label>
+        <textarea id="reasonShort" placeholder="描述原因，拿不准的情况记下页数和理由..." oninput="syncReason()"></textarea>
+      </div>
+      <div class="field">
+        <label>custom_tags（自定义标签，逗号分隔，应对特殊情况）</label>
+        <input type="text" id="customTags" placeholder="如: 竖排文字, 双语对照, 化学式, 章节扉页..." oninput="syncTags()">
+        <div id="tagChips" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav-row">
+      <button class="nav-btn prev" onclick="goPrev()">← 上一个 <span class="kbd">←</span></button>
+      <button class="nav-btn next" onclick="goNext()">下一个 → <span class="kbd">→</span></button>
+    </div>
+
+    <div class="shortcuts">
+      <strong>快捷键</strong><br>
+      <span class="kbd">T</span> text_ok &nbsp;
+      <span class="kbd">O</span> need_ocr &nbsp;
+      <span class="kbd">A</span> ambiguous<br>
+      <span class="kbd">U</span> unusable &nbsp;
+      <span class="kbd">H</span> hold &nbsp;
+      <span class="kbd">K</span> keep<br>
+      <span class="kbd">←</span> 上一个 &nbsp;
+      <span class="kbd">→</span> 下一个（自动保存）<br>
+      <span class="kbd">+</span> / <span class="kbd">-</span> 缩放 PDF<br>
+      <span class="kbd">1</span> PDF &nbsp;
+      <span class="kbd">2</span> 文本 &nbsp;
+      <span class="kbd">3</span> 并排 &nbsp;
+      <span class="kbd">4</span> 版面分析
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  // ── PDF.js setup ──
+  const pdfjsLib = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs");
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
+  window.pdfjsLib = pdfjsLib;
+</script>
+
+<script>
+  // ── State ──
+  let metadata = null;       // full metadata object
+  let pdfs = [];             // metadata.pdfs array
+  let previews = {};         // {pdf_id: preview_data}
+  let filtered = [];         // currently visible indices into pdfs[]
+  let currentIdx = -1;       // index into pdfs[] (not filtered)
+  let pdfDoc = null;         // loaded PDF.js document
+  let scale = 1.5;
+  let annotatorName = localStorage.getItem("annotator") || "";
+  let currentView = "pdf";   // "pdf" | "text" | "split" | "layout"
+  let layoutCache = {};      // {rel_path: layout_data}
+
+  // ── Load metadata.json ──
+  window.loadMetadata = async function() {
+    try {
+      // Try fetching from same directory
+      const resp = await fetch("metadata.json");
+      if (!resp.ok) throw new Error("metadata.json not found. 请先运行 build_annotation_meta.py");
+      metadata = await resp.json();
+      pdfs = metadata.pdfs;
+
+      // Try to load mupdf previews (optional — may not exist yet)
+      try {
+        const prevResp = await fetch("previews.json");
+        if (prevResp.ok) {
+          previews = await prevResp.json();
+          console.log(`Loaded ${Object.keys(previews).length} mupdf previews`);
+        }
+      } catch (_) { /* ignore */ }
+
+      // Restore saved annotations from localStorage
+      const saved = localStorage.getItem("annotations_v1");
+      if (saved) {
+        const ann = JSON.parse(saved);
+        for (const [id, data] of Object.entries(ann)) {
+          const pdf = pdfs.find(p => p.id === id);
+          if (pdf) Object.assign(pdf, data);
+        }
+      }
+
+      if (!annotatorName) {
+        annotatorName = prompt("请输入标注者姓名:", "") || "anonymous";
+        localStorage.setItem("annotator", annotatorName);
+      }
+
+      filterList();
+      updateProgress();
+      document.getElementById("noPdf").textContent = "← 从左侧列表选择一个 PDF";
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  // ── Filter & render list ──
+  window.filterList = function() {
+    if (!pdfs.length) return;
+    const q = document.getElementById("searchInput").value.toLowerCase();
+    const lbl = document.getElementById("filterLabel").value;
+
+    filtered = [];
+    for (let i = 0; i < pdfs.length; i++) {
+      const p = pdfs[i];
+      if (q && !p.filename.toLowerCase().includes(q) && !p.category.toLowerCase().includes(q)) continue;
+      if (lbl === "unlabeled" && p.label !== null) continue;
+      if (lbl && lbl !== "unlabeled" && p.label !== lbl) continue;
+      filtered.push(i);
+    }
+
+    const list = document.getElementById("pdfList");
+    list.innerHTML = filtered.map(i => {
+      const p = pdfs[i];
+      const dotClass = p.label ? `dot-${p.label}` : "dot-none";
+      const srcTag = p.source === "olmocr_bench_50" ? "olm" : "omni";
+      const active = i === currentIdx ? "active" : "";
+      return `<div class="pdf-item ${active}" data-idx="${i}" onclick="selectPdf(${i})">
+        <div class="dot ${dotClass}"></div>
+        <span class="name" title="${p.filename}">${p.filename}</span>
+        <span class="src-tag">${srcTag}</span>
+      </div>`;
+    }).join("");
+  };
+
+  // ── Select & render PDF ──
+  window.selectPdf = async function(idx) {
+    currentIdx = idx;
+    const p = pdfs[idx];
+
+    // Update sidebar highlight
+    document.querySelectorAll(".pdf-item").forEach(el => {
+      el.classList.toggle("active", parseInt(el.dataset.idx) === idx);
+    });
+
+    // Update meta info
+    const prev = previews[p.id];
+    const metaLines = [
+      `<b>${p.filename}</b>`,
+      `来源: <span>${p.source}</span> / ${p.category}`,
+      `页数: <span>${p.page_count ?? "?"}</span> &nbsp; 大小: <span>${(p.size_bytes/1024).toFixed(0)} KB</span>`,
+      `SHA256: <span style="font-family:monospace;font-size:11px">${p.sha256.slice(0,16)}…</span>`,
+      p.omnidoc_language ? `语言: <span>${p.omnidoc_language}</span> &nbsp; 版面: <span>${p.omnidoc_layout}</span>` : "",
+      p.omnidoc_special_issues?.length ? `特殊问题: <span>${p.omnidoc_special_issues.join(", ")}</span>` : "",
+      p.olmocr_test_count ? `olmOCR 测试数: <span>${p.olmocr_test_count}</span>` : "",
+    ].filter(Boolean);
+
+    // Add mupdf extraction preview stats
+    if (prev) {
+      metaLines.push(renderPreviewStats(prev));
+      metaLines.push(renderPreviewHint(prev, p));
+    } else {
+      metaLines.push('<div class="stat-badge">无预览数据（运行 build_mupdf_previews.py）</div>');
+    }
+    document.getElementById("metaInfo").innerHTML = metaLines.join("<br>");
+
+    // Render text preview
+    renderTextPreview(prev);
+
+    // Restore annotation state to UI
+    syncUIFromPdf(p);
+
+    // Render PDF (only if PDF view is visible)
+    if (currentView !== "text") {
+      await renderPdf(p.rel_path);
+    }
+  };
+
+  function renderPreviewStats(prev) {
+    if (prev.error) {
+      return `<div class="stat-badge bad">mupdf 提取失败: ${prev.error.slice(0,60)}</div>`;
+    }
+    const total = prev.total_chars || 0;
+    const textPages = prev.pages_with_text || 0;
+    const pages = prev.page_count || 0;
+    const garbled = prev.garbled_ratio || 0;
+
+    const charsClass = total >= 500 ? "good" : total > 0 ? "warn" : "bad";
+    const pagesClass = textPages === pages && pages > 0 ? "good" : textPages > 0 ? "warn" : "bad";
+    const garbledClass = garbled > 0.1 ? "bad" : garbled > 0.01 ? "warn" : "";
+
+    return `<div class="preview-stats">
+      <span class="stat-badge ${charsClass}">提取字符: ${total}</span>
+      <span class="stat-badge ${pagesClass}">有文本页: ${textPages}/${pages}</span>
+      <span class="stat-badge ${garbledClass}">乱码率: ${(garbled*100).toFixed(1)}%</span>
+      <span class="stat-badge">耗时: ${prev.elapsed_ms}ms</span>
+    </div>`;
+  }
+
+  function renderPreviewHint(prev, pdf) {
+    if (prev.error) return "";
+    const total = prev.total_chars || 0;
+    const textPages = prev.pages_with_text || 0;
+    const pages = prev.page_count || 0;
+    const garbled = prev.garbled_ratio || 0;
+
+    if (total === 0) {
+      return `<div class="hint bad">⚠ mupdf 未提取到任何文本 → 很可能是扫描件或图片型 PDF，需要 OCR</div>`;
+    }
+    if (pages > 0 && textPages < pages) {
+      return `<div class="hint warn">⚠ 有 ${pages - textPages} 页无文本 → 部分页面可能需要 OCR</div>`;
+    }
+    if (garbled > 0.1) {
+      return `<div class="hint bad">⚠ 乱码率 ${(garbled*100).toFixed(1)}% 偏高 → 文本层可能损坏，建议 OCR</div>`;
+    }
+    if (total >= 200 && garbled < 0.01) {
+      return `<div class="hint good">✓ 文本提取良好 → 大概率 text_ok</div>`;
+    }
+    return `<div class="hint warn">文本较少，请结合 PDF 内容判断</div>`;
+  }
+
+  function renderTextPreview(prev) {
+    const el = document.getElementById("textPreview");
+    if (!prev) {
+      el.innerHTML = '<div class="empty">此 PDF 无预览数据。运行 <code>build_mupdf_previews.py</code> 生成。</div>';
+      return;
+    }
+    if (prev.error) {
+      el.innerHTML = `<div class="empty">提取错误: ${escapeHtml(prev.error)}</div>`;
+      return;
+    }
+    const pages = prev.per_page_text || [];
+    if (!pages.length || pages.every(t => !t.trim())) {
+      el.innerHTML = '<div class="empty">⚠ mupdf 未提取到任何文本（极可能是扫描件/图片型 PDF）</div>';
+      return;
+    }
+    let html = "";
+    pages.forEach((text, i) => {
+      html += `<div class="page-sep">── Page ${i + 1} (${text.length} chars) ──</div>`;
+      html += text.trim() ? escapeHtml(text) : '<span class="empty">(空页面)</span>';
+    });
+    el.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  window.setView = function(view) {
+    currentView = view;
+    document.querySelectorAll(".viewer-tab").forEach(t => {
+      t.classList.toggle("active", t.dataset.view === view);
+    });
+    const viewer = document.getElementById("viewer");
+    const textPrev = document.getElementById("textPreview");
+
+    if (view === "pdf" || view === "layout") {
+      viewer.style.display = "flex";
+      viewer.style.flex = "1";
+      textPrev.style.display = "none";
+    } else if (view === "text") {
+      viewer.style.display = "none";
+      textPrev.style.display = "block";
+      textPrev.style.width = "100%";
+      textPrev.style.borderLeft = "none";
+    } else {
+      // split
+      viewer.style.display = "flex";
+      viewer.style.flex = "1";
+      textPrev.style.display = "block";
+      textPrev.style.width = "50%";
+      textPrev.style.borderLeft = "1px solid #333";
+    }
+
+    // Load PDF if switching to a view that shows it and no pdf loaded
+    if (currentIdx >= 0 && view !== "text" && !document.querySelector("#viewer canvas")) {
+      renderPdf(pdfs[currentIdx].rel_path);
+    }
+
+    // Layout overlay
+    if (view === "layout" && currentIdx >= 0) {
+      runLayoutAnalysis(pdfs[currentIdx].rel_path);
+    } else {
+      clearLayoutOverlay();
+    }
+  };
+
+  async function renderPdf(relPath) {
+    const viewer = document.getElementById("viewer");
+    // Clear old canvases and error messages
+    viewer.querySelectorAll("canvas").forEach(c => c.remove());
+    viewer.querySelectorAll(".no-pdf").forEach(c => c.remove());
+
+    // Remove old toolbar if exists and recreate
+    viewer.querySelector(".viewer-toolbar")?.remove();
+    const toolbar = document.createElement("div");
+    toolbar.className = "viewer-toolbar";
+    toolbar.innerHTML = `
+      <button onclick="zoomOut()">−</button>
+      <span id="zoomLevel">${Math.round(scale*100)}%</span>
+      <button onclick="zoomIn()">+</button>
+      <span id="pageInfo"></span>
+    `;
+    viewer.prepend(toolbar);
+
+    // Reset previous doc so a failure doesn't poison subsequent loads
+    if (pdfDoc) {
+      try { pdfDoc.destroy(); } catch (_) {}
+      pdfDoc = null;
+    }
+
+    try {
+      // Build URL: try both with and without "../" prefix to support
+      // serving from annotation/ subdir or from bench root.
+      // Also encode special characters in the path while preserving /.
+      const encodedPath = relPath.split("/").map(s => encodeURIComponent(s)).join("/");
+
+      // Detect serving context: if served from bench root, no prefix needed;
+      // if served from annotation/ subdir, need "../" prefix.
+      const base = window.location.pathname.includes("/annotation/") ? "../" : "";
+      const url = base + encodedPath;
+
+      pdfDoc = await window.pdfjsLib.getDocument(url).promise;
+      document.getElementById("pageInfo").textContent = `${pdfDoc.numPages} 页`;
+
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d");
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        viewer.appendChild(canvas);
+      }
+    } catch (e) {
+      // Show error but don't break subsequent PDF loads
+      pdfDoc = null;
+      const err = document.createElement("div");
+      err.className = "no-pdf";
+      err.textContent = `无法加载 PDF: ${e.message}`;
+      viewer.appendChild(err);
+    }
+  }
+
+  // ── Layout Analysis ──
+  const LAYOUT_COLORS = {
+    text: "#4caf50", image: "#2196f3", table: "#ff9800", formula: "#e91e63"
+  };
+
+  async function runLayoutAnalysis(relPath) {
+    const viewer = document.getElementById("viewer");
+    const backend = document.getElementById("layoutModel").value;
+    const cacheKey = `${backend}::${relPath}`;
+
+    // Check cache first
+    if (layoutCache[cacheKey]) {
+      drawLayoutOverlay(layoutCache[cacheKey]);
+      return;
+    }
+
+    // Show loading indicator
+    clearLayoutOverlay();
+    const modelName = backend === "pp-doclayoutv3" ? "PP-DocLayoutV3" : "DocLayout-YOLO";
+    const loadingDiv = document.createElement("div");
+    loadingDiv.className = "layout-loading";
+    loadingDiv.id = "layoutLoading";
+    loadingDiv.textContent = `正在运行版面分析 (${modelName})...`;
+    viewer.prepend(loadingDiv);
+
+    try {
+      const encodedPath = relPath.split("/").map(s => encodeURIComponent(s)).join("/");
+      const resp = await fetch(`/api/layout/${encodedPath}?backend=${backend}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+      const data = await resp.json();
+      layoutCache[cacheKey] = data;
+      document.getElementById("layoutLoading")?.remove();
+      drawLayoutOverlay(data);
+    } catch (e) {
+      document.getElementById("layoutLoading")?.remove();
+      const errDiv = document.createElement("div");
+      errDiv.className = "layout-loading";
+      errDiv.style.color = "var(--red)";
+      errDiv.textContent = `版面分析失败: ${e.message}`;
+      errDiv.id = "layoutError";
+      viewer.prepend(errDiv);
+    }
+  }
+
+  function drawLayoutOverlay(layoutData) {
+    clearLayoutOverlay();
+    const viewer = document.getElementById("viewer");
+    const canvases = viewer.querySelectorAll("canvas");
+
+    // Summary bar
+    const typeCounts = {};
+    for (const page of layoutData.pages) {
+      for (const r of page.regions) {
+        typeCounts[r.type] = (typeCounts[r.type] || 0) + 1;
+      }
+    }
+    const summary = document.createElement("div");
+    summary.className = "layout-summary";
+    summary.id = "layoutSummary";
+    summary.innerHTML =
+      `<span>模型: ${layoutData.layout_model}</span>` +
+      `<span>页数: ${layoutData.page_count}</span>` +
+      `<span style="color:${layoutData.has_complex ? 'var(--red)' : 'var(--green)'}">${layoutData.has_complex ? '含复杂内容' : '无复杂内容'}</span>` +
+      Object.entries(typeCounts).map(([t, n]) =>
+        `<span class="ls-chip" style="background:${LAYOUT_COLORS[t] || '#666'}">${t}: ${n}</span>`
+      ).join("");
+    viewer.prepend(summary);
+
+    // Draw boxes on each page canvas
+    canvases.forEach((canvas, pageIdx) => {
+      const pageData = layoutData.pages[pageIdx];
+      if (!pageData) return;
+
+      // Wrap canvas in a positioned container
+      const container = document.createElement("div");
+      container.className = "page-container layout-page-container";
+      canvas.parentNode.insertBefore(container, canvas);
+      container.appendChild(canvas);
+
+      const overlay = document.createElement("div");
+      overlay.className = "layout-overlay";
+      container.appendChild(overlay);
+
+      for (const r of pageData.regions) {
+        const box = document.createElement("div");
+        box.className = "layout-box";
+        box.dataset.type = r.type;
+        box.style.left   = (r.bbox[0] * 100).toFixed(2) + "%";
+        box.style.top    = (r.bbox[1] * 100).toFixed(2) + "%";
+        box.style.width  = ((r.bbox[2] - r.bbox[0]) * 100).toFixed(2) + "%";
+        box.style.height = ((r.bbox[3] - r.bbox[1]) * 100).toFixed(2) + "%";
+        box.title = `${r.type} (${(r.confidence * 100).toFixed(0)}%) #${r.reading_order}`;
+
+        const label = document.createElement("span");
+        label.className = "layout-label";
+        label.textContent = `${r.type} ${(r.confidence * 100).toFixed(0)}%`;
+        box.appendChild(label);
+
+        overlay.appendChild(box);
+      }
+    });
+  }
+
+  function clearLayoutOverlay() {
+    document.getElementById("layoutSummary")?.remove();
+    document.getElementById("layoutLoading")?.remove();
+    document.getElementById("layoutError")?.remove();
+    // Unwrap canvases from layout containers
+    document.querySelectorAll(".layout-page-container").forEach(container => {
+      const canvas = container.querySelector("canvas");
+      if (canvas) {
+        container.parentNode.insertBefore(canvas, container);
+      }
+      container.remove();
+    });
+  }
+
+  // ── Zoom ──
+  window.zoomIn = function() { scale = Math.min(4, scale + 0.25); rerender(); };
+  window.zoomOut = function() { scale = Math.max(0.5, scale - 0.25); rerender(); };
+  function rerender() {
+    if (currentIdx >= 0) {
+      document.getElementById("zoomLevel").textContent = Math.round(scale*100) + "%";
+      renderPdf(pdfs[currentIdx].rel_path);
+      if (currentView === "layout") {
+        // Re-draw overlay after re-render
+        setTimeout(() => {
+          const relPath = pdfs[currentIdx].rel_path;
+          if (layoutCache[relPath]) drawLayoutOverlay(layoutCache[relPath]);
+        }, 100);
+      }
+    }
+  }
+
+  // ── Annotation logic ──
+  window.setLabel = function(label) {
+    if (currentIdx < 0) return;
+    const p = pdfs[currentIdx];
+    // Toggle: clicking same label unsets it
+    if (p.label === label) {
+      p.label = null;
+    } else {
+      p.label = label;
+    }
+    p.annotator = annotatorName;
+    p.annotated_at = new Date().toISOString();
+    syncUIFromPdf(p);
+    saveToLocalStorage();
+    updateProgress();
+    // Update dot in sidebar
+    filterList();
+  };
+
+  window.syncReasons = function() {
+    if (currentIdx < 0) return;
+    const checks = document.querySelectorAll("#ocrReasons input:checked");
+    pdfs[currentIdx].ocr_reasons = Array.from(checks).map(c => c.value);
+    saveToLocalStorage();
+  };
+
+  window.syncNOcrPages = function() {
+    if (currentIdx < 0) return;
+    const val = document.getElementById("nOcrPages").value;
+    pdfs[currentIdx].n_ocr_pages = val ? parseInt(val) : null;
+    saveToLocalStorage();
+  };
+
+  window.syncReason = function() {
+    if (currentIdx < 0) return;
+    pdfs[currentIdx].reason_short = document.getElementById("reasonShort").value;
+    saveToLocalStorage();
+  };
+
+  window.syncTags = function() {
+    if (currentIdx < 0) return;
+    const raw = document.getElementById("customTags").value;
+    const tags = raw
+      .split(/[,，]/)
+      .map(t => t.trim())
+      .filter(Boolean);
+    pdfs[currentIdx].custom_tags = tags;
+    renderTagChips(tags);
+    saveToLocalStorage();
+  };
+
+  function renderTagChips(tags) {
+    const box = document.getElementById("tagChips");
+    box.innerHTML = tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join("");
+  }
+
+  function syncUIFromPdf(p) {
+    // Label buttons
+    document.querySelectorAll(".label-btn").forEach(btn => {
+      btn.classList.toggle("selected", btn.dataset.val === p.label);
+    });
+
+    // Only OCR-reasons section stays conditional (shown when need_ocr)
+    const showReasons = p.label === "need_ocr";
+    document.getElementById("ocrReasonsSection").classList.toggle("hidden", !showReasons);
+
+    // OCR reason checkboxes
+    document.querySelectorAll("#ocrReasons input").forEach(cb => {
+      cb.checked = (p.ocr_reasons || []).includes(cb.value);
+    });
+
+    // n_ocr_pages
+    document.getElementById("nOcrPages").value = p.n_ocr_pages ?? "";
+
+    // reason_short
+    document.getElementById("reasonShort").value = p.reason_short || "";
+
+    // custom_tags
+    const tags = p.custom_tags || [];
+    document.getElementById("customTags").value = tags.join(", ");
+    renderTagChips(tags);
+  }
+
+  // ── Navigation ──
+  window.goNext = function() {
+    if (!filtered.length) return;
+    const pos = filtered.indexOf(currentIdx);
+    const next = pos < filtered.length - 1 ? filtered[pos + 1] : filtered[0];
+    selectPdf(next);
+    // Scroll sidebar item into view
+    document.querySelector(`.pdf-item[data-idx="${next}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+
+  window.goPrev = function() {
+    if (!filtered.length) return;
+    const pos = filtered.indexOf(currentIdx);
+    const prev = pos > 0 ? filtered[pos - 1] : filtered[filtered.length - 1];
+    selectPdf(prev);
+    document.querySelector(`.pdf-item[data-idx="${prev}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+
+  // ── Persistence ──
+  function saveToLocalStorage() {
+    const ann = {};
+    for (const p of pdfs) {
+      if (p.label !== null || (p.custom_tags && p.custom_tags.length)) {
+        ann[p.id] = {
+          label: p.label,
+          ocr_reasons: p.ocr_reasons,
+          n_ocr_pages: p.n_ocr_pages,
+          reason_short: p.reason_short,
+          custom_tags: p.custom_tags || [],
+          annotator: p.annotator,
+          annotated_at: p.annotated_at,
+        };
+      }
+    }
+    localStorage.setItem("annotations_v1", JSON.stringify(ann));
+  }
+
+  function updateProgress() {
+    const total = pdfs.length;
+    const done = pdfs.filter(p => p.label !== null).length;
+    document.getElementById("progressText").textContent = `${done} / ${total} 已标注`;
+    document.getElementById("progressFill").style.width = total ? `${(done/total*100)}%` : "0%";
+  }
+
+  // ── Export / Import ──
+  window.exportAnnotations = function() {
+    if (!pdfs.length) { alert("没有数据"); return; }
+
+    const output = {
+      exported_at: new Date().toISOString(),
+      annotator: annotatorName,
+      total: pdfs.length,
+      labeled: pdfs.filter(p => p.label !== null).length,
+      summary: {},
+      annotations: [],
+    };
+
+    // Summary counts
+    for (const p of pdfs) {
+      const lbl = p.label || "unlabeled";
+      output.summary[lbl] = (output.summary[lbl] || 0) + 1;
+    }
+
+    // Full annotations
+    for (const p of pdfs) {
+      output.annotations.push({
+        id: p.id,
+        filename: p.filename,
+        source: p.source,
+        category: p.category,
+        sha256: p.sha256,
+        page_count: p.page_count,
+        label: p.label,
+        ocr_reasons: p.ocr_reasons || [],
+        n_ocr_pages: p.n_ocr_pages,
+        reason_short: p.reason_short || "",
+        custom_tags: p.custom_tags || [],
+        annotator: p.annotator,
+        annotated_at: p.annotated_at,
+      });
+    }
+
+    const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `annotations_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  window.importAnnotations = function() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      let count = 0;
+      // Support both export format and raw localStorage format
+      const annList = data.annotations || [];
+      if (annList.length) {
+        for (const ann of annList) {
+          const pdf = pdfs.find(p => p.id === ann.id || p.sha256 === ann.sha256);
+          if (pdf) {
+            pdf.label = ann.label;
+            pdf.ocr_reasons = ann.ocr_reasons || [];
+            pdf.n_ocr_pages = ann.n_ocr_pages;
+            pdf.reason_short = ann.reason_short || "";
+            pdf.custom_tags = ann.custom_tags || [];
+            pdf.annotator = ann.annotator;
+            pdf.annotated_at = ann.annotated_at;
+            count++;
+          }
+        }
+      } else {
+        // Raw {id: {label, ...}} format
+        for (const [id, d] of Object.entries(data)) {
+          const pdf = pdfs.find(p => p.id === id);
+          if (pdf) { Object.assign(pdf, d); count++; }
+        }
+      }
+
+      saveToLocalStorage();
+      filterList();
+      updateProgress();
+      if (currentIdx >= 0) syncUIFromPdf(pdfs[currentIdx]);
+      alert(`导入了 ${count} 条标注`);
+    };
+    input.click();
+  };
+
+  // ── Keyboard shortcuts ──
+  document.addEventListener("keydown", (e) => {
+    // Skip if focused on input/textarea
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+    switch (e.key) {
+      case "t": case "T": setLabel("text_ok"); break;
+      case "o": case "O": setLabel("need_ocr"); break;
+      case "a": case "A": setLabel("ambiguous"); break;
+      case "u": case "U": setLabel("unusable"); break;
+      case "d": case "D": setLabel("discard"); break;
+      case "h": case "H": setLabel("hold"); break;
+      case "k": case "K": setLabel("keep"); break;
+      case "ArrowRight": goNext(); e.preventDefault(); break;
+      case "ArrowLeft": goPrev(); e.preventDefault(); break;
+      case "=": case "+": zoomIn(); e.preventDefault(); break;
+      case "-": zoomOut(); e.preventDefault(); break;
+      case "1": setView("pdf"); e.preventDefault(); break;
+      case "2": setView("text"); e.preventDefault(); break;
+      case "3": setView("split"); e.preventDefault(); break;
+      case "4": setView("layout"); e.preventDefault(); break;
+    }
+  });
+
+  // ── Auto-load on start ──
+  loadMetadata();
+</script>
+</body>
+</html>

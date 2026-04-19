@@ -17,6 +17,11 @@ Usage::
 
     # Quick run without config file
     pdfsys run --pdf-dir ./data/pdfs --out-dir ./out --stages router,extract
+
+    # Launch annotation UI
+    pdfsys annotate
+    pdfsys annotate --port 9000
+    pdfsys annotate --import annotations_2026-04-18.json
 """
 
 from __future__ import annotations
@@ -65,6 +70,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vlm", action="store_true", dest="vlm_enabled", default=None, help="Enable VLM lane.")
     p.add_argument("--no-quality", action="store_true", default=False, help="Skip quality scoring.")
     p.add_argument("--quality-model", type=str, default=None, help="HuggingFace quality model.")
+
+    # ---- annotate ----
+    a = sub.add_parser("annotate", help="Launch the PDF annotation UI in browser.")
+    a.add_argument("--port", type=int, default=8234, help="HTTP server port (default: 8234).")
+    a.add_argument("--bench-dir", type=str, default=None, help="Path to pdfsys-bench package.")
+    a.add_argument(
+        "--import", type=str, default=None, dest="import_file",
+        help="Import annotations from an exported JSON file into metadata.json.",
+    )
 
     return top
 
@@ -129,6 +143,37 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_annotate(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .annotate import _find_bench_dir, import_annotations, serve
+
+    bench_dir = Path(args.bench_dir) if args.bench_dir else _find_bench_dir()
+    if bench_dir is None:
+        print(
+            "Error: cannot find pdfsys-bench directory. "
+            "Use --bench-dir to specify it.",
+            file=sys.stderr,
+        )
+        return 1
+
+    metadata_path = bench_dir / "annotation" / "metadata.json"
+
+    # Import mode.
+    if args.import_file:
+        import_path = Path(args.import_file)
+        if not import_path.exists():
+            print(f"Error: file not found: {import_path}", file=sys.stderr)
+            return 1
+        total = import_annotations(metadata_path, import_path)
+        print(f"[pdfsys annotate] imported → {total} annotated PDFs in metadata.json")
+        return 0
+
+    # Server mode.
+    serve(bench_dir, port=args.port)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -137,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_init_config()
     elif args.command == "run":
         return cmd_run(args)
+    elif args.command == "annotate":
+        return cmd_annotate(args)
     else:
         parser.print_help()
         return 0

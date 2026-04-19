@@ -90,6 +90,7 @@ class Components:
             self._analyser = LayoutAnalyser(
                 config=lc,
                 model_path=self.cfg.layout.model,
+                backend=self.cfg.layout.backend,
                 conf_threshold=self.cfg.layout.conf_threshold,
                 iou_threshold=self.cfg.layout.iou_threshold,
             )

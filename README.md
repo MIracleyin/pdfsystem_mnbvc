@@ -58,9 +58,12 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 | **Stage-A Router** | ✅ Ready | XGBoost binary classifier with 124 PyMuPDF features |
 | **MuPDF Parser** | ✅ Ready | Fast extraction for clean-text PDFs |
 | **OCR Quality Scorer** | ✅ Ready | ModernBERT-large regression model |
-| **Stage-B Router** | 🚧 Planned | Layout-based complexity routing |
-| **Pipeline Parser** | 🚧 Planned | Region-level OCR for simple layouts |
-| **VLM Parser** | 🚧 Planned | Vision-Language model for complex layouts |
+| **Stage-B Router** | ✅ Ready | LayoutDocument → PIPELINE / VLM / DEFERRED |
+| **Layout Analyser** | ✅ Ready | DocLayout-YOLO + PP-DocLayoutV3 (dual backend) |
+| **Pipeline Parser** | ✅ Ready | Region-level OCR via RapidOCR |
+| **VLM Parser** | ✅ Ready | MinerU 2.5 Pro (magic-pdf) for complex pages |
+| **Unified CLI** | ✅ Ready | `pdfsys run -c config.yaml --stages ...` |
+| **Annotation UI** | ✅ Ready | `pdfsys annotate` — PDF labeling + layout overlay |
 
 ---
 
@@ -137,9 +140,10 @@ python -m pdfsys_bench \
 | `pdfsys-router` | Stage-A/Stage-B routing decisions | pymupdf, xgboost, pandas, sklearn |
 | `pdfsys-parser-mupdf` | Fast PyMuPDF extraction | pymupdf |
 | `pdfsys-bench` | Evaluation harness + quality scorer | torch, transformers |
-| `pdfsys-layout-analyser` | Layout model runner | 🚧 Planned |
-| `pdfsys-parser-pipeline` | OCR backend | 🚧 Planned |
-| `pdfsys-parser-vlm` | VLM backend | 🚧 Planned |
+| `pdfsys-layout-analyser` | DocLayout-YOLO / PP-DocLayoutV3 detection | doclayout-yolo, transformers |
+| `pdfsys-parser-pipeline` | Region-level OCR via RapidOCR | rapidocr-onnxruntime |
+| `pdfsys-parser-vlm` | MinerU 2.5 Pro VLM extraction | magic-pdf |
+| `pdfsys-cli` | Unified CLI + YAML config + annotation UI | pyyaml |
 
 ---
 
