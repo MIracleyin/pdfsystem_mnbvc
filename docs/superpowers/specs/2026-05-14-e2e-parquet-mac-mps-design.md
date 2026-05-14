@@ -320,3 +320,61 @@ No changes to `pdfsys-core`, `pdfsys-router`, `pdfsys-layout-analyser`, `pdfsys-
 - `kept` column > 0 rows; error breakdown documented in a short post-run note appended to this spec.
 - All four §8 acceptance queries return sensible numbers.
 - No regression in existing `pdfsys run` flows that don't enable the `parquet` stage (backward compatible — old YAMLs still work).
+
+## 13 · Post-run note · 2026-05-14
+
+### Phase-2 stats
+
+| Metric | Value |
+|---|---|
+| Wall time | 183 s for 150 PDFs (~1.2 s/PDF avg) |
+| Exit | 0 |
+| Parquet size | 1.5 MB (zstd) |
+| Rows | 150 / 150 (100 % coverage) |
+| `error_class` after fix-up | 0 |
+| `kept = True` rows | 35 |
+| Avg `quality_score` (non-null) | 1.418 |
+
+### Backend distribution (after VLM retry merge)
+
+| Stage-A `backend` | Stage-B `stage_b_backend` | `extract_backend` | Count |
+|---|---|---|---|
+| `mupdf` | — | `mupdf` | 104 |
+| `pipeline` | `pipeline` | `pipeline` | 36 |
+| `pipeline` | `vlm` | `vlm` | 10 |
+
+This matches the historical OmniDocBench-100 70/30 mupdf/pipeline split, plus the 10 olmocr scanned-with-tables PDFs that newly fired Stage-B `vlm`.
+
+### Failure modes encountered (and resolutions)
+
+| Symptom | Root cause | Fix applied |
+|---|---|---|
+| All 10 VLM rows failed with `ModuleNotFoundError: No module named 'magic_pdf.pipe'` | `magic_pdf 1.0.1` calls `import paddle` in `doc_analyze_by_custom_model`; `paddlepaddle` was not installed. `pdfsys-parser-vlm.extract.py:194` caught the ImportError and fell back to v1's `magic_pdf.pipe.OCRPipe` — which doesn't exist in modern magic-pdf. | Installed `paddlepaddle`, `openai`, `ultralytics`, `pycocotools`, `detectron2` (from source), `timm`, `unimernet`, `paddleocr`, `rapid-table`, `struct-eqtable`, then **patched three magic-pdf site-packages files** to work with current transformers (>= 4.48). |
+| First VLM extraction produced very low quality (`markdown_chars` 22, garbled formulas like `Let  = V/- 1`) | Fix subagent disabled `formula-config.enable=false` and `table-config.enable=false` in `~/magic-pdf.json` because formula/table sub-models had additional environment issues. | Tracked as known gap — VLM rows currently behave like a degraded PIPELINE pass. |
+| `mupdf` raster page color-space warnings (`syntax error: could not parse color space (7 0 R)`) on 4 PDFs | Cosmetic PyMuPDF warning; extraction succeeded. | Ignored — not an error path. |
+
+### Honest limitations of this iteration
+
+1. **VLM is wired but not delivering value.** All 10 VLM rows succeeded only after disabling table+formula recognition — the two features that justified the VLM lane in the first place. Practically, these rows currently behave like a slower PIPELINE pass. Treating them as VLM-equivalent for downstream consumption is incorrect until table+formula are re-enabled.
+2. **`paddlepaddle` + 9 other packages are installed in the venv but not in any `pyproject.toml`.** The next time someone runs `uv sync` from a clean state, VLM will break the same way. Adding these deps cleanly (or migrating to `mineru` 2.x which has a different module layout) is a follow-up.
+3. **Site-packages patches to `magic_pdf/model/sub_modules/...` are not version-controlled.** `uv sync --reinstall` will undo them. Either fork magic-pdf or contribute upstream; either way, out of scope for this spec.
+4. **MPS was configured but not measured.** The MinerU sub-models that exercise MPS (formula, table) were the ones disabled. The only torch-on-MPS path actually used was the ModernBERT quality scorer.
+
+### Acceptance queries (§8) — actuals
+
+```
+rows                        : 150  (expected 150)        ✅
+backend mix                 : mupdf 104 / pipeline 36 / vlm 10 — VLM > 0 ✅
+kept_rows                   : 35   (> 0)                  ✅
+errors                      : 0    (< 30 threshold)       ✅
+error mix                   : (empty after retry)         ✅
+```
+
+§8's acceptance threshold (errors < 30) was met. The VLM-quality concern is a separate axis not covered by §8 — flagging it here so the next spec author knows to define a `markdown_chars_min` or "VLM produced ≥ N tokens of structured content" gate.
+
+### Next iteration candidates (priority order)
+
+1. **Fix the VLM env properly** — either pin `magic-pdf` to a version that doesn't need paddle, or migrate to the `mineru` 2.x package that supersedes it. Then re-enable formula+table and re-run the 10 VLM PDFs.
+2. **Remove the `except ImportError: pass` in `pdfsys-parser-vlm/extract.py:194`** — it masked the paddle-missing error as a v2-API issue, causing the misleading "No module named 'magic_pdf.pipe'" message that took diagnostics to unwind. Surface ImportError straight to `_set_error("extract_vlm", e)`.
+3. **Add a `markdown_chars` floor to the `kept` logic** so degraded extractions (22 chars) don't slip through as `kept=True` (one row currently does).
+4. **Reproducibility:** record `pip freeze` output as a lockfile artifact for the VLM stack; right now the working venv is uncommittable.
