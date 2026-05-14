@@ -18,7 +18,7 @@ import yaml
 
 # Canonical stage order — runner always executes in this order regardless
 # of the order the user types them.
-VALID_STAGES = ("router", "layout", "extract", "quality")
+VALID_STAGES = ("router", "layout", "extract", "quality", "parquet")
 
 
 @dataclass(slots=True)
@@ -61,6 +61,7 @@ class PipelineCfg:
 class VlmCfg:
     model: str = "mineru-2.5"
     enabled: bool = False
+    device_mode: str = "cpu"  # "mps" on Apple Silicon; written to ~/magic-pdf.json
 
 
 @dataclass(slots=True)
@@ -77,6 +78,15 @@ class RuntimeCfg:
 
 
 @dataclass(slots=True)
+class ParquetCfg:
+    enabled: bool = True
+    out: str = "dataset.parquet"
+    compression: str = "zstd"
+    quality_threshold: float = 2.0
+    include_markdown: bool = True
+
+
+@dataclass(slots=True)
 class RunConfig:
     """Fully resolved pipeline configuration."""
 
@@ -89,6 +99,7 @@ class RunConfig:
     vlm: VlmCfg = field(default_factory=VlmCfg)
     quality: QualityCfg = field(default_factory=QualityCfg)
     runtime: RuntimeCfg = field(default_factory=RuntimeCfg)
+    parquet: ParquetCfg = field(default_factory=ParquetCfg)
 
     # --- derived paths ---
 
@@ -109,6 +120,10 @@ class RunConfig:
     @property
     def cache_path(self) -> Path:
         return self.out_dir / self.output.cache_dir
+
+    @property
+    def parquet_path(self) -> Path:
+        return self.out_dir / self.parquet.out
 
     def has_stage(self, name: str) -> bool:
         return name in self.stages
@@ -142,6 +157,7 @@ def load_config(path: str | Path) -> RunConfig:
         vlm=_fill_dataclass(VlmCfg, raw.get("vlm")),
         quality=_fill_dataclass(QualityCfg, raw.get("quality")),
         runtime=_fill_dataclass(RuntimeCfg, raw.get("runtime")),
+        parquet=_fill_dataclass(ParquetCfg, raw.get("parquet")),
     )
 
 
@@ -199,13 +215,16 @@ def _normalize_stages(stages: list[str]) -> list[str]:
     - ``extract`` requires ``router``
     - ``layout`` requires ``router``
     - ``quality`` requires ``router`` + ``extract``
+    - ``parquet`` requires ``router`` + ``extract`` + ``quality``
     """
     s = set(stages)
 
-    if "extract" in s or "layout" in s or "quality" in s:
+    if "extract" in s or "layout" in s or "quality" in s or "parquet" in s:
         s.add("router")
-    if "quality" in s:
+    if "quality" in s or "parquet" in s:
         s.add("extract")
+    if "parquet" in s:
+        s.add("quality")
 
     return [stage for stage in VALID_STAGES if stage in s]
 
@@ -216,13 +235,14 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
     # pdfsys pipeline configuration
     # Docs: see packages/pdfsys-cli/README.md
 
-    # Which stages to run (in order: router → layout → extract → quality)
+    # Which stages to run (in order: router → layout → extract → quality → parquet)
     # Omit stages to skip them; dependencies auto-included.
     stages:
       - router
       - layout
       - extract
       - quality
+      - parquet
 
     input:
       pdf_dir: ./data/pdfs          # directory of source PDFs (recursive)
@@ -254,12 +274,20 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
     vlm:
       model: mineru-2.5
       enabled: false                # set true to enable MinerU VLM lane
+      device_mode: cpu              # cpu | mps | cuda — written to ~/magic-pdf.json
 
     quality:
       enabled: true
       model: HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn
       max_tokens: 512
-      device: null                  # null = auto (cuda if available, else cpu)
+      device: null                  # null = auto (cuda if available, else cpu); set "mps" on Apple Silicon
+
+    parquet:
+      enabled: true
+      out: dataset.parquet          # path relative to output.dir
+      compression: zstd             # zstd | snappy | none
+      quality_threshold: 2.0        # kept = (no error) AND (quality_score >= this)
+      include_markdown: true        # embed full markdown text in the parquet row
 
     runtime:
       omp_threads: 1                # OMP_NUM_THREADS (prevent deadlocks on macOS)
