@@ -10,7 +10,8 @@ requires-python = ">=3.11"
 dependencies = [
     "pdfsys-core",
     "pymupdf>=1.25",
-    "magic-pdf>=1.0",
+    "mineru>=3.1,<4.0",
+    "accelerate>=1.0",
     "numpy>=1.24",
     "Pillow>=10.0",
 ]
