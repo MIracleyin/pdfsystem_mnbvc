@@ -31,6 +31,7 @@ class DocResult:
     num_pages: int = 0
     is_form: bool = False
     garbled_text_ratio: float = 0.0
+    is_encrypted: bool = False
     router_error: str | None = None
     # layout
     layout_model: str | None = None
@@ -40,13 +41,15 @@ class DocResult:
     # extract
     extract_backend: str | None = None
     extract_stats: dict[str, Any] = field(default_factory=dict)
-    extract_error: str | None = None
     markdown_chars: int = 0
     # quality
     quality_score: float | None = None
     quality_num_chars: int | None = None
     quality_num_tokens: int | None = None
     quality_model: str | None = None
+    # error capture (split from old extract_error)
+    error_class: str | None = None  # router | layout | extract_mupdf | extract_pipeline | extract_vlm | quality
+    error_message: str | None = None  # f"{type(e).__name__}: {e}", truncated to 500 chars
     # timing
     wall_ms_router: float = 0.0
     wall_ms_layout: float = 0.0
