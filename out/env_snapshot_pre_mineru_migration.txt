@@ -1,0 +1,463 @@
+Cython==3.2.4
+Flask==3.1.3
+ImageIO==2.37.3
+Jinja2==3.1.6
+Markdown==3.10.2
+MarkupSafe==3.0.3
+PyMuPDF==1.27.2.2
+PyYAML==6.0.3
+Pygments==2.20.0
+RapidFuzz==3.14.5
+Wand==0.6.13
+Werkzeug==3.1.8
+absl-py==2.4.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.13.5
+aiosignal==1.4.0
+albucore==0.0.23
+albumentations==1.4.24
+annotated-doc==0.0.4
+annotated-types==0.7.0
+antlr4-python3-runtime==4.9.3
+anyio==4.13.0
+attrdict==2.0.1
+attrs==26.1.0
+babel==2.18.0
+bce-python-sdk==0.9.71
+beautifulsoup4==4.14.3
+black==26.3.1
+blinker==1.9.0
+boto3==1.42.90
+botocore==1.42.90
+braceexpand==0.1.7
+brotli==1.2.0
+cachetools==7.1.1
+certifi==2026.2.25
+cffi==2.0.0
+chardet==7.4.3
+charset-normalizer==3.4.7
+click==8.3.2
+cloudpickle==3.1.2
+colorlog==6.10.1
+contourpy==1.3.3
+crc32c==2.8
+cryptography==46.0.7
+cssselect==1.4.0
+cssutils==2.15.0
+cycler==0.12.1
+datasets==4.8.5
+detectron2==0.6
+dill==0.4.1
+distro==1.9.0
+doclayout_yolo==0.0.4
+encutils==1.0.0
+et_xmlfile==2.0.0
+evaluate==0.4.6
+fairscale==0.4.13
+fast-langdetect==1.0.0
+fasttext-predict==0.9.2.4
+filelock==3.28.0
+fire==0.7.1
+flask-babel==4.0.0
+flatbuffers==25.12.19
+fonttools==4.62.1
+frozenlist==1.8.0
+fsspec==2026.2.0
+ftfy==6.3.1
+future==1.0.0
+fvcore==0.1.5.post20221221
+grpcio==1.80.0
+h11==0.16.0
+hf-xet==1.4.3
+httpcore==1.0.9
+httpx==0.28.1
+huggingface_hub==0.36.2
+hydra-core==1.3.2
+idna==3.11
+imgaug==0.4.0
+iopath==0.1.9
+itsdangerous==2.2.0
+jiter==0.14.0
+jmespath==1.1.0
+joblib==1.5.3
+kiwisolver==1.5.0
+lazy-loader==0.5
+lmdb==2.2.0
+loguru==0.7.3
+lxml==6.1.0
+magic-pdf==1.0.1
+markdown-it-py==4.0.0
+matplotlib==3.10.8
+mdurl==0.1.2
+more-itertools==11.0.2
+mpmath==1.3.0
+multidict==6.7.1
+multiprocess==0.70.19
+mypy_extensions==1.1.0
+networkx==3.6.1
+numpy==1.26.4
+omegaconf==2.3.0
+onnxruntime==1.24.4
+openai==2.36.0
+opencv-contrib-python==4.6.0.66
+opencv-python-headless==4.11.0.86
+opencv-python==4.6.0.66
+openpyxl==3.1.5
+opt-einsum==3.3.0
+packaging==26.1
+paddleocr==2.7.3
+paddlepaddle==3.3.1
+pandas==3.0.2
+pathspec==1.1.1
+pdf2docx==0.5.13
+pdfminer.six==20231228
+pdfsys-bench==0.0.1
+pdfsys-cli==0.0.1
+pdfsys-core==0.0.1
+pdfsys-layout-analyser==0.0.1
+pdfsys-mnbvc==0.0.1
+pdfsys-parser-mupdf==0.0.1
+pdfsys-parser-pipeline==0.0.1
+pdfsys-parser-vlm==0.0.1
+pdfsys-router==0.0.1
+pillow==12.2.0
+platformdirs==4.9.6
+polars-runtime-32==1.40.1
+polars==1.40.1
+portalocker==3.2.0
+premailer==3.10.0
+propcache==0.5.2
+protobuf==7.34.1
+psutil==7.2.2
+py-cpuinfo==9.0.0
+pyarrow==24.0.0
+pyclipper==1.4.0
+pycocotools==2.0.11
+pycparser==3.0
+pycryptodome==3.23.0
+pydantic==2.13.2
+pydantic_core==2.46.2
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+python-docx==1.2.0
+pytokens==0.4.1
+pytz==2026.2
+rapid-table==0.3.0
+rapidocr-onnxruntime==1.4.4
+rarfile==4.2
+regex==2026.4.4
+requests==2.33.1
+rich==15.0.0
+robust-downloader==0.0.2
+s3transfer==0.16.0
+safetensors==0.7.0
+scikit-image==0.26.0
+scikit-learn==1.8.0
+scipy==1.17.1
+seaborn==0.13.2
+setuptools==81.0.0
+shapely==2.1.2
+shellingham==1.5.4
+simsimd==6.5.16
+six==1.17.0
+sniffio==1.3.1
+soupsieve==2.8.3
+stringzilla==4.6.0
+struct-eqtable==0.3.2
+sympy==1.14.0
+tabulate==0.10.0
+tensorboard-data-server==0.7.2
+tensorboard==2.20.0
+termcolor==3.3.0
+thop==0.1.1-2209072238
+threadpoolctl==3.6.0
+tifffile==2026.3.3
+timm==0.9.16
+tokenizers==0.22.2
+torch==2.11.0
+torchvision==0.26.0
+tqdm==4.67.3
+transformers==4.57.6
+typer==0.24.1
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+ultralytics-thop==2.0.19
+ultralytics==8.4.50
+unimernet==0.2.3
+urllib3==2.6.3
+visualdl==2.5.3
+wcwidth==0.7.0
+webdataset==0.2.111
+wordninja==2.0.0
+xgboost==3.2.0
+xxhash==3.7.0
+yacs==0.1.8
+yarl==1.23.0
+=== modified magic_pdf files (file sizes/mtimes) ===
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pdf_parse_union_core_v2.py 33473 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/post_proc/llm_aided.py 4722 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/post_proc/__init__.py 50 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/post_proc/para_split_v3.py 16922 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/tools/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/tools/cli.py 4134 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/tools/common.py 8381 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/tools/cli_dev.py 3948 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/operators/models.py 5305 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/operators/__init__.py 2630 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/operators/pipes.py 6767 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/make_content_config.py 248 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/enums.py 89 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/model_block_type.py 166 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/constants.py 1272 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/ocr_content_type.py 890 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/drop_tag.py 680 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/exceptions.py 784 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/drop_reason.py 2248 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/ocr_span_list_modify.py 3101 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/ocr_dict_merge.py 4847 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/remove_bbox_overlap.py 3089 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/cut_image.py 1225 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/construct_page_dict.py 660 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/ocr_detect_all_bboxes.py 9328 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/dict2md/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/dict2md/ocr_mkcontent.py 12989 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/utils/office_to_pdf.py 729 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/utils/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/utils/annotations.py 211 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/__pycache__/pdf_parse_union_core_v2.cpython-312.pyc 34871 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/__pycache__/__init__.cpython-312.pyc 193 May 14 15:10:04 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/filter/pdf_classify_by_type.py 42320 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/read_api.py 5225 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/dataset.py 11196 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/schemas.py 664 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/utils.py 2305 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/spark/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/spark/spark_api.py 1124 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/post_proc/__pycache__/llm_aided.cpython-312.pyc 5282 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/post_proc/__pycache__/para_split_v3.cpython-312.pyc 12990 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/post_proc/__pycache__/__init__.cpython-312.pyc 203 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/tools/__pycache__/common.cpython-312.pyc 6989 May 14 15:21:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/tools/__pycache__/cli.cpython-312.pyc 6059 May 14 15:21:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/tools/__pycache__/__init__.cpython-312.pyc 199 May 14 15:20:29 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/safe_filename.py 236 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/version.py 22 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/config_reader.py 4374 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/clean_memory.py 479 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/hash_utils.py 404 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/pdf_check.py 3118 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/coordinate_transform.py 429 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/commons.py 1174 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/markdown_utils.py 270 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/json_compressor.py 875 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/pdf_image_tools.py 1987 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/local_math.py 177 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/language.py 1135 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/draw_bbox.py 17653 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/boxbase.py 16925 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/path_utils.py 1043 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/convert_utils.py 143 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/integrations/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/model_list.py 213 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/batch_analyze.py 11551 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/__init__.py 51 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/pp_structure_v2.py 3840 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/doc_analyze_by_custom_model.py 5989 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/magic_model.py 25204 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/pdf_extract_kit.py 12287 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/filter/pdf_meta_scan.py 17470 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/filter/__init__.py 1503 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/resources/model_config/model_configs.yaml 290 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/resources/fasttext-langdetect/lid.176.ftz 938013 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/resources/yolov11-langdetect/yolo_v11_ft.pt 3204667 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/operators/__pycache__/pipes.cpython-312.pyc 8992 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/operators/__pycache__/models.cpython-312.pyc 6559 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/operators/__pycache__/__init__.cpython-312.pyc 3645 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/drop_tag.cpython-312.pyc 946 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/drop_reason.cpython-312.pyc 1739 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/enums.cpython-312.pyc 473 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/exceptions.cpython-312.pyc 2502 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/constants.cpython-312.pyc 1380 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/ocr_content_type.cpython-312.pyc 1558 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/model_block_type.cpython-312.pyc 578 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/make_content_config.cpython-312.pyc 763 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/config/__pycache__/__init__.cpython-312.pyc 200 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__pycache__/remove_bbox_overlap.cpython-312.pyc 3882 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__pycache__/ocr_span_list_modify.cpython-312.pyc 3211 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__pycache__/construct_page_dict.cpython-312.pyc 673 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__pycache__/ocr_dict_merge.cpython-312.pyc 6340 May 14 15:18:07 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__pycache__/cut_image.cpython-312.pyc 1734 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__pycache__/ocr_detect_all_bboxes.cpython-312.pyc 7985 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/pre_proc/__pycache__/__init__.cpython-312.pyc 202 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/dict2md/__pycache__/ocr_mkcontent.cpython-312.pyc 12264 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/dict2md/__pycache__/__init__.cpython-312.pyc 201 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/utils/__pycache__/annotations.cpython-312.pyc 616 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/utils/__pycache__/office_to_pdf.cpython-312.pyc 1681 May 14 15:21:13 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/utils/__pycache__/__init__.cpython-312.pyc 199 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/filter/__pycache__/pdf_meta_scan.cpython-312.pyc 11645 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/filter/__pycache__/pdf_classify_by_type.cpython-312.pyc 13911 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/filter/__pycache__/__init__.cpython-312.pyc 1579 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/__init__.py 705 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/multi_bucket_s3.py 5938 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/filebase.py 2146 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/s3.py 2408 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/base.py 1706 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/__init__.py 294 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/http.py 958 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/s3.py 3606 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/base.py 1118 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/__pycache__/dataset.cpython-312.pyc 14325 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/__pycache__/schemas.cpython-312.pyc 1349 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/__pycache__/utils.cpython-312.pyc 3269 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/__pycache__/__init__.cpython-312.pyc 198 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/clean_memory.cpython-312.pyc 1144 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/convert_utils.cpython-312.pyc 486 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/pdf_check.cpython-312.pyc 4235 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/path_utils.cpython-312.pyc 1637 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/json_compressor.cpython-312.pyc 1689 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/coordinate_transform.cpython-312.pyc 797 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/draw_bbox.cpython-312.pyc 18584 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/hash_utils.cpython-312.pyc 922 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/commons.cpython-312.pyc 1927 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/boxbase.cpython-312.pyc 19561 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/config_reader.cpython-312.pyc 6428 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/pdf_image_tools.cpython-312.pyc 2814 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/version.cpython-312.pyc 223 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/markdown_utils.cpython-312.pyc 558 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/__init__.cpython-312.pyc 198 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/libs/__pycache__/language.cpython-312.pyc 2040 May 14 15:10:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/resources/model_config/layoutlmv3/layoutlmv3_base_inference.yaml 6109 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/integrations/rag/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/integrations/rag/type.py 3193 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/integrations/rag/api.py 2507 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/integrations/rag/utils.py 11762 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/__pycache__/magic_model.cpython-312.pyc 25544 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/__pycache__/doc_analyze_by_custom_model.cpython-312.pyc 7384 May 14 15:10:04 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/__pycache__/pdf_extract_kit.cpython-312.pyc 14428 May 14 15:19:25 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/__pycache__/model_list.cpython-312.pyc 720 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/__pycache__/__init__.cpython-312.pyc 260 May 14 15:10:04 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/model_utils.py 2488 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/model_init.py 7382 May 14 15:35:05 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/resources/model_config/UniMERNet/demo.yaml 827 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/__pycache__/s3.cpython-312.pyc 2553 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/__pycache__/base.cpython-312.pyc 2817 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/__pycache__/filebase.cpython-312.pyc 3755 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/__pycache__/multi_bucket_s3.cpython-312.pyc 7924 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/data_reader_writer/__pycache__/__init__.cpython-312.pyc 720 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/__pycache__/s3.cpython-312.pyc 4064 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/__pycache__/base.cpython-312.pyc 1971 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/__pycache__/__init__.cpython-312.pyc 484 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/data/io/__pycache__/http.cpython-312.pyc 2022 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfr/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/__pycache__/model_utils.cpython-312.pyc 3464 May 14 15:19:25 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/__pycache__/__init__.cpython-312.pyc 211 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/__pycache__/model_init.cpython-312.pyc 9099 May 14 15:35:11 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/table_utils.py 282 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/reading_oreder/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/language_detection/__init__.py 50 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/language_detection/utils.py 3096 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfd/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/doclayout_yolo/DocLayoutYOLO.py 2189 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/doclayout_yolo/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/__pycache__/__init__.cpython-312.pyc 218 May 14 15:10:21 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfd/__pycache__/__init__.cpython-312.pyc 215 May 14 15:16:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/deit.py 17000 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/beit.py 30450 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/rcnn_vl.py 6649 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/backbone.py 7106 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/model_init.py 4528 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/visualizer.py 49797 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/paddleocr/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/paddleocr/ppocr_273_mod.py 8424 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/paddleocr/ppocr_291_mod.py 8996 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/paddleocr/ocr_utils.py 12952 May 14 15:25:16 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/__pycache__/__init__.cpython-312.pyc 215 May 14 15:17:07 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfr/__pycache__/__init__.cpython-312.pyc 215 May 14 15:16:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfr/unimernet/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfr/unimernet/Unimernet.py 5290 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/__pycache__/table_utils.cpython-312.pyc 624 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/__pycache__/__init__.cpython-312.pyc 217 May 14 15:18:07 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/tablemaster/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/tablemaster/tablemaster_paddle.py 2755 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/doclayout_yolo/__pycache__/DocLayoutYOLO.cpython-312.pyc 3542 May 14 15:10:21 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/doclayout_yolo/__pycache__/__init__.cpython-312.pyc 233 May 14 15:10:21 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/structeqtable/struct_eqtable.py 1131 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/structeqtable/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/rapidtable/rapid_table.py 1953 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/rapidtable/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/reading_oreder/__pycache__/__init__.cpython-312.pyc 226 May 14 15:28:53 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/reading_oreder/layoutreader/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/reading_oreder/layoutreader/helpers.py 4372 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/reading_oreder/layoutreader/xycut.py 7349 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/language_detection/__pycache__/__init__.cpython-312.pyc 230 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/language_detection/yolov11/__init__.py 50 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/language_detection/yolov11/YOLOv11.py 4762 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfd/yolov8/__init__.py 0 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfd/yolov8/YOLOv8.py 1008 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/__init__.py 186 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__pycache__/backbone.cpython-312.pyc 7072 May 14 15:12:42 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__pycache__/deit.cpython-312.pyc 23662 May 14 15:12:53 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__pycache__/visualizer.cpython-312.pyc 59297 May 14 15:10:22 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__pycache__/__init__.cpython-312.pyc 229 May 14 15:10:22 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__pycache__/model_init.cpython-312.pyc 6505 May 14 15:10:22 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__pycache__/rcnn_vl.cpython-312.pyc 7930 May 14 15:12:42 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/__pycache__/beit.cpython-312.pyc 34653 May 14 15:12:42 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/paddleocr/__pycache__/ocr_utils.cpython-312.pyc 14162 May 14 15:25:38 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/paddleocr/__pycache__/ppocr_273_mod.cpython-312.pyc 9564 May 14 15:17:07 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/ocr/paddleocr/__pycache__/__init__.cpython-312.pyc 225 May 14 15:17:07 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfr/unimernet/__pycache__/Unimernet.cpython-312.pyc 8776 May 14 15:16:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfr/unimernet/__pycache__/__init__.cpython-312.pyc 225 May 14 15:16:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/tablemaster/__pycache__/__init__.cpython-312.pyc 229 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/tablemaster/__pycache__/tablemaster_paddle.cpython-312.pyc 3705 May 14 15:18:50 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/structeqtable/__pycache__/struct_eqtable.cpython-312.pyc 1729 May 14 15:18:34 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/structeqtable/__pycache__/__init__.cpython-312.pyc 231 May 14 15:18:34 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/rapidtable/__pycache__/rapid_table.cpython-312.pyc 2391 May 14 15:18:07 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/table/rapidtable/__pycache__/__init__.cpython-312.pyc 228 May 14 15:18:07 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/reading_oreder/layoutreader/__pycache__/helpers.cpython-312.pyc 6557 May 14 15:28:53 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/reading_oreder/layoutreader/__pycache__/__init__.cpython-312.pyc 239 May 14 15:28:53 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/language_detection/yolov11/__pycache__/YOLOv11.cpython-312.pyc 5866 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/language_detection/yolov11/__pycache__/__init__.cpython-312.pyc 238 May 14 15:10:06 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfd/yolov8/__pycache__/YOLOv8.cpython-312.pyc 1815 May 14 15:16:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/mfd/yolov8/__pycache__/__init__.cpython-312.pyc 222 May 14 15:16:08 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/__init__.py 190 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/__pycache__/__init__.cpython-312.pyc 457 May 14 15:12:53 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/data/image_utils.py 10334 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/data/xfund.py 8270 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/data/cord.py 8153 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/data/__init__.py 76 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/data/data_collator.py 6279 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/data/funsd.py 5214 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/__pycache__/__init__.cpython-312.pyc 468 May 14 15:12:53 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/tokenization_layoutlmv3.py 1197 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/__init__.py 1216 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/tokenization_layoutlmv3_fast.py 1372 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/modeling_layoutlmv3.py 55373 May 14 15:14:24 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/configuration_layoutlmv3.py 2150 May 14 15:09:59 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/__pycache__/configuration_layoutlmv3.cpython-312.pyc 2251 May 14 15:12:55 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/__pycache__/tokenization_layoutlmv3_fast.cpython-312.pyc 1124 May 14 15:14:38 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/__pycache__/tokenization_layoutlmv3.cpython-312.pyc 934 May 14 15:14:38 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/__pycache__/__init__.cpython-312.pyc 1093 May 14 15:12:53 2026
+/Users/yinz/Codes/mnbvc/pdfsystem_mnbvc/.venv/lib/python3.12/site-packages/magic_pdf/model/sub_modules/layout/layoutlmv3/layoutlmft/models/layoutlmv3/__pycache__/modeling_layoutlmv3.cpython-312.pyc 57235 May 14 15:14:38 2026
+=== ~/magic-pdf.json content ===
+{
+  "device-mode": "mps",
+  "models-dir": "/Users/yinz/.cache/mineru/models",
+  "table-config": {
+    "model": "rapid_table",
+    "enable": false
+  },
+  "formula-config": {
+    "enable": false
+  },
+  "layout-config": {
+    "model": "doclayout_yolo"
+  }
+}
