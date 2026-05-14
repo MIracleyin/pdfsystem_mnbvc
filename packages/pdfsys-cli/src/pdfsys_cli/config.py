@@ -192,8 +192,10 @@ def apply_cli_overrides(cfg: RunConfig, **overrides: Any) -> RunConfig:
         cfg.vlm.enabled = True
     if overrides.get("no_quality") is True:
         cfg.quality.enabled = False
-        if "quality" in cfg.stages:
-            cfg.stages.remove("quality")
+        # parquet depends on quality (quality_score feeds kept) — drop both together
+        for stage in ("quality", "parquet"):
+            if stage in cfg.stages:
+                cfg.stages.remove(stage)
     if overrides.get("quality_model") is not None:
         cfg.quality.model = str(overrides["quality_model"])
 

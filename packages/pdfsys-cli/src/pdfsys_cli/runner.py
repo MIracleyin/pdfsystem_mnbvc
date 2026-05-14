@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .config import RunConfig
+from .parquet_writer import ParquetSink
 
 
 @dataclass(slots=True)
@@ -169,27 +170,53 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         "started_at": time.time(),
     }
 
-    with cfg.jsonl_path.open("w", encoding="utf-8") as out_f:
-        for pdf_path in _iter_pdfs(Path(cfg.input.pdf_dir), cfg.input.limit):
-            row = _process_one(pdf_path, cfg, comps)
-            out_f.write(row.to_json_line() + "\n")
-            out_f.flush()
+    # ---- optional pre-flight: configure magic-pdf for the requested device ----
+    if cfg.has_stage("extract") and cfg.vlm.enabled:
+        from ._mineru_config import ensure_config  # noqa: PLC0415
 
-            summary["num_pdfs"] += 1
-            if row.backend:
-                by_b = summary["by_backend"]
-                final = row.extract_backend or row.backend
-                by_b[final] = by_b.get(final, 0) + 1
-            if row.stage_b_backend:
-                by_sb = summary["by_stage_b"]
-                by_sb[row.stage_b_backend] = by_sb.get(row.stage_b_backend, 0) + 1
-            if row.error_class is None and row.sha256 is not None:
-                summary["num_extracted"] += 1
-            if row.quality_score is not None:
-                summary["num_scored"] += 1
-                summary["sum_quality"] += row.quality_score
-            if row.error_class is not None:
-                summary["num_errors"] += 1
+        ensure_config(cfg.vlm.device_mode)
+
+    # ---- optional parquet sink (opened lazily, closed via context) ----
+    parquet_sink: ParquetSink | None = None
+    if cfg.has_stage("parquet") and cfg.parquet.enabled:
+        parquet_sink = ParquetSink(
+            path=cfg.parquet_path,
+            compression=cfg.parquet.compression,
+            quality_threshold=cfg.parquet.quality_threshold,
+            include_markdown=cfg.parquet.include_markdown,
+        )
+
+    try:
+        with cfg.jsonl_path.open("w", encoding="utf-8") as out_f:
+            for pdf_path in _iter_pdfs(Path(cfg.input.pdf_dir), cfg.input.limit):
+                row, extracted = _process_one(pdf_path, cfg, comps)
+                out_f.write(row.to_json_line() + "\n")
+                out_f.flush()
+
+                if parquet_sink is not None:
+                    md = extracted.markdown if extracted is not None else None
+                    parquet_sink.write_row(row, md)
+
+                summary["num_pdfs"] += 1
+                if row.backend:
+                    by_b = summary["by_backend"]
+                    final = row.extract_backend or row.backend
+                    by_b[final] = by_b.get(final, 0) + 1
+                if row.stage_b_backend:
+                    by_sb = summary["by_stage_b"]
+                    by_sb[row.stage_b_backend] = by_sb.get(row.stage_b_backend, 0) + 1
+                if row.error_class is None and row.sha256 is not None:
+                    summary["num_extracted"] += 1
+                if row.quality_score is not None:
+                    summary["num_scored"] += 1
+                    summary["sum_quality"] += row.quality_score
+                if row.error_class is not None:
+                    summary["num_errors"] += 1
+    finally:
+        if parquet_sink is not None:
+            parquet_sink.close()
+            summary["parquet_rows"] = parquet_sink.rows_written
+            summary["parquet_path"] = str(cfg.parquet_path)
 
     summary["finished_at"] = time.time()
     summary["wall_seconds"] = summary["finished_at"] - summary["started_at"]
@@ -215,7 +242,18 @@ def _set_error(row: DocResult, error_class: str, exc: BaseException) -> None:
 
 # ---------------------------------------------------------------- per-pdf
 
-def _process_one(pdf_path: Path, cfg: RunConfig, comps: Components) -> DocResult:
+def _process_one(
+    pdf_path: Path, cfg: RunConfig, comps: Components
+) -> tuple[DocResult, Any]:
+    """Run all configured stages for one PDF.
+
+    Returns
+    -------
+    tuple
+        ``(row, extracted)`` — extracted is the in-memory ExtractedDoc when
+        extraction succeeded, else ``None``. The caller uses extracted to
+        feed the parquet sink without re-reading markdown from disk.
+    """
     row = DocResult(pdf_path=str(pdf_path))
 
     # ---- router ----
@@ -236,7 +274,7 @@ def _process_one(pdf_path: Path, cfg: RunConfig, comps: Components) -> DocResult
     if cfg.has_stage("quality") and cfg.quality.enabled and extracted is not None:
         _stage_quality(row, extracted, comps)
 
-    return row
+    return row, extracted
 
 
 def _needs_ocr(row: DocResult) -> bool:
