@@ -47,7 +47,7 @@ class DocResult:
     quality_num_chars: int | None = None
     quality_num_tokens: int | None = None
     quality_model: str | None = None
-    # error capture (split from old extract_error)
+    # error capture
     error_class: str | None = None  # router | layout | extract_mupdf | extract_pipeline | extract_vlm | quality
     error_message: str | None = None  # f"{type(e).__name__}: {e}", truncated to 500 chars
     # timing
@@ -183,12 +183,12 @@ def run(cfg: RunConfig) -> dict[str, Any]:
             if row.stage_b_backend:
                 by_sb = summary["by_stage_b"]
                 by_sb[row.stage_b_backend] = by_sb.get(row.stage_b_backend, 0) + 1
-            if row.extract_error is None and row.sha256 is not None:
+            if row.error_class is None and row.sha256 is not None:
                 summary["num_extracted"] += 1
             if row.quality_score is not None:
                 summary["num_scored"] += 1
                 summary["sum_quality"] += row.quality_score
-            if row.router_error or row.extract_error:
+            if row.error_class is not None:
                 summary["num_errors"] += 1
 
     summary["finished_at"] = time.time()
@@ -202,6 +202,15 @@ def run(cfg: RunConfig) -> dict[str, Any]:
     summary["summary_path"] = str(summary_path)
 
     return summary
+
+
+def _set_error(row: DocResult, error_class: str, exc: BaseException) -> None:
+    """Record the first error to hit this row; later errors are dropped."""
+    if row.error_class is not None:
+        return
+    row.error_class = error_class
+    msg = f"{type(exc).__name__}: {exc}"
+    row.error_message = msg[:500]
 
 
 # ---------------------------------------------------------------- per-pdf
@@ -248,7 +257,10 @@ def _stage_router(row: DocResult, pdf_path: Path, comps: Components) -> None:
     row.num_pages = decision.num_pages
     row.is_form = decision.is_form
     row.garbled_text_ratio = decision.garbled_text_ratio
+    row.is_encrypted = decision.is_encrypted
     row.router_error = decision.error
+    if decision.error is not None:
+        _set_error(row, "router", RuntimeError(decision.error))
     row.wall_ms_router = (t1 - t0) * 1000.0
 
 
@@ -278,7 +290,7 @@ def _stage_layout(
 
         return layout
     except Exception as e:  # noqa: BLE001
-        row.extract_error = f"layout_failed: {e}"
+        _set_error(row, "layout", e)
         return None
 
 
@@ -304,8 +316,8 @@ def _stage_extract(
             row.extract_stats = dict(extracted.stats)
             row.markdown_chars = extracted.char_count
             row.wall_ms_extract = (t1 - t0) * 1000.0
-        except Exception as e:  # noqa: BLE001
-            row.extract_error = f"mupdf_extract_failed: {e}"
+        except Exception as e:  # noqa: BLE001 — mupdf
+            _set_error(row, "extract_mupdf", e)
             return None
 
     # Pipeline OCR path.
@@ -319,8 +331,8 @@ def _stage_extract(
             row.extract_stats = dict(extracted.stats)
             row.markdown_chars = extracted.char_count
             row.wall_ms_extract = (t1 - t0) * 1000.0
-        except Exception as e:  # noqa: BLE001
-            row.extract_error = f"pipeline_extract_failed: {e}"
+        except Exception as e:  # noqa: BLE001 — pipeline
+            _set_error(row, "extract_pipeline", e)
             return None
 
     # VLM path.
@@ -334,8 +346,8 @@ def _stage_extract(
             row.extract_stats = dict(extracted.stats)
             row.markdown_chars = extracted.char_count
             row.wall_ms_extract = (t1 - t0) * 1000.0
-        except Exception as e:  # noqa: BLE001
-            row.extract_error = f"vlm_extract_failed: {e}"
+        except Exception as e:  # noqa: BLE001 — vlm
+            _set_error(row, "extract_vlm", e)
             return None
 
     # DEFERRED or no layout — skip extraction.
@@ -364,7 +376,7 @@ def _stage_quality(row: DocResult, extracted: Any, comps: Components) -> None:
         row.quality_model = q.model
         row.wall_ms_quality = (t1 - t0) * 1000.0
     except Exception as e:  # noqa: BLE001
-        row.extract_error = f"quality_failed: {e}"
+        _set_error(row, "quality", e)
 
 
 # ---------------------------------------------------------------- util
