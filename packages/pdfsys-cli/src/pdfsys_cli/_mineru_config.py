@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# NOTE: does not honour MINERU_TOOLS_CONFIG_JSON env var — extend if CI ever sets it.
 CONFIG_PATH = Path.home() / "magic-pdf.json"
 
 _DEFAULT_MODELS_DIR = Path.home() / ".cache" / "mineru" / "models"
@@ -40,6 +41,8 @@ def ensure_config(device_mode: str) -> Path:
         try:
             existing = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
+            existing = {}
+        if not isinstance(existing, dict):
             existing = {}
         if existing.get("device-mode") == device_mode:
             return CONFIG_PATH
