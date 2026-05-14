@@ -1,0 +1,56 @@
+# Phase-2 full run: all 150 bundled PDFs (omnidocbench_100 + olmocr_bench_50).
+# Pipeline + thresholds identical to pdfsys.smoke.yaml.
+
+stages:
+  - router
+  - layout
+  - extract
+  - quality
+  - parquet
+
+input:
+  pdf_dir: packages/pdfsys-bench
+  limit: null
+
+output:
+  dir: ./out/e2e_full
+  jsonl: results.jsonl
+  markdown_dir: markdown
+  cache_dir: .cache
+
+router:
+  ocr_threshold: 0.5
+  weights: null
+
+layout:
+  model: juliozhao/DocLayout-YOLO-DocStructBench
+  backend: null
+  conf_threshold: 0.25
+  iou_threshold: 0.45
+  render_dpi: 200
+
+pipeline:
+  ocr_engine: rapidocr
+  languages: [ch, en]
+  render_dpi: 200
+
+vlm:
+  model: mineru-2.5
+  enabled: true
+  device_mode: mps
+
+quality:
+  enabled: true
+  model: HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn
+  max_tokens: 512
+  device: mps
+
+parquet:
+  enabled: true
+  out: dataset.parquet
+  compression: zstd
+  quality_threshold: 2.0
+  include_markdown: true
+
+runtime:
+  omp_threads: 1
