@@ -170,11 +170,11 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         "started_at": time.time(),
     }
 
-    # ---- optional pre-flight: configure magic-pdf for the requested device ----
+    # ---- optional pre-flight: configure mineru for the requested device ----
     if cfg.has_stage("extract") and cfg.vlm.enabled:
-        from ._mineru_config import ensure_config  # noqa: PLC0415
+        from ._vlm_config import ensure_mineru_env  # noqa: PLC0415
 
-        ensure_config(cfg.vlm.device_mode)
+        ensure_mineru_env(cfg.vlm.device_mode)
 
     # ---- optional parquet sink (opened lazily, closed via context) ----
     parquet_sink: ParquetSink | None = None
