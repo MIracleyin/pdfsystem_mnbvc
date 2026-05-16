@@ -331,10 +331,9 @@
 
   function renderPreview(row) {
     const el = document.getElementById('detail-preview');
-    const previewData = row.preview_key ? PREVIEWS[row.preview_key] : null;
-    // previews.json shape varies — handle {data_url:...}, {image:...}, or plain base64 string
-    const imgSrc = previewData?.data_url || previewData?.image || previewData;
-    const hasPreview = imgSrc && typeof imgSrc === 'string';
+    // viz CLI pre-renders page-1 JPEG into page1/<sha>.jpg
+    const imgSrc = row.sha256 ? `page1/${row.sha256}.jpg` : null;
+    const hasPreview = !!imgSrc;
 
     let bboxesHtml = '';
     if (row.layout?.regions) {
@@ -353,7 +352,7 @@
       `<h2>${row.pdf_basename}</h2>
        <div style="color:var(--dim);font-size:11px;margin-bottom:8px">${row.pdf_path}</div>`
       + (hasPreview
-          ? `<div id="preview-canvas"><img src="${imgSrc.startsWith('data:') ? imgSrc : 'data:image/png;base64,' + imgSrc}"/>${bboxesHtml}</div>`
+          ? `<div id="preview-canvas"><img src="${imgSrc}" onerror="this.parentElement.outerHTML='&lt;div id=preview-empty&gt;(preview JPEG missing — re-run viz CLI)&lt;/div&gt;'"/>${bboxesHtml}</div>`
           : `<div id="preview-empty">(no preview available for this PDF)</div>`)
       + `<div class="legend">
            <span class="l-TEXT">TEXT</span>

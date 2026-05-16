@@ -59,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
 
     _copy_previews(preview_src, out_dir / "previews.json")
     _copy_markdown(run_dir / "markdown", out_dir / "markdown")
+    _render_page1_jpegs(rows, out_dir / "page1")
     _copy_template_and_assets(_TEMPLATE_DIR, out_dir)
     _write_serve_script(out_dir / "serve.sh")
 
@@ -307,6 +308,49 @@ def _copy_markdown(src_dir: Path, dst_dir: Path) -> None:
         shutil.copyfile(f, dst_dir / f.name)
         count += 1
     print(f"[viz] copied {count} markdown files")
+
+
+def _render_page1_jpegs(rows: list[dict[str, Any]], dst_dir: Path) -> None:
+    """Render page 1 of each PDF to a low-DPI JPEG (~30-60 KB each).
+
+    Bundles the rendered images alongside viz_data.json so the detail
+    view can overlay layout bboxes without a backend. Total budget for
+    150 PDFs at quality=70 / DPI=80 is ~5-10 MB.
+    """
+    import pymupdf  # noqa: PLC0415 — lazy import, only when running viz
+
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    rendered = 0
+    skipped = 0
+    for r in rows:
+        pdf_path = r.get("pdf_path") or ""
+        sha = r.get("sha256") or ""
+        if not pdf_path or not sha:
+            skipped += 1
+            continue
+        src = Path(pdf_path)
+        if not src.is_absolute():
+            src = _REPO_ROOT / src
+        if not src.exists():
+            skipped += 1
+            continue
+        target = dst_dir / f"{sha}.jpg"
+        if target.exists():
+            continue
+        try:
+            doc = pymupdf.open(str(src))
+            if len(doc) == 0:
+                doc.close()
+                skipped += 1
+                continue
+            pix = doc[0].get_pixmap(dpi=80)
+            pix.pil_save(str(target), format="JPEG", quality=70, optimize=True)
+            doc.close()
+            rendered += 1
+        except Exception as e:  # noqa: BLE001 — log + continue, viz can degrade
+            print(f"[viz] WARN: failed to render page 1 of {src.name}: {e}")
+            skipped += 1
+    print(f"[viz] rendered {rendered} page-1 JPEGs (skipped {skipped})")
 
 
 def _copy_template_and_assets(template_dir: Path, out_dir: Path) -> None:
