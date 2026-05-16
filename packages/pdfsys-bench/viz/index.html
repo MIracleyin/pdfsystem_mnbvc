@@ -375,51 +375,84 @@
   }
 
   function routingTrace(row) {
-    // Reconstruct the decision chain so users can see HOW `final` comes from `A→backend`.
+    // Reconstruct the decision chain so users see how `final` comes from `A→backend`.
+    // Each step shows the complete branch tree with the actually-taken branch highlighted.
     const a = row.backend;
     const b = row.stage_b_backend;
-    const final = row.extract?.backend;
+    const finalBackend = row.extract?.backend;
     const ocr = row.ocr_prob;
     const hasComplex = row.layout?.has_complex;
+    // Infer vlm_on from the run: if any row's Stage-A returned DEFERRED OR Stage-B fired, vlm was enabled.
+    const vlmOn = DATA.rows.some(r => r.stage_b_backend || r.backend === 'deferred');
 
-    const step = (n, label, val, why) => `
-      <div style="display:flex;gap:10px;align-items:flex-start;margin:4px 0">
-        <div style="color:var(--dim);min-width:50px;font-size:11px">step ${n}</div>
-        <div style="flex:1">
-          <div><strong>${label}</strong> → ${badge(val) || '<em style="color:var(--dim)">—</em>'}</div>
-          <div style="color:var(--dim);font-size:11px;margin-top:2px">${why}</div>
+    const branch = (taken, condition, result) => {
+      const marker = taken ? '<span style="color:var(--green);font-weight:bold">▶</span>' : '<span style="color:var(--dim)">○</span>';
+      const style = taken
+        ? 'color:var(--text);background:rgba(76,175,80,0.10);padding:2px 6px;border-radius:3px;font-weight:500'
+        : 'color:var(--dim);padding:2px 6px;opacity:0.55';
+      return `<div style="display:flex;gap:6px;align-items:center;margin:2px 0;font-size:11px;font-family:ui-monospace,monospace"><span>${marker}</span><span style="${style}">if ${condition}  →  ${result}</span></div>`;
+    };
+
+    const step = (n, label, val, intro, branches) => `
+      <div style="margin:8px 0;padding:6px 0;border-top:1px solid #222">
+        <div style="display:flex;gap:10px;align-items:baseline">
+          <div style="color:var(--dim);min-width:50px;font-size:11px">step ${n}</div>
+          <div style="flex:1">
+            <div><strong>${label}</strong> → ${badge(val) || '<em style="color:var(--dim)">— (skipped)</em>'}</div>
+            <div style="color:var(--dim);font-size:11px;margin-top:2px">${intro}</div>
+            <div style="margin-top:4px">${branches}</div>
+          </div>
         </div>
       </div>`;
 
-    let steps = [];
+    const steps = [];
+
+    // ---- step 1: Stage-A ----
+    let s1Intro, s1Branches;
     if (ocr === null || ocr === undefined) {
-      steps.push(step(1, 'Stage-A router', a,
-        `Router could not classify (e.g. encrypted / corrupt). backend defaults to ${a}.`));
+      s1Intro = `Router could not classify (e.g. encrypted / corrupt). backend defaults to ${a}.`;
+      s1Branches = '';
     } else {
       const ocrStr = ocr.toFixed(3);
-      if (ocr < 0.5) {
-        steps.push(step(1, 'Stage-A router', a,
-          `ocr_prob = ${ocrStr} &lt; 0.5  →  text-extractable, MUPDF fast path.`));
-      } else {
-        steps.push(step(1, 'Stage-A router', a,
-          `ocr_prob = ${ocrStr} ≥ 0.5  →  needs OCR. With vlm enabled, Stage-A defers to Stage-B.`));
-      }
+      const ltHalf = ocr < 0.5;
+      s1Intro = `Inputs: <code>ocr_prob = ${ocrStr}</code>, <code>vlm_enabled = ${vlmOn}</code> (threshold 0.5).`;
+      s1Branches = [
+        branch(ltHalf, 'ocr_prob &lt; 0.5', `<strong>MUPDF</strong> (text-extractable fast path)`),
+        branch(!ltHalf && !vlmOn, 'ocr_prob ≥ 0.5 &amp; vlm_enabled = false', `<strong>PIPELINE</strong> (RapidOCR direct)`),
+        branch(!ltHalf && vlmOn, 'ocr_prob ≥ 0.5 &amp; vlm_enabled = true', `<strong>DEFERRED</strong> (await Stage-B)`),
+      ].join('');
     }
+    steps.push(step(1, 'Stage-A router (classifier.py:191-201)', a, s1Intro, s1Branches));
 
+    // ---- step 2: Layout (only if it ran) ----
     if (row.layout) {
+      const intro = `Inputs: PDF rendered to images, DocLayout-YOLO detected ${row.layout.num_regions} regions across ${row.num_pages} page${row.num_pages > 1 ? 's' : ''}. <code>has_complex_content</code> = <strong>${hasComplex}</strong> (true iff any region is TABLE or FORMULA).`;
+      steps.push(step(2, 'Layout analyser', null, intro,
+        '<div style="color:var(--dim);font-size:11px;font-style:italic">no decision — computes <code>has_complex_content</code> for Stage-B.</div>'));
+    } else {
       steps.push(step(2, 'Layout analyser', null,
-        `${row.layout.num_regions} regions detected. has_complex_content (TABLE / FORMULA) = <strong>${hasComplex}</strong>.`));
+        'Skipped (Stage-A picked MUPDF; no OCR needed).',
+        '<div style="color:var(--dim);font-size:11px;font-style:italic">— skipped —</div>'));
     }
 
+    // ---- step 3: Stage-B (only if it ran) ----
     if (b) {
-      const reason = hasComplex
-        ? 'has TABLE or FORMULA region  →  VLM (mineru)'
-        : 'no complex regions  →  PIPELINE (RapidOCR)';
-      steps.push(step(3, 'Stage-B decider', b, reason));
+      const intro = `Inputs: <code>has_complex_content = ${hasComplex}</code>, <code>vlm_enabled = ${vlmOn}</code>.`;
+      const s3Branches = [
+        branch(hasComplex === false, 'has_complex = false', `<strong>PIPELINE</strong> (RapidOCR)`),
+        branch(hasComplex === true && vlmOn, 'has_complex = true &amp; vlm_enabled = true', `<strong>VLM</strong> (mineru)`),
+        branch(hasComplex === true && !vlmOn, 'has_complex = true &amp; vlm_enabled = false', `<strong>DEFERRED</strong> (no engine to handle complex content)`),
+      ].join('');
+      steps.push(step(3, 'Stage-B decider (decider.py:57-71)', b, intro, s3Branches));
+    } else {
+      steps.push(step(3, 'Stage-B decider', null,
+        'Skipped (Stage-A returned MUPDF — no needs-OCR lane).',
+        '<div style="color:var(--dim);font-size:11px;font-style:italic">— skipped —</div>'));
     }
 
-    steps.push(step(4, 'Final extract_backend', final,
-      'This is what actually ran on this PDF.'));
+    // ---- step 4: final ----
+    steps.push(step(4, 'Final extract_backend', finalBackend,
+      'This is the parser that actually ran on this PDF and produced the markdown shown below.', ''));
 
     return `
       <div class="stage-card" style="border-left-color:var(--green)">
