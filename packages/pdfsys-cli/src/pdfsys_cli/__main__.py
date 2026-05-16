@@ -71,6 +71,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-quality", action="store_true", default=False, help="Skip quality scoring.")
     p.add_argument("--quality-model", type=str, default=None, help="HuggingFace quality model.")
 
+    # ---- visualize ----
+    v = sub.add_parser(
+        "visualize",
+        help="Build a static HTML+JSON viz bundle from a run directory.",
+    )
+    v.add_argument("-r", "--run-dir", required=True,
+                   help="Pipeline run directory (must contain dataset.parquet).")
+    v.add_argument("-o", "--out-dir", default=None,
+                   help="Output directory (default: <run-dir>/viz).")
+    v.add_argument("--preview-source", default=None,
+                   help="Path to previews.json (default: bundled annotation/previews.json).")
+
     # ---- annotate ----
     a = sub.add_parser("annotate", help="Launch the PDF annotation UI in browser.")
     a.add_argument("--port", type=int, default=8234, help="HTTP server port (default: 8234).")
@@ -182,6 +194,13 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_init_config()
     elif args.command == "run":
         return cmd_run(args)
+    elif args.command == "visualize":
+        from . import viz  # noqa: PLC0415 — lazy import (pyarrow)
+        return viz.main([
+            "-r", args.run_dir,
+            *(("-o", args.out_dir) if args.out_dir else ()),
+            *(("--preview-source", args.preview_source) if args.preview_source else ()),
+        ])
     elif args.command == "annotate":
         return cmd_annotate(args)
     else:
