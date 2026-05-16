@@ -23,7 +23,9 @@ import pyarrow.parquet as pq
 
 # Layout cache files store regions in pdfsys_core's LayoutDocument schema —
 # bbox is already normalized [0,1] (see pdfsys-core/docs/golden-principles/).
-_REPO_ROOT = Path(__file__).resolve().parents[5]
+# This file lives at packages/pdfsys-cli/src/pdfsys_cli/viz.py;
+# parents[4] climbs up to repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_PREVIEW_PATH = _REPO_ROOT / "packages/pdfsys-bench/annotation/previews.json"
 _TEMPLATE_DIR = _REPO_ROOT / "packages/pdfsys-bench/viz"
 

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>pdfsys viz · loading…</title>
+<link rel="stylesheet" href="assets/katex.min.css">
+<style>
+  body { font: 13px/1.5 -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+         margin: 0; padding: 20px; background: #1a1a2e; color: #eee; }
+  h1 { font-size: 16px; margin: 0 0 12px; }
+  pre { background: #0f1626; padding: 12px; border-radius: 4px;
+        max-height: 70vh; overflow: auto; font-size: 11px; }
+  #status { color: #ffc107; }
+</style>
+</head>
+<body>
+<h1 id="status">pdfsys viz · loading viz_data.json…</h1>
+<pre id="dump"></pre>
+
+<script src="assets/marked.min.js"></script>
+<script src="assets/katex.min.js"></script>
+<script src="assets/katex-auto-render.min.js"></script>
+<script type="module">
+  const status = document.getElementById('status');
+  const dump = document.getElementById('dump');
+  try {
+    const res = await fetch('viz_data.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    status.textContent = `pdfsys viz · ${data.run_meta.total_rows} rows · ${data.run_meta.errors} errors · ${data.run_meta.kept} kept`;
+    status.style.color = '#4caf50';
+    dump.textContent = JSON.stringify({
+      run_meta: data.run_meta,
+      aggregate: data.aggregate,
+      sample_row: data.rows[0],
+    }, null, 2);
+  } catch (e) {
+    status.textContent = `pdfsys viz · ERROR loading viz_data.json: ${e.message}`;
+    status.style.color = '#f44336';
+    dump.textContent = e.stack || String(e);
+  }
+</script>
+</body>
+</html>
