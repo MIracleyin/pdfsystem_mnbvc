@@ -440,7 +440,7 @@
       const intro = `Inputs: <code>has_complex_content = ${hasComplex}</code>, <code>vlm_enabled = ${vlmOn}</code>.`;
       const s3Branches = [
         branch(hasComplex === false, 'has_complex = false', `<strong>PIPELINE</strong> (RapidOCR)`),
-        branch(hasComplex === true && vlmOn, 'has_complex = true &amp; vlm_enabled = true', `<strong>VLM</strong> (mineru)`),
+        branch(hasComplex === true && vlmOn, 'has_complex = true &amp; vlm_enabled = true', `<strong>VLM</strong> (mineru, region-based via batch_content_extract)`),
         branch(hasComplex === true && !vlmOn, 'has_complex = true &amp; vlm_enabled = false', `<strong>DEFERRED</strong> (no engine to handle complex content)`),
       ].join('');
       steps.push(step(3, 'Stage-B decider (decider.py:57-71)', b, intro, s3Branches));
@@ -501,6 +501,39 @@
         <div class="kv"><span class="k">markdown_chars</span><span class="v">${row.extract?.markdown_chars ?? 0}</span></div>
         <div class="md" id="md-host">loading markdown…</div>
       </div>`);
+
+    // Per-region card: only when regions_extracted is populated (VLM rows from
+    // the region-based parser).
+    if (row.extract?.regions_extracted && row.extract.regions_extracted.length > 0) {
+      const regions = row.extract.regions_extracted;
+      const typeCounts = {};
+      for (const r of regions) typeCounts[r.type] = (typeCounts[r.type] || 0) + 1;
+      const typeSummary = Object.entries(typeCounts)
+        .map(([t, n]) => `${t}:${n}`).join(' · ');
+      const failures = row.extract.region_failures ?? 0;
+
+      parts.push(`
+        <div class="stage-card" style="border-left-color:var(--purple)">
+          <h3 style="color:var(--purple)">Per-region extraction</h3>
+          <div class="kv"><span class="k">regions extracted</span><span class="v">${regions.length} (${typeSummary})</span></div>
+          <div class="kv"><span class="k">region_failures</span><span class="v">${failures}</span></div>
+          <div style="margin-top:8px;max-height:400px;overflow-y:auto">
+            <table class="region-table"><thead>
+              <tr><th>#</th><th>page</th><th>type</th><th>bbox</th><th>content excerpt</th></tr>
+            </thead><tbody>
+              ${regions.map((r, i) => `
+                <tr>
+                  <td>${i}</td>
+                  <td>${r.page_idx ?? '—'}</td>
+                  <td>${r.type}</td>
+                  <td style="font-family:monospace;font-size:10px">${r.bbox ? r.bbox.map(v => v.toFixed(3)).join(', ') : '—'}</td>
+                  <td style="font-family:monospace;font-size:11px;max-width:300px;word-break:break-all">${(r.content_excerpt || '').slice(0, 200) || '<em style="color:var(--dim)">empty</em>'}</td>
+                </tr>
+              `).join('')}
+            </tbody></table>
+          </div>
+        </div>`);
+    }
 
     parts.push(`
       <div class="stage-card"><h3>Quality</h3>
