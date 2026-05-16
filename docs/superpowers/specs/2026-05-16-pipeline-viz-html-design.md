@@ -343,6 +343,54 @@ Untouched: `pdfsys-core`, `pdfsys-router`, `pdfsys-layout-analyser`, `pdfsys-par
 - No new dependencies in any `pyproject.toml` (uses pyarrow already from previous spec; pyyaml for argparse only).
 - Vendored marked + katex assets committed once at `packages/pdfsys-bench/viz/assets/`.
 
-## 12 · Post-build note (to be filled in)
+## 12 · Post-build note · 2026-05-16
 
-Reserved.
+### Bundle size (out/viz_final/)
+
+| Component | Size |
+|---|---|
+| `viz_data.json` | 212 KB |
+| `previews.json` | 932 KB (pre-computed text signals from PyMuPDF) |
+| `markdown/` (150 files) | 840 KB |
+| `page1/` (150 JPEGs) | 17 MB (~110 KB avg per JPEG @ DPI 80, q70) |
+| `assets/` (marked + KaTeX + 20 fonts) | 636 KB |
+| `index.html` | 22 KB |
+| Total | **~19 MB** |
+| Zipped | **16 MB** |
+
+### Wall time
+
+- `pdfsys visualize` end-to-end: ~5 seconds for 150 PDFs (JPEG rendering dominates).
+
+### Deviations from spec
+
+- **previews.json contained text, not images.** Spec §3 assumed `annotation/previews.json` shipped page thumbnails; it actually ships pre-computed PyMuPDF signals (markdown excerpts, garbled_ratio, page_count). Discovered during Task 7 acceptance. Fix: viz CLI now pre-renders page-1 JPEGs into `out/viz/page1/<sha>.jpg` via PyMuPDF (~17 MB additional bundle weight). Visual fidelity unchanged from spec intent; bundle 4-5× larger than the spec §8 "2-5 MB" estimate, but still email-able.
+
+### Build commits (in order)
+
+1. `278e0b0` Task 1 — vendor marked + KaTeX (24 files, ~640 KB)
+2. `6c69771` Task 2 — viz.py CLI (338 LOC)
+3. `2e8699d` Task 3 — wire `visualize` subcommand
+4. `d58032f` Task 4 — stub index.html + fix _REPO_ROOT path (parents[5] → parents[4])
+5. `730930d` Task 5 — dashboard view (359 LOC HTML/CSS/JS)
+6. `1960630` Task 6 — detail view (487 LOC total)
+7. `7a7c994` page-1 JPEG rendering (fixed previews.json misunderstanding)
+
+### Acceptance checklist
+
+- ✅ CLI completes < 60s, exit 0 (5 s actual)
+- ✅ Bundle contains all expected files (index.html, viz_data.json, previews.json, markdown/, page1/, assets/, serve.sh)
+- ✅ 150 rows in dataset, 0 errors, 35 kept, all aggregates compute correctly
+- ✅ HTML syntax balanced (braces 128/128, parens 218/218)
+- ✅ Module imports + argparse + `pdfsys visualize --help` work
+- ✅ Bundle zips standalone (16 MB)
+- ⏳ **Browser checks** (require user action — open `out/viz_final/index.html` or run `bash out/viz_final/serve.sh`):
+  - Dashboard table + charts + filters
+  - Click row → detail view → LaTeX rendering + bbox overlay
+
+### Open follow-ups
+
+- **Bundle size could shrink** by using lower DPI (60) or quality (50) for the page-1 JPEGs. Current 17 MB JPEG total is acceptable but could go to ~8 MB with little visual loss. Not done because 16 MB zipped is fine for the current use case.
+- **bbox overlay accuracy** depends on layout cache regions being correctly normalized to [0, 1]. The viz CLI does not currently verify this — if a future layout backend emits pixel coords, overlay positions will be wrong. Worth a one-line sanity check.
+- **No multi-page bbox overlay** — only page 1 is rendered + overlaid. Multi-page PDFs are still covered by the L2 region table (all pages, all types).
+- **VLM rows currently have `layout=null` in some cases** because the layout cache file naming convention differs. Investigate per-row to be sure (the regions ARE in cache; CLI's `_load_layout_block` glob match may not catch all).
