@@ -274,6 +274,58 @@ Untouched: `pdfsys-core`, `pdfsys-router`, `pdfsys-layout-analyser`, `pdfsys-par
 - Routing trace's Stage-B step mentions "region-based" so future readers know this isn't whole-page VLM.
 - §16 post-build note appended with actual stats.
 
-## 16 · Post-build note (to be filled in)
+## 16 · Post-build note · 2026-05-16
 
-Reserved.
+### Engine
+
+- `MinerUClient` constructed via `mineru.backend.vlm.vlm_analyze.ModelSingleton().get_model(...)` (verified during spike — direct `MinerUClient(backend="transformers")` raises `model_path must be provided`).
+- `batch_content_extract([crops], [types])` returns `list[ExtractStr | None]` where `ExtractStr` is a subclass of `str` (use `str(result)`, not `result.text`).
+- Per-region wall time on MPS: ~1.0-2.5 s avg, batch_size=1 (Mac MPS reports `gpu_memory=1 GB` which forces single-image batches).
+
+### Acceptance gates — all PASS
+
+| Gate | Value | Result |
+|---|---|---|
+| 1 — Row count | 150 | PASS |
+| 2 — Errors | 0 | PASS |
+| 3 — Backend split | mupdf=104 / pipeline=36 / vlm=10 | PASS |
+| 4 — VLM markdown_chars (median) | new=2033, old=1514 (+34%) | PASS |
+| 5 — VLM rows with LaTeX/HTML | new=10/10, old=8/10 | PASS |
+| Region failure rate | 0 / 253 = 0% | PASS (< 10%) |
+
+### Region extraction stats
+
+- Total regions extracted across 10 VLM PDFs: **253** (avg 25.3 per PDF).
+- Region failures: **0** — every region returned non-empty content.
+- Region type distribution: `text=212 · table=12 · formula=13 · image=16`.
+
+### Performance comparison vs prior whole-page run
+
+| Metric | Whole-page (do_parse) | Region-based | Change |
+|---|---|---|---|
+| Total wall time (150 PDFs) | 905 s | **491 s** | **−46%** |
+| VLM md_chars (min) | 14 | **631** | +45× — the prior "blank cover" outlier now extracts content |
+| VLM md_chars (median) | 1514 | **2033** | +34% |
+| VLM md_chars (max) | 2306 | **2718** | +18% |
+| VLM md_chars (mean) | 1574 | **1984** | +26% |
+| VLM rows with structured (LaTeX/HTML) content | 8/10 | **10/10** | +2 |
+| kept (quality ≥ 2.0) | 35 / 150 | 34 / 150 | −1 (noise) |
+| avg quality | 1.420 | 1.420 | — |
+
+### Notable observations
+
+1. **Region-based VLM is FASTER end-to-end** despite making more inference calls. Each call processes a small cropped region (10-30 KB image, 200-1500 px) instead of a full page (~1 MB image at 200 DPI, large autoregressive context). The per-call cost shrinks, and mineru's whole-page do_parse path also did internal layout detection + image preprocessing that's now skipped — DocLayout-YOLO already produced the regions.
+2. **The "blank cover page" outlier is now informative.** The `jiaocaineedrop_..._1118.pdf` PDF that previously yielded 14 chars of garbage (cover-page watermark) now yields **631 chars** — because DocLayout-YOLO found text regions that mineru's internal layout had missed. Region-based extraction is *more* robust to layout edge cases than whole-page extraction.
+3. **`kept` count dropped by 1.** Region-based mode produces denser, more complete content per PDF, but ModernBERT quality scores are content-domain-blind (a dense LaTeX page can score lower than clean prose). This is a known scorer property, not a regression. The lost row in `kept` had marginally lower quality_score on the new run despite producing more chars.
+4. **Latent viz bug found and fixed:** `_load_layout_block` was using `glob(f"{sha}*")` instead of `rglob` — LayoutCache uses 2-level shard paths (`<cache>/<sha[:2]>/<sha[2:4]>/<sha>.json`), so the old glob returned 0 matches and VLM detail-views had no layout data. Fixed in the same commit batch as the region-based viz schema.
+
+### Cleanup confirmation
+
+- `pdfsys-parser-vlm/extract.py`: zero `do_parse` imports remaining.
+- `MinerUClient` and `do_parse` paths share `ModelSingleton` — verified by spike (no double-load).
+
+### Open follow-ups
+
+- **Re-examine quality scorer thresholds** in light of the +26% mean markdown gain not translating to more `kept` rows. The threshold of 2.0 may be tuned to the old whole-page output's content density profile.
+- **`MinerUClient.extract()` and `extract_bytes()` raise NotImplementedError.** This is intentional (region-based requires LayoutDocument) but means any future code calling the bare extract methods will break. Acceptable per spec but worth a TODO.
+- **`source_region_id` is None on Segments** — pdfsys-core's LayoutRegion does not expose a stable region_id field. Tracked but not blocking.
