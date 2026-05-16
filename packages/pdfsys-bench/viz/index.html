@@ -175,17 +175,21 @@
   let SORT = { key: 'pdf_basename', dir: 'asc' };
 
   const COLS = [
-    { key: 'pdf_basename', label: 'file' },
-    { key: 'source', label: 'source' },
-    { key: 'backend', label: 'A→backend', render: r => badge(r.backend) },
-    { key: 'extract_backend', label: 'final', render: r => badge(r.extract?.backend) },
-    { key: 'ocr_prob', label: 'ocr_prob', render: r => fmt(r.ocr_prob, 3) },
-    { key: 'num_pages', label: 'pages' },
-    { key: 'quality_score', label: 'quality', render: r => fmt(r.quality?.score, 2) },
-    { key: 'kept', label: 'kept', render: r => r.quality?.kept
+    { key: 'pdf_basename', label: 'file', tip: 'PDF filename (without dir).' },
+    { key: 'source', label: 'source', tip: 'Corpus the PDF belongs to (omnidocbench_100 / olmocr_bench_50 / other).' },
+    { key: 'backend', label: 'A→backend',
+      tip: 'Stage-A router decision based on XGBoost over 124 PyMuPDF features.\n  ocr_prob < 0.5 → MUPDF (fast path)\n  ocr_prob ≥ 0.5 & vlm off → PIPELINE\n  ocr_prob ≥ 0.5 & vlm on → DEFERRED (await Stage-B)',
+      render: r => badge(r.backend) },
+    { key: 'extract_backend', label: 'final',
+      tip: 'Actual parser that ran for this PDF.\nDerivation:\n  Stage-A MUPDF → final MUPDF (Stage-B never runs)\n  Stage-A DEFERRED → Stage-B reads layout.has_complex_content:\n    false → PIPELINE (RapidOCR)\n    true  → VLM (mineru)',
+      render: r => badge(r.extract?.backend) },
+    { key: 'ocr_prob', label: 'ocr_prob', tip: 'P(needs OCR) from XGBoost. ≥ 0.5 triggers needs-OCR lane.', render: r => fmt(r.ocr_prob, 3) },
+    { key: 'num_pages', label: 'pages', tip: 'Page count reported by PyMuPDF.' },
+    { key: 'quality_score', label: 'quality', tip: 'ModernBERT-large regression on extracted markdown, range [0, 3].', render: r => fmt(r.quality?.score, 2) },
+    { key: 'kept', label: 'kept', tip: `kept = (no error) AND (quality_score ≥ ${2.0}).`, render: r => r.quality?.kept
         ? '<span class="kept-yes">✓</span>' : '<span class="kept-no">—</span>' },
-    { key: 'markdown_chars', label: 'md_chars', render: r => r.extract?.markdown_chars ?? 0 },
-    { key: 'error_class', label: 'err', render: r => r.error_class ?? '' },
+    { key: 'markdown_chars', label: 'md_chars', tip: 'Length of extracted markdown (UTF-8 chars).', render: r => r.extract?.markdown_chars ?? 0 },
+    { key: 'error_class', label: 'err', tip: 'First stage to error (router | layout | extract_mupdf | extract_pipeline | extract_vlm | quality).', render: r => r.error_class ?? '' },
   ];
 
   function badge(v) {
@@ -267,7 +271,7 @@
   function renderHead() {
     const tr = document.getElementById('thead-row');
     tr.innerHTML = COLS.map(c =>
-      `<th data-key="${c.key}">${c.label}${SORT.key === c.key ? (SORT.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`
+      `<th data-key="${c.key}" title="${(c.tip || '').replace(/"/g, '&quot;')}">${c.label}${SORT.key === c.key ? (SORT.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`
     ).join('');
     tr.querySelectorAll('th').forEach(th => {
       th.addEventListener('click', () => {
@@ -370,9 +374,65 @@
           : '');
   }
 
+  function routingTrace(row) {
+    // Reconstruct the decision chain so users can see HOW `final` comes from `A→backend`.
+    const a = row.backend;
+    const b = row.stage_b_backend;
+    const final = row.extract?.backend;
+    const ocr = row.ocr_prob;
+    const hasComplex = row.layout?.has_complex;
+
+    const step = (n, label, val, why) => `
+      <div style="display:flex;gap:10px;align-items:flex-start;margin:4px 0">
+        <div style="color:var(--dim);min-width:50px;font-size:11px">step ${n}</div>
+        <div style="flex:1">
+          <div><strong>${label}</strong> → ${badge(val) || '<em style="color:var(--dim)">—</em>'}</div>
+          <div style="color:var(--dim);font-size:11px;margin-top:2px">${why}</div>
+        </div>
+      </div>`;
+
+    let steps = [];
+    if (ocr === null || ocr === undefined) {
+      steps.push(step(1, 'Stage-A router', a,
+        `Router could not classify (e.g. encrypted / corrupt). backend defaults to ${a}.`));
+    } else {
+      const ocrStr = ocr.toFixed(3);
+      if (ocr < 0.5) {
+        steps.push(step(1, 'Stage-A router', a,
+          `ocr_prob = ${ocrStr} &lt; 0.5  →  text-extractable, MUPDF fast path.`));
+      } else {
+        steps.push(step(1, 'Stage-A router', a,
+          `ocr_prob = ${ocrStr} ≥ 0.5  →  needs OCR. With vlm enabled, Stage-A defers to Stage-B.`));
+      }
+    }
+
+    if (row.layout) {
+      steps.push(step(2, 'Layout analyser', null,
+        `${row.layout.num_regions} regions detected. has_complex_content (TABLE / FORMULA) = <strong>${hasComplex}</strong>.`));
+    }
+
+    if (b) {
+      const reason = hasComplex
+        ? 'has TABLE or FORMULA region  →  VLM (mineru)'
+        : 'no complex regions  →  PIPELINE (RapidOCR)';
+      steps.push(step(3, 'Stage-B decider', b, reason));
+    }
+
+    steps.push(step(4, 'Final extract_backend', final,
+      'This is what actually ran on this PDF.'));
+
+    return `
+      <div class="stage-card" style="border-left-color:var(--green)">
+        <h3 style="color:var(--green)">Routing trace</h3>
+        <div style="font-size:12px">${steps.join('')}</div>
+      </div>`;
+  }
+
   async function renderStages(row) {
     const el = document.getElementById('detail-stages');
     const parts = [];
+
+    parts.push(routingTrace(row));
 
     parts.push(`
       <div class="stage-card"><h3>Stage-A Router</h3>
