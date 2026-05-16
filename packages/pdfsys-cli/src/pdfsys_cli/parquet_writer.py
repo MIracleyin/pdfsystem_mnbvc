@@ -42,6 +42,8 @@ SCHEMA = pa.schema(
         ("quality_model", pa.string()),
         ("error_class", pa.string()),
         ("error_message", pa.string()),
+        ("segments_excerpt", pa.string()),  # JSON-encoded list[dict]; null for non-VLM rows
+        ("region_failures", pa.int32()),
         ("kept", pa.bool_()),
         ("wall_ms_total", pa.float64()),
     ]
@@ -112,6 +114,11 @@ class ParquetSink:
             "quality_model": row.quality_model,
             "error_class": row.error_class,
             "error_message": row.error_message,
+            "segments_excerpt": (
+                __import__("json").dumps(row.segments_excerpt, ensure_ascii=False)
+                if row.segments_excerpt else None
+            ),
+            "region_failures": row.region_failures,
             "kept": kept,
             "wall_ms_total": wall_total,
         }

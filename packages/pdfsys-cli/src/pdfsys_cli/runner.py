@@ -48,6 +48,9 @@ class DocResult:
     quality_num_chars: int | None = None
     quality_num_tokens: int | None = None
     quality_model: str | None = None
+    # vlm region-based (only populated for VLM rows)
+    segments_excerpt: list[dict] = field(default_factory=list)
+    region_failures: int | None = None
     # error capture
     error_class: str | None = None  # router | layout | extract_mupdf | extract_pipeline | extract_vlm | quality
     error_message: str | None = None  # f"{type(e).__name__}: {e}", truncated to 500 chars
@@ -384,6 +387,18 @@ def _stage_extract(
             row.extract_stats = dict(extracted.stats)
             row.markdown_chars = extracted.char_count
             row.wall_ms_extract = (t1 - t0) * 1000.0
+            # Region-based VLM exposes per-segment content + region failures
+            # for viz consumption.
+            row.region_failures = extracted.stats.get("region_failures")
+            row.segments_excerpt = [
+                {
+                    "page_index": s.page_index,
+                    "type": s.type.value,
+                    "bbox": [s.bbox.x0, s.bbox.y0, s.bbox.x1, s.bbox.y1] if s.bbox else None,
+                    "content": (s.content or "")[:200],
+                }
+                for s in extracted.segments
+            ]
         except Exception as e:  # noqa: BLE001 — vlm
             _set_error(row, "extract_vlm", e)
             return None

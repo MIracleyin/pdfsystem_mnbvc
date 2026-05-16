@@ -103,6 +103,26 @@ def _load_rows(run_dir: Path) -> list[dict[str, Any]]:
             if candidate.exists():
                 md_path = f"markdown/{sha}.md"
 
+        # Decode segments_excerpt (JSON string in parquet) into a list of dicts
+        # for the VLM detail-view Per-region card. Null for non-VLM rows.
+        regions_extracted = None
+        raw_seg = raw.get("segments_excerpt")
+        if isinstance(raw_seg, str) and raw_seg:
+            try:
+                seg_data = json.loads(raw_seg)
+                regions_extracted = [
+                    {
+                        "page_idx": s.get("page_index"),
+                        "type": s.get("type"),
+                        "bbox": s.get("bbox"),
+                        "content_excerpt": (s.get("content") or "")[:200],
+                    }
+                    for s in seg_data
+                    if isinstance(s, dict)
+                ]
+            except json.JSONDecodeError:
+                regions_extracted = None
+
         rows.append({
             "id": short_id,
             "sha256": sha,
@@ -122,6 +142,8 @@ def _load_rows(run_dir: Path) -> list[dict[str, Any]]:
                 "markdown_chars": raw.get("markdown_chars") or 0,
                 "markdown_excerpt": md_excerpt,
                 "markdown_path": md_path,
+                "regions_extracted": regions_extracted,
+                "region_failures": raw.get("region_failures"),
             },
             "quality": {
                 "score": raw.get("quality_score"),
@@ -137,7 +159,9 @@ def _load_rows(run_dir: Path) -> list[dict[str, Any]]:
 
 
 def _load_layout_block(cache_dir: Path, sha: str) -> dict[str, Any] | None:
-    candidates = list(cache_dir.glob(f"{sha}*"))
+    # LayoutCache writes files at <cache_dir>/<sha[:2]>/<sha[2:4]>/<sha>.<tag>.json
+    # — must use rglob to traverse the 2-level shard.
+    candidates = list(cache_dir.rglob(f"{sha}*"))
     if not candidates:
         return None
     try:
