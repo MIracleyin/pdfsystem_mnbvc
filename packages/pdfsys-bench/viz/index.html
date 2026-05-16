@@ -318,17 +318,144 @@
     });
   }
 
-  // Detail view added in Task 6 — for now placeholder
   async function openDetail(id) {
     const row = DATA.rows.find(r => r.id === id);
     if (!row) return;
     document.getElementById('view-dashboard').classList.remove('active');
     document.getElementById('view-detail').classList.add('active');
     document.getElementById('back-btn').style.display = 'inline-block';
-    document.getElementById('detail-preview').innerHTML =
-      `<h2>${row.pdf_basename}</h2><pre style="font-size:11px">${JSON.stringify(row, null, 2).slice(0, 2000)}</pre>`;
-    document.getElementById('detail-stages').innerHTML =
-      `<div class="stage-card"><h3>placeholder</h3><div>Detail view comes in Task 6.</div></div>`;
+
+    renderPreview(row);
+    await renderStages(row);
+  }
+
+  function renderPreview(row) {
+    const el = document.getElementById('detail-preview');
+    const previewData = row.preview_key ? PREVIEWS[row.preview_key] : null;
+    // previews.json shape varies — handle {data_url:...}, {image:...}, or plain base64 string
+    const imgSrc = previewData?.data_url || previewData?.image || previewData;
+    const hasPreview = imgSrc && typeof imgSrc === 'string';
+
+    let bboxesHtml = '';
+    if (row.layout?.regions) {
+      const page1 = row.layout.regions.filter(r => r.page_idx === 0);
+      bboxesHtml = page1.map(r => {
+        const [x0, y0, x1, y1] = r.bbox;
+        const left = (x0 * 100).toFixed(2);
+        const top = (y0 * 100).toFixed(2);
+        const w = ((x1 - x0) * 100).toFixed(2);
+        const h = ((y1 - y0) * 100).toFixed(2);
+        return `<div class="bbox bbox-${r.type}" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%" title="${r.type} conf=${r.confidence?.toFixed(2) ?? '?'}"></div>`;
+      }).join('');
+    }
+
+    el.innerHTML =
+      `<h2>${row.pdf_basename}</h2>
+       <div style="color:var(--dim);font-size:11px;margin-bottom:8px">${row.pdf_path}</div>`
+      + (hasPreview
+          ? `<div id="preview-canvas"><img src="${imgSrc.startsWith('data:') ? imgSrc : 'data:image/png;base64,' + imgSrc}"/>${bboxesHtml}</div>`
+          : `<div id="preview-empty">(no preview available for this PDF)</div>`)
+      + `<div class="legend">
+           <span class="l-TEXT">TEXT</span>
+           <span class="l-TABLE">TABLE</span>
+           <span class="l-FORMULA">FORMULA</span>
+           <span class="l-IMAGE">IMAGE</span>
+         </div>`
+      + (row.layout?.regions?.length
+          ? `<h3 style="margin-top:16px;font-size:12px;color:var(--dim)">all regions (${row.layout.num_regions} across ${row.num_pages} pages)</h3>
+             <table class="region-table"><thead><tr><th>page</th><th>type</th><th>bbox</th><th>conf</th></tr></thead><tbody>`
+            + row.layout.regions.map(r =>
+                `<tr><td>${r.page_idx}</td><td>${r.type}</td><td>${r.bbox.map(v => v.toFixed(3)).join(', ')}</td><td>${r.confidence?.toFixed(2) ?? '—'}</td></tr>`
+              ).join('')
+            + `</tbody></table>`
+          : '');
+  }
+
+  async function renderStages(row) {
+    const el = document.getElementById('detail-stages');
+    const parts = [];
+
+    parts.push(`
+      <div class="stage-card"><h3>Stage-A Router</h3>
+        <div class="kv"><span class="k">backend (decision)</span><span class="v">${badge(row.backend)}</span></div>
+        <div class="kv"><span class="k">ocr_prob</span><span class="v">${fmt(row.ocr_prob, 4)}</span></div>
+        <div class="kv"><span class="k">num_pages</span><span class="v">${row.num_pages}</span></div>
+        <div class="kv"><span class="k">is_form</span><span class="v">${row.is_form}</span></div>
+        <div class="kv"><span class="k">is_encrypted</span><span class="v">${row.is_encrypted}</span></div>
+        <div class="kv"><span class="k">garbled_text_ratio</span><span class="v">${fmt(row.garbled_text_ratio, 3)}</span></div>
+      </div>`);
+
+    if (row.layout) {
+      parts.push(`
+        <div class="stage-card"><h3>Layout</h3>
+          <div class="kv"><span class="k">model</span><span class="v">${row.layout.model || '—'}</span></div>
+          <div class="kv"><span class="k">num_regions</span><span class="v">${row.layout.num_regions}</span></div>
+          <div class="kv"><span class="k">has_complex (TABLE/FORMULA)</span><span class="v">${row.layout.has_complex}</span></div>
+        </div>`);
+    } else {
+      parts.push(`<div class="stage-card"><h3>Layout</h3><div style="color:var(--dim)">(skipped — went mupdf fast path)</div></div>`);
+    }
+
+    if (row.stage_b_backend) {
+      parts.push(`
+        <div class="stage-card"><h3>Stage-B Decider</h3>
+          <div class="kv"><span class="k">→ backend</span><span class="v">${badge(row.stage_b_backend)}</span></div>
+          <div class="kv"><span class="k">reason</span><span class="v">${row.layout?.has_complex ? 'has TABLE/FORMULA' : 'no complex content'}</span></div>
+        </div>`);
+    }
+
+    parts.push(`
+      <div class="stage-card"><h3>Extract (${row.extract?.backend || '—'})</h3>
+        <div class="kv"><span class="k">markdown_chars</span><span class="v">${row.extract?.markdown_chars ?? 0}</span></div>
+        <div class="md" id="md-host">loading markdown…</div>
+      </div>`);
+
+    parts.push(`
+      <div class="stage-card"><h3>Quality</h3>
+        <div class="kv"><span class="k">score</span><span class="v">${fmt(row.quality?.score, 3)}</span></div>
+        <div class="kv"><span class="k">kept (threshold ${DATA.run_meta.kept_threshold})</span><span class="v">${row.quality?.kept ? '<span class="kept-yes">✓ true</span>' : '<span class="kept-no">false</span>'}</span></div>
+        <div class="kv"><span class="k">model</span><span class="v">${row.quality?.model || '—'}</span></div>
+      </div>`);
+
+    if (row.error_class) {
+      parts.push(`
+        <div class="stage-card" style="border-left-color:var(--red)"><h3 style="color:var(--red)">Error</h3>
+          <div class="kv"><span class="k">error_class</span><span class="v">${row.error_class}</span></div>
+          <div class="kv"><span class="k">error_message</span><span class="v" style="font-family:monospace;font-size:11px">${row.error_message || ''}</span></div>
+        </div>`);
+    }
+
+    el.innerHTML = parts.join('');
+
+    // Lazy load full markdown
+    if (row.extract?.markdown_path) {
+      try {
+        const text = await fetch(row.extract.markdown_path).then(r => r.text());
+        const host = document.getElementById('md-host');
+        host.innerHTML = marked.parse(text);
+        renderMathInElement(host, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+          ],
+          throwOnError: false,
+        });
+      } catch (e) {
+        document.getElementById('md-host').textContent = `(markdown not available: ${e.message})`;
+      }
+    } else if (row.extract?.markdown_excerpt) {
+      const host = document.getElementById('md-host');
+      host.innerHTML = marked.parse(row.extract.markdown_excerpt) + '<p style="color:var(--dim);font-size:11px;margin-top:8px">(showing first 400 chars; full file not available)</p>';
+      renderMathInElement(host, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+        ],
+        throwOnError: false,
+      });
+    } else {
+      document.getElementById('md-host').textContent = '(no markdown)';
+    }
   }
 
   document.getElementById('back-btn').addEventListener('click', () => {
