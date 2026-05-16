@@ -5,39 +5,354 @@
 <title>pdfsys viz · loading…</title>
 <link rel="stylesheet" href="assets/katex.min.css">
 <style>
-  body { font: 13px/1.5 -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
-         margin: 0; padding: 20px; background: #1a1a2e; color: #eee; }
-  h1 { font-size: 16px; margin: 0 0 12px; }
-  pre { background: #0f1626; padding: 12px; border-radius: 4px;
-        max-height: 70vh; overflow: auto; font-size: 11px; }
-  #status { color: #ffc107; }
+  :root {
+    --bg: #1a1a2e; --surface: #16213e; --surface2: #0f3460;
+    --accent: #e94560; --text: #eee; --dim: #999;
+    --green: #4caf50; --yellow: #ffc107; --red: #f44336;
+    --blue: #2196f3; --orange: #ff9800; --purple: #b34dff;
+    --border: #333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 13px/1.5 -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+    background: var(--bg); color: var(--text);
+    height: 100vh; overflow: hidden;
+  }
+  #topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 16px; background: var(--surface);
+    border-bottom: 1px solid var(--border); height: 44px;
+    font-size: 13px;
+  }
+  #topbar h1 { font-size: 14px; white-space: nowrap; font-weight: 600; }
+  #topbar .meta { color: var(--dim); font-size: 12px; }
+  #topbar .meta strong { color: var(--text); }
+  #back-btn { display: none; padding: 4px 10px; background: var(--surface2);
+              border: 1px solid var(--border); color: var(--text);
+              border-radius: 3px; cursor: pointer; font-size: 12px; }
+  #back-btn:hover { background: #1a4a80; }
+
+  .view { display: none; height: calc(100vh - 44px); overflow: hidden; }
+  .view.active { display: flex; }
+
+  /* Dashboard */
+  #view-dashboard { flex-direction: column; }
+  .charts { display: flex; gap: 12px; padding: 12px 16px; background: var(--surface);
+            border-bottom: 1px solid var(--border); height: 180px; }
+  .chart { flex: 1; background: var(--surface2); border-radius: 4px;
+           padding: 10px; min-width: 0; }
+  .chart h3 { font-size: 11px; color: var(--dim); margin-bottom: 6px;
+              text-transform: uppercase; letter-spacing: 0.5px; }
+  .chart svg { width: 100%; height: calc(100% - 24px); display: block; }
+  .filter-bar {
+    display: flex; gap: 12px; padding: 8px 16px; background: var(--surface);
+    border-bottom: 1px solid var(--border); align-items: center;
+    font-size: 12px;
+  }
+  .filter-bar label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+  .filter-bar input[type=text] {
+    padding: 4px 8px; border: 1px solid #444; border-radius: 3px;
+    background: #111; color: var(--text); font-size: 12px; width: 200px;
+  }
+  .filter-bar select {
+    padding: 4px 8px; border: 1px solid #444; border-radius: 3px;
+    background: #111; color: var(--text); font-size: 12px;
+  }
+  #row-count { margin-left: auto; color: var(--dim); }
+
+  /* Table */
+  #table-wrap { flex: 1; overflow: auto; padding: 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+  th { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border);
+       cursor: pointer; user-select: none; font-weight: 500; color: var(--dim); }
+  th:hover { color: var(--text); }
+  td { padding: 5px 8px; border-bottom: 1px solid #222; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: rgba(255,255,255,0.04); }
+  tr.row.err td { color: var(--red); }
+  tr.row .badge { display: inline-block; padding: 1px 6px; border-radius: 2px;
+                  font-size: 11px; font-weight: 500; }
+  .badge-mupdf { background: rgba(33,150,243,0.2); color: #6ab7ff; }
+  .badge-pipeline { background: rgba(255,152,0,0.2); color: #ffb74d; }
+  .badge-vlm { background: rgba(179,77,255,0.2); color: #d49aff; }
+  .badge-NULL, .badge-deferred { background: rgba(255,255,255,0.1); color: var(--dim); }
+  .kept-yes { color: var(--green); font-weight: 600; }
+  .kept-no { color: var(--dim); }
+
+  /* Detail view */
+  #view-detail { gap: 0; }
+  #detail-preview { width: 50%; padding: 16px; overflow-y: auto;
+                     background: var(--surface); border-right: 1px solid var(--border); }
+  #detail-preview h2 { font-size: 14px; margin-bottom: 8px; }
+  #preview-canvas { position: relative; display: inline-block; max-width: 100%; }
+  #preview-canvas img { max-width: 100%; display: block; }
+  .bbox { position: absolute; border: 1px solid; }
+  .bbox-TEXT { border-color: var(--blue); background: rgba(33,150,243,0.10); }
+  .bbox-TABLE { border-color: var(--green); background: rgba(76,175,80,0.10); }
+  .bbox-FORMULA { border-color: var(--purple); background: rgba(179,77,255,0.12); }
+  .bbox-IMAGE { border-color: var(--orange); background: rgba(255,152,0,0.10); }
+  #preview-empty { color: var(--dim); font-style: italic; padding: 20px;
+                    background: var(--surface2); border-radius: 4px; text-align: center; }
+  .legend { display: flex; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--dim); }
+  .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px;
+                          margin-right: 4px; vertical-align: middle; border: 1px solid; }
+  .legend .l-TEXT::before { border-color: var(--blue); background: rgba(33,150,243,0.15); }
+  .legend .l-TABLE::before { border-color: var(--green); background: rgba(76,175,80,0.15); }
+  .legend .l-FORMULA::before { border-color: var(--purple); background: rgba(179,77,255,0.15); }
+  .legend .l-IMAGE::before { border-color: var(--orange); background: rgba(255,152,0,0.15); }
+
+  .region-table { width: 100%; margin-top: 12px; font-size: 11px; }
+  .region-table th, .region-table td { padding: 3px 6px; border-bottom: 1px solid #222; }
+
+  #detail-stages { flex: 1; padding: 16px; overflow-y: auto; }
+  .stage-card {
+    background: var(--surface); border-radius: 4px;
+    padding: 10px 14px; margin-bottom: 10px;
+    border-left: 3px solid var(--accent);
+  }
+  .stage-card h3 { font-size: 12px; color: var(--accent); margin-bottom: 6px;
+                    text-transform: uppercase; letter-spacing: 0.5px; }
+  .stage-card .kv { display: flex; gap: 6px; margin: 2px 0; font-size: 12px; }
+  .stage-card .kv .k { color: var(--dim); min-width: 130px; }
+  .stage-card .kv .v { color: var(--text); word-break: break-word; }
+  .stage-card .md { background: #0f1626; padding: 10px; border-radius: 3px;
+                     margin-top: 6px; max-height: 400px; overflow-y: auto;
+                     font-size: 13px; line-height: 1.6; }
+  .stage-card .md table { border-collapse: collapse; margin: 8px 0; }
+  .stage-card .md th, .stage-card .md td { border: 1px solid #333; padding: 4px 8px; }
 </style>
 </head>
 <body>
-<h1 id="status">pdfsys viz · loading viz_data.json…</h1>
-<pre id="dump"></pre>
+<div id="topbar">
+  <h1>pdfsys viz</h1>
+  <span class="meta" id="meta-summary">loading…</span>
+  <button id="back-btn">← back</button>
+</div>
+
+<div id="view-dashboard" class="view active">
+  <div class="charts">
+    <div class="chart"><h3>Backend split</h3><svg id="chart-backend"></svg></div>
+    <div class="chart"><h3>ocr_prob histogram (threshold 0.5)</h3><svg id="chart-ocr"></svg></div>
+    <div class="chart"><h3>quality_score histogram (kept threshold 2.0)</h3><svg id="chart-quality"></svg></div>
+  </div>
+  <div class="filter-bar">
+    <label><input type="checkbox" id="f-kept"> kept only</label>
+    <label><input type="checkbox" id="f-error"> errors only</label>
+    <select id="f-backend">
+      <option value="">all backends</option>
+      <option value="mupdf">mupdf</option>
+      <option value="pipeline">pipeline</option>
+      <option value="vlm">vlm</option>
+    </select>
+    <select id="f-source">
+      <option value="">all sources</option>
+      <option value="omnidocbench_100">omnidocbench_100</option>
+      <option value="olmocr_bench_50">olmocr_bench_50</option>
+    </select>
+    <input type="text" id="f-search" placeholder="search filename…">
+    <span id="row-count">0 / 0 rows</span>
+  </div>
+  <div id="table-wrap">
+    <table>
+      <thead><tr id="thead-row"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="view-detail" class="view">
+  <div id="detail-preview"></div>
+  <div id="detail-stages"></div>
+</div>
 
 <script src="assets/marked.min.js"></script>
 <script src="assets/katex.min.js"></script>
 <script src="assets/katex-auto-render.min.js"></script>
 <script type="module">
-  const status = document.getElementById('status');
-  const dump = document.getElementById('dump');
+  let DATA = null;
+  let PREVIEWS = null;
+  let SORT = { key: 'pdf_basename', dir: 'asc' };
+
+  const COLS = [
+    { key: 'pdf_basename', label: 'file' },
+    { key: 'source', label: 'source' },
+    { key: 'backend', label: 'A→backend', render: r => badge(r.backend) },
+    { key: 'extract_backend', label: 'final', render: r => badge(r.extract?.backend) },
+    { key: 'ocr_prob', label: 'ocr_prob', render: r => fmt(r.ocr_prob, 3) },
+    { key: 'num_pages', label: 'pages' },
+    { key: 'quality_score', label: 'quality', render: r => fmt(r.quality?.score, 2) },
+    { key: 'kept', label: 'kept', render: r => r.quality?.kept
+        ? '<span class="kept-yes">✓</span>' : '<span class="kept-no">—</span>' },
+    { key: 'markdown_chars', label: 'md_chars', render: r => r.extract?.markdown_chars ?? 0 },
+    { key: 'error_class', label: 'err', render: r => r.error_class ?? '' },
+  ];
+
+  function badge(v) {
+    if (!v) return '<span class="badge badge-NULL">—</span>';
+    return `<span class="badge badge-${v}">${v}</span>`;
+  }
+  function fmt(v, d) {
+    if (v === null || v === undefined) return '';
+    return Number(v).toFixed(d);
+  }
+  function getSortValue(row, key) {
+    if (key === 'extract_backend') return row.extract?.backend ?? '';
+    if (key === 'quality_score') return row.quality?.score ?? -1;
+    if (key === 'kept') return row.quality?.kept ? 1 : 0;
+    if (key === 'markdown_chars') return row.extract?.markdown_chars ?? 0;
+    return row[key] ?? '';
+  }
+
+  function renderDashboard() {
+    document.getElementById('meta-summary').innerHTML =
+      `<strong>${DATA.run_meta.total_rows}</strong> rows · `
+      + `<strong>${DATA.run_meta.errors}</strong> errors · `
+      + `<strong>${DATA.run_meta.kept}</strong> kept · `
+      + `wall ${(DATA.run_meta.wall_seconds || 0).toFixed(0)}s · `
+      + `avg quality ${(DATA.run_meta.avg_quality || 0).toFixed(2)}`;
+
+    renderBackendChart(DATA.aggregate.backend_dist);
+    renderHist(document.getElementById('chart-ocr'),
+                DATA.aggregate.ocr_prob_hist, 0.5);
+    renderHist(document.getElementById('chart-quality'),
+                DATA.aggregate.quality_hist, DATA.run_meta.kept_threshold);
+    renderHead();
+    renderTable();
+  }
+
+  function renderBackendChart(dist) {
+    const svg = document.getElementById('chart-backend');
+    svg.innerHTML = '';
+    const entries = Object.entries(dist);
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    if (!total) return;
+    const colors = { mupdf: 'var(--blue)', pipeline: 'var(--orange)',
+                     vlm: 'var(--purple)', NULL: '#555', deferred: '#555' };
+    const w = svg.clientWidth || 300; const h = 50;
+    let x = 0;
+    for (const [k, v] of entries) {
+      const w_ = (v / total) * w;
+      svg.insertAdjacentHTML('beforeend',
+        `<rect x="${x}" y="10" width="${w_}" height="${h}" fill="${colors[k] || '#888'}"/>`
+        + `<text x="${x + w_/2}" y="38" fill="#fff" font-size="12" text-anchor="middle">`
+        + `${k}: ${v}</text>`);
+      x += w_;
+    }
+  }
+
+  function renderHist(svg, hist, threshold) {
+    svg.innerHTML = '';
+    const w = svg.clientWidth || 300; const h = 130;
+    const bins = hist.bins; const counts = hist.counts;
+    if (!counts.length) return;
+    const maxC = Math.max(...counts, 1);
+    const barW = w / counts.length;
+    for (let i = 0; i < counts.length; i++) {
+      const barH = (counts[i] / maxC) * (h - 20);
+      const x = i * barW;
+      const y = h - barH;
+      svg.insertAdjacentHTML('beforeend',
+        `<rect x="${x + 1}" y="${y}" width="${barW - 2}" height="${barH}" fill="var(--blue)"/>`);
+    }
+    if (threshold !== undefined && bins.length) {
+      const lo = bins[0]; const hi = bins[bins.length - 1];
+      const tx = ((threshold - lo) / (hi - lo)) * w;
+      svg.insertAdjacentHTML('beforeend',
+        `<line x1="${tx}" y1="0" x2="${tx}" y2="${h}" stroke="var(--accent)" stroke-dasharray="3,3"/>`
+        + `<text x="${tx + 4}" y="12" fill="var(--accent)" font-size="11">${threshold}</text>`);
+    }
+  }
+
+  function renderHead() {
+    const tr = document.getElementById('thead-row');
+    tr.innerHTML = COLS.map(c =>
+      `<th data-key="${c.key}">${c.label}${SORT.key === c.key ? (SORT.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`
+    ).join('');
+    tr.querySelectorAll('th').forEach(th => {
+      th.addEventListener('click', () => {
+        const k = th.dataset.key;
+        if (SORT.key === k) SORT.dir = SORT.dir === 'asc' ? 'desc' : 'asc';
+        else { SORT.key = k; SORT.dir = 'asc'; }
+        renderHead(); renderTable();
+      });
+    });
+  }
+
+  function renderTable() {
+    const kept = document.getElementById('f-kept').checked;
+    const err = document.getElementById('f-error').checked;
+    const backend = document.getElementById('f-backend').value;
+    const source = document.getElementById('f-source').value;
+    const search = document.getElementById('f-search').value.toLowerCase();
+
+    let rows = DATA.rows.filter(r => {
+      if (kept && !r.quality?.kept) return false;
+      if (err && !r.error_class) return false;
+      if (backend && r.extract?.backend !== backend) return false;
+      if (source && r.source !== source) return false;
+      if (search && !r.pdf_basename.toLowerCase().includes(search)) return false;
+      return true;
+    });
+
+    rows.sort((a, b) => {
+      let va = getSortValue(a, SORT.key); let vb = getSortValue(b, SORT.key);
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+      if (va < vb) return SORT.dir === 'asc' ? -1 : 1;
+      if (va > vb) return SORT.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    document.getElementById('row-count').textContent = `${rows.length} / ${DATA.rows.length} rows`;
+    document.getElementById('tbody').innerHTML = rows.map(r => {
+      const cells = COLS.map(c => {
+        const v = c.render ? c.render(r) : (r[c.key] ?? '');
+        return `<td>${v}</td>`;
+      }).join('');
+      return `<tr class="row${r.error_class ? ' err' : ''}" data-id="${r.id}">${cells}</tr>`;
+    }).join('');
+
+    document.querySelectorAll('tr.row').forEach(tr => {
+      tr.addEventListener('click', () => openDetail(tr.dataset.id));
+    });
+  }
+
+  // Detail view added in Task 6 — for now placeholder
+  async function openDetail(id) {
+    const row = DATA.rows.find(r => r.id === id);
+    if (!row) return;
+    document.getElementById('view-dashboard').classList.remove('active');
+    document.getElementById('view-detail').classList.add('active');
+    document.getElementById('back-btn').style.display = 'inline-block';
+    document.getElementById('detail-preview').innerHTML =
+      `<h2>${row.pdf_basename}</h2><pre style="font-size:11px">${JSON.stringify(row, null, 2).slice(0, 2000)}</pre>`;
+    document.getElementById('detail-stages').innerHTML =
+      `<div class="stage-card"><h3>placeholder</h3><div>Detail view comes in Task 6.</div></div>`;
+  }
+
+  document.getElementById('back-btn').addEventListener('click', () => {
+    document.getElementById('view-detail').classList.remove('active');
+    document.getElementById('view-dashboard').classList.add('active');
+    document.getElementById('back-btn').style.display = 'none';
+  });
+
+  ['f-kept', 'f-error', 'f-backend', 'f-source'].forEach(id =>
+    document.getElementById(id).addEventListener('change', renderTable));
+  document.getElementById('f-search').addEventListener('input', renderTable);
+
   try {
-    const res = await fetch('viz_data.json');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    status.textContent = `pdfsys viz · ${data.run_meta.total_rows} rows · ${data.run_meta.errors} errors · ${data.run_meta.kept} kept`;
-    status.style.color = '#4caf50';
-    dump.textContent = JSON.stringify({
-      run_meta: data.run_meta,
-      aggregate: data.aggregate,
-      sample_row: data.rows[0],
-    }, null, 2);
+    const [d, p] = await Promise.all([
+      fetch('viz_data.json').then(r => r.json()),
+      fetch('previews.json').then(r => r.json()).catch(() => ({})),
+    ]);
+    DATA = d; PREVIEWS = p;
+    document.title = `pdfsys viz · ${d.run_meta.total_rows} rows`;
+    renderDashboard();
   } catch (e) {
-    status.textContent = `pdfsys viz · ERROR loading viz_data.json: ${e.message}`;
-    status.style.color = '#f44336';
-    dump.textContent = e.stack || String(e);
+    document.getElementById('meta-summary').textContent = `ERROR: ${e.message}`;
+    document.getElementById('meta-summary').style.color = 'var(--red)';
+    console.error(e);
   }
 </script>
 </body>
