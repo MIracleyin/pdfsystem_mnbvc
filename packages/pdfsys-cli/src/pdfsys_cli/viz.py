@@ -52,6 +52,13 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Preserve existing badcases.jsonl across viz regenerations — it's accumulated
+    # user state (flags from previous browsing), not derived data, so viz.py never
+    # generates or overwrites it.
+    existing_badcases = out_dir / "badcases.jsonl"
+    badcases_preserved = existing_badcases.exists()
+
     (out_dir / "viz_data.json").write_text(
         json.dumps(viz_data, ensure_ascii=False), encoding="utf-8"
     )
@@ -63,7 +70,10 @@ def main(argv: list[str] | None = None) -> int:
     _copy_template_and_assets(_TEMPLATE_DIR, out_dir)
     _write_serve_script(out_dir / "serve.sh")
 
-    print(f"[viz] done. open {out_dir}/index.html  (or run bash {out_dir}/serve.sh)")
+    if badcases_preserved:
+        print(f"[viz] preserved existing badcases.jsonl ({existing_badcases.stat().st_size} bytes)")
+
+    print(f"[viz] done. cd {out_dir} && bash serve.sh  (then open http://localhost:8765/)")
     return 0
 
 
@@ -389,16 +399,24 @@ def _copy_template_and_assets(template_dir: Path, out_dir: Path) -> None:
     if dst_assets.exists():
         shutil.rmtree(dst_assets)
     shutil.copytree(src_assets, dst_assets)
-    print(f"[viz] copied template + assets")
+
+    # Ship the viz_server (replaces python -m http.server, adds badcases API).
+    src_server = template_dir / "viz_server.py"
+    if src_server.exists():
+        shutil.copyfile(src_server, out_dir / "viz_server.py")
+        os.chmod(out_dir / "viz_server.py", 0o755)
+
+    print("[viz] copied template + assets + viz_server.py")
 
 
 def _write_serve_script(path: Path) -> None:
     path.write_text(
         "#!/usr/bin/env bash\n"
-        "# Local static server for the pdfsys viz bundle.\n"
-        "# Run this and open http://localhost:8765/ in a browser.\n"
+        "# Local server for the pdfsys viz bundle.\n"
+        "# Serves static files + bad-case flagging API.\n"
+        "# Open http://localhost:8765/ in a browser.\n"
         "cd \"$(dirname \"$0\")\"\n"
-        "python3 -m http.server 8765\n",
+        "python3 viz_server.py --port \"${PORT:-8765}\" --user \"${USER:-anon}\"\n",
         encoding="utf-8",
     )
     os.chmod(path, 0o755)
