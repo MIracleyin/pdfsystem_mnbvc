@@ -109,6 +109,14 @@
   .region-table { width: 100%; margin-top: 12px; font-size: 11px; }
   .region-table th, .region-table td { padding: 3px 6px; border-bottom: 1px solid #222; }
 
+  .bc-chip { display: inline-flex; align-items: center; gap: 2px;
+             background: rgba(255,193,7,0.15); color: var(--yellow);
+             padding: 2px 4px 2px 8px; border-radius: 10px;
+             margin-right: 4px; margin-bottom: 2px; font-size: 11px; }
+  .bc-chip-x { background: transparent; border: none; color: var(--yellow);
+               cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; }
+  .bc-chip-x:hover { color: var(--red); }
+
   #detail-stages { flex: 1; padding: 16px; overflow-y: auto; }
   .stage-card {
     background: var(--surface); border-radius: 4px;
@@ -220,6 +228,133 @@
     if (key === 'kept') return row.quality?.kept ? 1 : 0;
     if (key === 'markdown_chars') return row.extract?.markdown_chars ?? 0;
     return row[key] ?? '';
+  }
+
+  // ---------- badcase API + UI helpers ----------
+  async function saveBadcase(sha, stage, tags, note) {
+    const res = await fetch('/api/badcase', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sha256: sha, stage, tags, note}),
+    });
+    if (!res.ok) throw new Error(`save failed: HTTP ${res.status} ${await res.text()}`);
+    return await res.json();
+  }
+  async function deleteBadcase(sha) {
+    const res = await fetch(`/api/badcase/${encodeURIComponent(sha)}`, {method: 'DELETE'});
+    if (!res.ok) throw new Error(`delete failed: HTTP ${res.status} ${await res.text()}`);
+    return await res.json();
+  }
+
+  function badcaseCardHtml(row) {
+    const bc = BADCASES[row.sha256];
+    const stages = ['router', 'layout', 'extract', 'quality', 'overall'];
+    const currentStage = bc?.stage || 'overall';
+    const currentTags = bc?.tags || [];
+    const currentNote = bc?.note || '';
+    const isFlagged = !!bc;
+
+    const stageRadios = stages.map(s => `
+      <label style="margin-right:10px;font-size:11px;cursor:pointer">
+        <input type="radio" name="bc-stage" value="${s}" ${s === currentStage ? 'checked' : ''}>
+        ${s}
+      </label>`).join('');
+
+    const tagChips = currentTags.map(t => `
+      <span class="bc-chip" data-tag="${t.replace(/"/g, '&quot;')}">
+        ${t}<button class="bc-chip-x" data-tag="${t.replace(/"/g, '&quot;')}" title="remove">×</button>
+      </span>`).join('');
+
+    const flaggedMeta = isFlagged
+      ? `<div style="color:var(--dim);font-size:11px;margin-top:8px">flagged ${bc.flagged_at} by ${bc.flagged_by || 'anon'}</div>`
+      : '';
+
+    const borderColor = isFlagged ? 'var(--red)' : 'var(--yellow)';
+    const heading = isFlagged ? '🔴 Bad case flag' : '🚩 Bad case flag';
+
+    return `
+      <div class="stage-card" style="border-left-color:${borderColor}">
+        <h3 style="color:${borderColor}">${heading}</h3>
+        <div class="kv"><span class="k">Stage where it broke</span>
+          <span class="v">${stageRadios}</span></div>
+        <div class="kv"><span class="k">Tags</span>
+          <span class="v">
+            <span id="bc-tags-host">${tagChips}</span>
+            <input type="text" id="bc-tag-input" placeholder="add tag…"
+                   style="margin-left:6px;padding:2px 6px;border:1px solid #444;background:#111;color:var(--text);font-size:11px;width:120px;border-radius:3px">
+          </span></div>
+        <div class="kv" style="align-items:flex-start"><span class="k">Note</span>
+          <span class="v" style="flex:1">
+            <textarea id="bc-note" rows="3"
+                      style="width:100%;background:#111;color:var(--text);border:1px solid #444;padding:6px;font-size:12px;font-family:inherit;border-radius:3px;resize:vertical"
+                      placeholder="what's wrong with this row?">${currentNote.replace(/</g, '&lt;')}</textarea>
+          </span></div>
+        ${flaggedMeta}
+        <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+          <button id="bc-save" style="padding:4px 12px;background:var(--green);color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:12px">💾 Save</button>
+          ${isFlagged ? `<button id="bc-remove" style="padding:4px 12px;background:var(--red);color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:12px">🗑 Remove</button>` : ''}
+          <span id="bc-status" style="margin-left:auto;font-size:11px;color:var(--dim)"></span>
+        </div>
+      </div>`;
+  }
+
+  function attachBadcaseHandlers(row) {
+    const tagsHost = document.getElementById('bc-tags-host');
+    if (!tagsHost) return;
+
+    tagsHost.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.bc-chip-x');
+      if (!btn) return;
+      btn.parentElement.remove();
+    });
+
+    document.getElementById('bc-tag-input').addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      const v = ev.target.value.trim();
+      if (!v) return;
+      // Avoid dup tag
+      const existing = Array.from(tagsHost.querySelectorAll('.bc-chip')).map(c => c.dataset.tag);
+      if (existing.includes(v)) { ev.target.value = ''; return; }
+      const chip = document.createElement('span');
+      chip.className = 'bc-chip';
+      chip.dataset.tag = v;
+      chip.innerHTML = `${v}<button class="bc-chip-x" data-tag="${v.replace(/"/g, '&quot;')}" title="remove">×</button>`;
+      tagsHost.appendChild(chip);
+      ev.target.value = '';
+    });
+
+    document.getElementById('bc-save').addEventListener('click', async () => {
+      const stage = document.querySelector('input[name="bc-stage"]:checked')?.value || 'overall';
+      const tags = Array.from(tagsHost.querySelectorAll('.bc-chip')).map(c => c.dataset.tag);
+      const note = document.getElementById('bc-note').value;
+      const status = document.getElementById('bc-status');
+      status.textContent = 'saving…'; status.style.color = 'var(--dim)';
+      try {
+        const rec = await saveBadcase(row.sha256, stage, tags, note);
+        BADCASES[row.sha256] = rec;
+        renderStages(row);
+        renderDashboard();   // also re-renders table → 🚩 column updates
+      } catch (e) {
+        status.textContent = e.message; status.style.color = 'var(--red)';
+      }
+    });
+
+    const removeBtn = document.getElementById('bc-remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', async () => {
+        const status = document.getElementById('bc-status');
+        status.textContent = 'removing…'; status.style.color = 'var(--dim)';
+        try {
+          await deleteBadcase(row.sha256);
+          delete BADCASES[row.sha256];
+          renderStages(row);
+          renderDashboard();
+        } catch (e) {
+          status.textContent = e.message; status.style.color = 'var(--red)';
+        }
+      });
+    }
   }
 
   function renderDashboard() {
@@ -560,6 +695,9 @@
         <div class="kv"><span class="k">model</span><span class="v">${row.quality?.model || '—'}</span></div>
       </div>`);
 
+    // Bad case flag card — interactive, POSTs to /api/badcase on Save.
+    parts.push(badcaseCardHtml(row));
+
     if (row.error_class) {
       parts.push(`
         <div class="stage-card" style="border-left-color:var(--red)"><h3 style="color:var(--red)">Error</h3>
@@ -569,6 +707,9 @@
     }
 
     el.innerHTML = parts.join('');
+
+    // Wire badcase form handlers — must run after innerHTML is set.
+    attachBadcaseHandlers(row);
 
     // Lazy load full markdown
     if (row.extract?.markdown_path) {
