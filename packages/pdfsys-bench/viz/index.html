@@ -31,6 +31,10 @@
               border: 1px solid var(--border); color: var(--text);
               border-radius: 3px; cursor: pointer; font-size: 12px; }
   #back-btn:hover { background: #1a4a80; }
+  #export-btn { padding: 4px 10px; background: var(--surface2);
+                border: 1px solid var(--border); color: var(--text);
+                border-radius: 3px; cursor: pointer; font-size: 12px; }
+  #export-btn:hover { background: #1a4a80; }
 
   .view { display: none; height: calc(100vh - 44px); overflow: hidden; }
   .view.active { display: flex; }
@@ -127,6 +131,7 @@
 <div id="topbar">
   <h1>pdfsys viz</h1>
   <span class="meta" id="meta-summary">loading…</span>
+  <button id="export-btn" title="Download all flagged bad cases as JSONL">📥 Export</button>
   <button id="back-btn">← back</button>
 </div>
 
@@ -137,6 +142,7 @@
     <div class="chart"><h3>quality_score histogram (kept threshold 2.0)</h3><svg id="chart-quality"></svg></div>
   </div>
   <div class="filter-bar">
+    <label><input type="checkbox" id="f-bad"> 🔴 bad only</label>
     <label><input type="checkbox" id="f-kept"> kept only</label>
     <label><input type="checkbox" id="f-error"> errors only</label>
     <select id="f-backend">
@@ -172,9 +178,17 @@
 <script type="module">
   let DATA = null;
   let PREVIEWS = null;
+  let BADCASES = {};   // sha256 → record (only is_bad=true records)
   let SORT = { key: 'pdf_basename', dir: 'asc' };
 
   const COLS = [
+    { key: 'flag', label: '🚩', tip: 'Bad case flag. Click row → flag in detail view.',
+      render: r => {
+        const bc = BADCASES[r.sha256];
+        if (!bc) return '';
+        const tip = `${bc.stage}${bc.note ? ': ' + bc.note.slice(0, 80) : ''}`;
+        return `<span title="${tip.replace(/"/g, '&quot;')}">🔴</span>`;
+      } },
     { key: 'pdf_basename', label: 'file', tip: 'PDF filename (without dir).' },
     { key: 'source', label: 'source', tip: 'Corpus the PDF belongs to (omnidocbench_100 / olmocr_bench_50 / other).' },
     { key: 'backend', label: 'A→backend',
@@ -209,10 +223,12 @@
   }
 
   function renderDashboard() {
+    const flaggedCount = Object.keys(BADCASES).length;
     document.getElementById('meta-summary').innerHTML =
       `<strong>${DATA.run_meta.total_rows}</strong> rows · `
       + `<strong>${DATA.run_meta.errors}</strong> errors · `
       + `<strong>${DATA.run_meta.kept}</strong> kept · `
+      + `<strong>${flaggedCount}</strong> 🔴 flagged · `
       + `wall ${(DATA.run_meta.wall_seconds || 0).toFixed(0)}s · `
       + `avg quality ${(DATA.run_meta.avg_quality || 0).toFixed(2)}`;
 
@@ -284,6 +300,7 @@
   }
 
   function renderTable() {
+    const badOnly = document.getElementById('f-bad').checked;
     const kept = document.getElementById('f-kept').checked;
     const err = document.getElementById('f-error').checked;
     const backend = document.getElementById('f-backend').value;
@@ -291,6 +308,7 @@
     const search = document.getElementById('f-search').value.toLowerCase();
 
     let rows = DATA.rows.filter(r => {
+      if (badOnly && !BADCASES[r.sha256]) return false;
       if (kept && !r.quality?.kept) return false;
       if (err && !r.error_class) return false;
       if (backend && r.extract?.backend !== backend) return false;
@@ -589,16 +607,37 @@
     document.getElementById('back-btn').style.display = 'none';
   });
 
-  ['f-kept', 'f-error', 'f-backend', 'f-source'].forEach(id =>
+  document.getElementById('export-btn').addEventListener('click', () => {
+    const records = Object.values(BADCASES);
+    if (!records.length) {
+      alert('No bad cases to export. Flag some rows first.');
+      return;
+    }
+    const jsonl = records.map(r => JSON.stringify(r)).join('\n') + '\n';
+    const blob = new Blob([jsonl], {type: 'application/x-ndjson'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `badcases-${new Date().toISOString().slice(0,10)}.jsonl`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  ['f-bad', 'f-kept', 'f-error', 'f-backend', 'f-source'].forEach(id =>
     document.getElementById(id).addEventListener('change', renderTable));
   document.getElementById('f-search').addEventListener('input', renderTable);
 
   try {
-    const [d, p] = await Promise.all([
+    const [d, p, bc] = await Promise.all([
       fetch('viz_data.json').then(r => r.json()),
       fetch('previews.json').then(r => r.json()).catch(() => ({})),
+      fetch('/api/badcases').then(r => r.ok ? r.json() : {badcases: []})
+                            .catch(() => ({badcases: []})),
     ]);
     DATA = d; PREVIEWS = p;
+    BADCASES = Object.fromEntries(
+      (bc.badcases || []).filter(b => b.is_bad).map(b => [b.sha256, b])
+    );
     document.title = `pdfsys viz · ${d.run_meta.total_rows} rows`;
     renderDashboard();
   } catch (e) {
