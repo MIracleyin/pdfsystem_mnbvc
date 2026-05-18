@@ -24,6 +24,10 @@ from typing import Any
 
 import pymupdf
 
+# Suppress MuPDF warnings (e.g. "cannot create appearance stream for Screen
+# annotations") that are benign but flood stderr on certain PDFs.
+pymupdf.TOOLS.mupdf_display_warnings(False)
+
 from pdfsys_core import (
     Backend,
     BBox,
