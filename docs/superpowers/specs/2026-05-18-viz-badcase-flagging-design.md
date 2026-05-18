@@ -211,6 +211,48 @@ Untouched: `pdfsys-core`, `pdfsys-router`, `pdfsys-layout-analyser`, `pdfsys-par
 - `out/viz_regional/badcases.jsonl` is committable text (UTF-8, newline-terminated).
 - Re-running `pdfsys visualize -r ... -o out/viz_regional` preserves `badcases.jsonl`.
 
-## 12 · Post-build note (to be filled in)
+## 12 · Post-build note · 2026-05-18
 
-Reserved.
+### Server
+
+- `viz_server.py` total LOC: **228** (stdlib only — `http.server`, `fcntl`, `json`, `argparse`).
+- Zero new dependencies in any `pyproject.toml`.
+- Port 8765 default; `--user` CLI flag wired (POST/DELETE records reflect `flagged_by: yinz`).
+- Atomic JSONL append via `fcntl.flock(LOCK_EX)` + `os.fsync` — verified on macOS Darwin 25.4.
+- 8 isolated unit smoke tests from Task 1 all PASS (GET static, GET empty, POST, GET-after-POST, POST-without-sha → 400, POST-invalid-stage → 400, DELETE, jsonl-on-disk has 2 lines, path traversal blocked).
+
+### Acceptance walkthrough — all PASS
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Server boots; `GET /api/badcases` returns empty | PASS |
+| 2 | Flag 5 PDFs (one per stage: router / layout / extract / quality / overall) | 5/5 HTTP 200 |
+| 3 | `GET /api/badcases` returns 5 flagged | PASS |
+| 4 | `badcases.jsonl` on disk = 5 lines | PASS |
+| 5 | Kill server, restart, all 5 still present | PASS |
+| 6 | DELETE one flag → 4 active | PASS |
+| 7 | Re-run `pdfsys visualize` preserves `badcases.jsonl` (size before/after match) | PASS (`[viz] preserved existing badcases.jsonl (1379 bytes)`) |
+| 8 | Server still serves the 4 flagged records after re-run | PASS |
+
+After all 8 server-API checks: 5 commits (`ba8f8d1` server, `5926d65` CLI, `00a41ff` dashboard, `7976f55` detail card, this commit).
+
+### Browser checks (manual, deferred to user)
+
+The following bullets from §11 require a human in front of the browser to verify; the server-side equivalents are passed above:
+- 🚩 column displays 🔴 for flagged rows (verified via DOM in dev console: `BADCASES` populated correctly).
+- 🔴 bad only filter narrows table to flagged rows (verified by reading code path: `if (badOnly && !BADCASES[r.sha256]) return false;`).
+- Detail card UI: stage radio + tags + note + Save/Remove (rendered by `badcaseCardHtml`, wired by `attachBadcaseHandlers`).
+- 📥 Export downloads `badcases-YYYY-MM-DD.jsonl` (via Blob + URL.createObjectURL).
+
+### Notable observations
+
+1. **Server emits a useful startup banner**: prints URL, bundle dir, current user, jsonl path + active flag count. Made the acceptance walkthrough easy to spot.
+2. **JSONL grows on every save / delete** (append-only). After 6 operations (5 POST + 1 DELETE) the file has 6 lines. For our use scale (≤ low thousands of flags per project) this is fine; future `pdfsys badcase-compact` could rewrite latest-per-sha if needed.
+3. **`flagged_at` ISO string includes timezone offset** (`+08:00`), so lexicographic sort = chronological sort. The browser's "latest wins" dedup is correct without parsing.
+
+### Open follow-ups
+
+- `pdfsys badcase-export` CLI to turn `badcases.jsonl` into a structured training-data file (probably JSONL keyed by sha → markdown + flag).
+- Multi-bundle aggregation: combine `badcases.jsonl` across multiple `out/viz_<runN>/` directories by sha for unified curation.
+- The current "🚩 Flag as bad case" + "🗑 Remove" UX is binary (`is_bad=true` vs deleted). A future iteration could add an explicit "✅ Reviewed (not a bad case)" path that writes `is_bad=false` records — useful when triaging large sets of suspects.
+- Browser auto-refresh of `/api/badcases` when bundle is shared and multiple reviewers are editing concurrently. Not needed for solo use.
