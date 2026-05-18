@@ -13,6 +13,8 @@ dependencies = [
     "pdfsys-parser-mupdf",
     "torch>=2.1",
     "transformers>=4.44",
+    "openai>=1.40",
+    "python-dotenv>=1.0",
 ]
 
 [tool.uv.sources]
