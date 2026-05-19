@@ -73,8 +73,8 @@ class OcrQualityScorer:
     def _ensure_loaded(self) -> None:
         if self._model is not None:
             return
-        import torch  # noqa: PLC0415 — lazy import is intentional
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer  # noqa: PLC0415
+        import torch
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         self._torch = torch
         self._device = torch.device(

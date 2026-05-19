@@ -38,14 +38,14 @@ class LlmConfig:
     model: str = _DEFAULT_MODEL
 
     @classmethod
-    def from_env(cls, dotenv_path: str | Path | None = None) -> "LlmConfig":
+    def from_env(cls, dotenv_path: str | Path | None = None) -> LlmConfig:
         """Load config from environment, optionally hydrating from a .env file.
 
         Search order for .env: ``dotenv_path`` arg, then walks up from CWD
         looking for a ``.env`` (matches what most tooling expects).
         """
         try:
-            from dotenv import load_dotenv  # noqa: PLC0415
+            from dotenv import load_dotenv
         except ImportError:  # pragma: no cover — dotenv listed as a dep
             load_dotenv = None  # type: ignore[assignment]
 
@@ -71,7 +71,7 @@ class LlmClient:
     """Thin wrapper around the OpenAI SDK pointed at any OpenAI-compatible host."""
 
     def __init__(self, config: LlmConfig | None = None) -> None:
-        from openai import OpenAI  # noqa: PLC0415
+        from openai import OpenAI
 
         self.config = config or LlmConfig.from_env()
         self._client = OpenAI(base_url=self.config.base_url, api_key=self.config.api_key)
@@ -162,7 +162,7 @@ def _to_data_url(
         mime = f"image/{image_format.lower()}"
     else:
         # PIL.Image — encode in memory.
-        import io  # noqa: PLC0415
+        import io
 
         buf = io.BytesIO()
         image.save(buf, format=image_format)
@@ -197,13 +197,13 @@ def _smoke(image_path: str | None) -> None:
         print(f"[smoke] /models OK — {len(models)} models")
         for m in models[:5]:
             print(f"        - {m}")
-    except Exception as e:  # noqa: BLE001 — smoke output should not raise
+    except Exception as e:
         print(f"[smoke] /models failed: {type(e).__name__}: {e}")
 
     # Reasoning models (MiMo, R1-style) burn tokens on hidden chain-of-thought
     # first — leave max_tokens at the server default for the smoke ping.
     if image_path:
-        resp = client._client.chat.completions.create(  # noqa: SLF001 — diagnostic only
+        resp = client._client.chat.completions.create(
             model=client.config.model,
             messages=[{
                 "role": "user",
@@ -215,7 +215,7 @@ def _smoke(image_path: str | None) -> None:
             temperature=0.0,
         )
     else:
-        resp = client._client.chat.completions.create(  # noqa: SLF001
+        resp = client._client.chat.completions.create(
             model=client.config.model,
             messages=[{"role": "user", "content": "Reply with the single word: pong"}],
             temperature=0.0,
