@@ -8,15 +8,28 @@ comparison) will layer on top of it.
 
 from __future__ import annotations
 
+from .cascade import (
+    CascadeAttempt,
+    CascadeResult,
+    CascadeStage,
+    run_cascade,
+)
 from .loop import LoopResult, run_loop
 from .quality import OcrQualityScorer, QualityScore
+from .quality_rules import HardCheckResult, check_extracted_text
 
 __version__ = "0.0.1"
 
 __all__ = [
-    "__version__",
+    "CascadeAttempt",
+    "CascadeResult",
+    "CascadeStage",
+    "HardCheckResult",
     "LoopResult",
-    "run_loop",
     "OcrQualityScorer",
     "QualityScore",
+    "__version__",
+    "check_extracted_text",
+    "run_cascade",
+    "run_loop",
 ]

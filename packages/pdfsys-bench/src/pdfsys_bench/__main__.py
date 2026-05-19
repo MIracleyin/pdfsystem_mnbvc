@@ -93,6 +93,27 @@ def build_parser() -> argparse.ArgumentParser:
         dest="vlm_enabled",
         help="Enable the VLM lane (MinerU) for complex-content pages.",
     )
+    # --- Cascade flags ---
+    p.add_argument(
+        "--cascade",
+        action="store_true",
+        help=(
+            "Use the quality-driven cascade (mupdf → pipeline → vlm) instead "
+            "of Stage-B routing. Implies --full-pipeline. Cheapest parser is "
+            "tried first; output is gated by Layer-1 hard rules; the next "
+            "parser is only invoked if the gate rejects."
+        ),
+    )
+    p.add_argument(
+        "--cascade-skip-mupdf-threshold",
+        type=float,
+        default=0.9,
+        help=(
+            "In cascade mode, skip the MuPDF attempt if Stage-A's ocr_prob "
+            "is at or above this value (router is confident the PDF needs "
+            "OCR). Default 0.9."
+        ),
+    )
     return p
 
 
@@ -110,12 +131,16 @@ def main(argv: list[str] | None = None) -> int:
         full_pipeline=args.full_pipeline,
         cache_dir=args.cache_dir,
         vlm_enabled=args.vlm_enabled,
+        cascade=args.cascade,
+        cascade_skip_mupdf_threshold=args.cascade_skip_mupdf_threshold,
     )
 
     print(f"\n[pdfsys-bench] processed {summary['num_pdfs']} PDFs in {summary['wall_seconds']:.1f}s")
     print(f"[pdfsys-bench] by_backend: {summary['by_backend']}")
     if summary.get("by_stage_b"):
         print(f"[pdfsys-bench] stage_b:    {summary['by_stage_b']}")
+    if summary.get("by_cascade_decision"):
+        print(f"[pdfsys-bench] cascade:    {summary['by_cascade_decision']}")
     print(f"[pdfsys-bench] extracted={summary['num_extracted']} scored={summary['num_scored']} errors={summary['num_errors']}")
     if summary.get("avg_quality") is not None:
         print(f"[pdfsys-bench] avg_quality={summary['avg_quality']:.3f}")
