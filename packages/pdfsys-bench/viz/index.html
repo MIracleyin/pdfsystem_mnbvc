@@ -133,6 +133,16 @@
                      font-size: 13px; line-height: 1.6; }
   .stage-card .md table { border-collapse: collapse; margin: 8px 0; }
   .stage-card .md th, .stage-card .md td { border: 1px solid #333; padding: 4px 8px; }
+
+  /* Calibration label card */
+  #label-card .lbl-row { margin-bottom: 0.5em; display: flex; gap: 0.5em; align-items: center; flex-wrap: wrap; }
+  #label-card .lbl-flags { display: flex; gap: 0.5em; flex-wrap: wrap; }
+  #label-card label.radio, #label-card label.check { font-weight: normal; font-size: 12px; }
+  #label-card .lbl-status { color: #888; font-size: 0.9em; margin-left: 0.5em; }
+  #label-card .lbl-note { width: 100%; background: #111; color: var(--text); border: 1px solid #444; padding: 6px; font-size: 12px; font-family: inherit; border-radius: 3px; resize: vertical; }
+  #label-card .lbl-pub, #label-card .lbl-sev { padding: 3px 6px; border: 1px solid #444; border-radius: 3px; background: #111; color: var(--text); font-size: 12px; }
+  #label-card .lbl-save { padding: 4px 12px; background: var(--blue); color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 12px; }
+  #label-card .lbl-save:hover { background: #1976d2; }
 </style>
 </head>
 <body>
@@ -355,6 +365,53 @@
         }
       });
     }
+  }
+
+  function wireLabelSave(row) {
+    const form = document.querySelector('#label-card .label-form');
+    if (!form) return;
+    const btn = form.querySelector('.lbl-save');
+    const status = form.querySelector('.lbl-status');
+    btn.addEventListener('click', async () => {
+      const q = form.querySelector(`input[name="lbl-q-${row.sha256}"]:checked`);
+      if (!q) {
+        status.textContent = 'pick a quality 0..3';
+        return;
+      }
+      const pubRaw = form.querySelector('.lbl-pub').value;
+      const publishable = pubRaw === '' ? null : pubRaw === 'true';
+      const severity = form.querySelector('.lbl-sev').value;
+      const flags = Array.from(form.querySelectorAll('.lbl-flag:checked'))
+                         .map(el => el.value);
+      const note = form.querySelector('.lbl-note').value;
+      const body = {
+        doc_id: row.sha256,
+        doc_quality: Number(q.value),
+        doc_publishable: publishable,
+        severity, issue_flags: flags, note,
+      };
+      status.textContent = 'saving…';
+      status.style.color = 'var(--dim)';
+      try {
+        const res = await fetch('/api/label', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const msg = await res.text();
+          status.textContent = `error: ${msg}`;
+          status.style.color = 'var(--red)';
+          return;
+        }
+        const saved = await res.json();
+        status.textContent = `saved at ${saved.labeled_at}`;
+        status.style.color = 'var(--green)';
+      } catch (err) {
+        status.textContent = `network error: ${err.message}`;
+        status.style.color = 'var(--red)';
+      }
+    });
   }
 
   function renderDashboard() {
@@ -698,6 +755,55 @@
     // Bad case flag card — interactive, POSTs to /api/badcase on Save.
     parts.push(badcaseCardHtml(row));
 
+    // Calibration label card — interactive, POSTs to /api/label on Save.
+    parts.push(`
+      <div class="stage-card" id="label-card">
+        <h3>Calibration label</h3>
+        <div class="label-form" data-sha="${row.sha256}">
+          <div class="lbl-row">
+            <label>Quality (0–3):</label>
+            ${[0,1,2,3].map(q =>
+              `<label class="radio">
+                <input type="radio" name="lbl-q-${row.sha256}" value="${q}">
+                ${q}
+              </label>`).join("")}
+          </div>
+          <div class="lbl-row">
+            <label>Publishable:</label>
+            <select class="lbl-pub">
+              <option value="">(unknown)</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div class="lbl-row">
+            <label>Severity:</label>
+            <select class="lbl-sev">
+              ${["none","minor","major","critical"].map(s =>
+                `<option value="${s}">${s}</option>`).join("")}
+            </select>
+          </div>
+          <div class="lbl-row">
+            <label>Issues:</label>
+            <div class="lbl-flags">
+              ${["garbage_text","repetition","encoding_issue",
+                  "missing_content","broken_table","reading_order"].map(f =>
+                `<label class="check">
+                  <input type="checkbox" class="lbl-flag" value="${f}"> ${f}
+                </label>`).join("")}
+            </div>
+          </div>
+          <div class="lbl-row">
+            <label>Note:</label>
+            <textarea class="lbl-note" rows="2" maxlength="1000"></textarea>
+          </div>
+          <div class="lbl-row">
+            <button class="lbl-save">Save label</button>
+            <span class="lbl-status"></span>
+          </div>
+        </div>
+      </div>`);
+
     if (row.error_class) {
       parts.push(`
         <div class="stage-card" style="border-left-color:var(--red)"><h3 style="color:var(--red)">Error</h3>
@@ -710,6 +816,9 @@
 
     // Wire badcase form handlers — must run after innerHTML is set.
     attachBadcaseHandlers(row);
+
+    // Wire calibration label save handler — must run after innerHTML is set.
+    wireLabelSave(row);
 
     // Lazy load full markdown
     if (row.extract?.markdown_path) {
