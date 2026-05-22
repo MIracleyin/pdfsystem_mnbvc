@@ -196,22 +196,28 @@ def _profile(t_publish: float = 2.0, t_reject: float = 0.5) -> ThresholdProfile:
     )
 
 
+_DEFAULT_ATTEMPT_SENTINEL: object = object()
+
+
 def _bench_row(
     *,
     quality_score: float | None = 2.3,
-    cascade_attempts: list[dict] | None = None,
+    cascade_attempts: list[dict] | None = _DEFAULT_ATTEMPT_SENTINEL,  # type: ignore[assignment]
 ) -> dict:
+    if cascade_attempts is _DEFAULT_ATTEMPT_SENTINEL:
+        cascade_attempts = [{
+            "stage": "mupdf", "decision": "publish",
+            "blockers": {"empty_output": False, "too_short": False,
+                         "high_replacement_chars": False, "high_garbage_chars": False,
+                         "repetition_loop": False},
+            "metrics": {}, "error": None, "wall_ms": 1.0,
+        }]
     return {
         "sha256": "abc123",
         "quality_score": quality_score,
         "cascade_decision": "publish",
         "cascade_final_stage": "mupdf",
-        "cascade_attempts": cascade_attempts
-            or [{"stage": "mupdf", "decision": "publish",
-                 "blockers": {"empty_output": False, "too_short": False,
-                              "high_replacement_chars": False, "high_garbage_chars": False,
-                              "repetition_loop": False},
-                 "metrics": {}, "error": None, "wall_ms": 1.0}],
+        "cascade_attempts": cascade_attempts,
     }
 
 
@@ -290,3 +296,33 @@ def test_grade_for_score_thresholds() -> None:
     assert grade_for_score(0.5, profile) == "fair"
     assert grade_for_score(0.49, profile) == "poor"
     assert grade_for_score(None, profile) is None
+
+
+def test_decide_publish_at_exact_t_publish() -> None:
+    """score == t_publish must publish (`>= t_publish`)."""
+    decision, _, _ = decide(_bench_row(quality_score=2.0), _profile())
+    assert decision == "publish"
+
+
+def test_decide_review_at_exact_t_reject() -> None:
+    """score == t_reject is grey-band (`t_reject <= score < t_publish`)."""
+    decision, _, _ = decide(_bench_row(quality_score=0.5), _profile())
+    assert decision == "review"
+
+
+def test_decide_reject_just_below_t_reject() -> None:
+    """score just under t_reject must reject (`< t_reject`)."""
+    decision, _, _ = decide(_bench_row(quality_score=0.4999), _profile())
+    assert decision == "reject"
+
+
+def test_threshold_profile_direct_construction_normalizes_grade_boundaries() -> None:
+    """Even when caller passes a plain dict, the stored mapping is immutable."""
+    profile = ThresholdProfile(
+        name="t", version="1.0.0", created_at="2026-05-22", description="",
+        t_publish=2.0, t_reject=0.5,
+        grade_boundaries={"excellent": 2.5, "good": 1.5, "fair": 0.5},
+        disabled_blockers=frozenset(),
+    )
+    with pytest.raises(TypeError):
+        profile.grade_boundaries["excellent"] = 99.0  # type: ignore[index]

@@ -35,6 +35,12 @@ class ThresholdProfile:
     grade_boundaries: MappingProxyType[str, float]
     disabled_blockers: frozenset[str] = field(default_factory=frozenset)
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.grade_boundaries, MappingProxyType):
+            object.__setattr__(
+                self, "grade_boundaries", MappingProxyType(dict(self.grade_boundaries))
+            )
+
     @property
     def identifier(self) -> str:
         return f"{self.name}@{self.version}"
@@ -164,11 +170,11 @@ def decide(
     grade = grade_for_score(row.get("quality_score"), profile)
 
     blockers = _final_blockers(row)
-    triggered = [
+    triggered = sorted(
         name
         for name, hit in blockers.items()
         if hit and name not in profile.disabled_blockers
-    ]
+    )
     if triggered:
         reasons.append(f"Layer-1 blockers triggered: {triggered}")
         return DECISION_REJECT, grade, reasons
