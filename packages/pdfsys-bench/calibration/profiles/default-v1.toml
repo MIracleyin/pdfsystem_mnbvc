@@ -1,0 +1,25 @@
+# Release-gate threshold profile for pdfsys-bench.
+# Owned by docs/superpowers/specs/2026-05-22-release-gate-layer4-design.md (§7).
+# Thresholds here are HAND-SET starting points; re-fit with fit_profile.py
+# once calibration/labels.jsonl has enough human labels and bump `version`.
+name = "default-v1"
+version = "0.1.0"
+created_at = "2026-05-22"
+description = "v0 calibration on OmniDocBench 150 samples — placeholder thresholds before fitting"
+
+[grade_boundaries]
+# Lower bounds, inclusive. score >= excellent => "excellent", etc.
+excellent = 2.5
+good = 1.5
+fair = 0.5
+# score < fair  => "poor".
+
+[decision]
+t_publish = 2.0   # score >= t_publish AND no blockers => publish
+t_reject  = 0.5   # score <  t_reject  => reject (also any blocker => reject)
+# t_reject <= score < t_publish => review
+
+[blockers]
+# All Layer-1 blockers count by default. Add a name here to ignore it
+# in this profile. Use sparingly — prefer fixing the blocker upstream.
+disable = []
