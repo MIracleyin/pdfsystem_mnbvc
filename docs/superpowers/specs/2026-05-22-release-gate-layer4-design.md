@@ -404,3 +404,113 @@ acceptable for the v0 calibration pass over 150 rows.
 - Cross-source calibration set (500–1000 PDFs).
 - Folding LLM score into the decision rule.
 - Promoting Layer-1 thresholds into the profile.
+
+## 15. Post-build note (2026-05-22)
+
+Implementation landed across 9 tasks. Plan: `docs/superpowers/plans/2026-05-22-release-gate-layer4.md`.
+
+### Commits (in order)
+
+```
+Task 1 — TOML profile loader + default-v1.toml
+  d993759 feat(bench): release-gate TOML profile loader + default-v1 profile
+  5b98488 fix(bench): release-gate loader — immutable grades + strict disable + grade-key validation
+  c996c88 chore: add ruff to dev dependency group
+
+Task 2 — decide() pure logic
+  a8efcef feat(bench): release-gate decide() — 3-state decision with blocker veto
+  132d888 fix(bench): release-gate — boundary tests + post_init + sorted blockers
+
+Task 3 — run_gate() + CLI
+  b2519b1 feat(bench): release-gate run_gate() + CLI → release_manifest.jsonl
+  8cfe50c fix(bench): release-gate run_gate — atomic write + edge tests + JSON summary
+
+Task 4 — Calibration directory scaffold
+  a5f65dc docs(bench): release-gate calibration directory + README
+
+Task 5 — llm_review.py + scope/resume
+  54a69be feat(bench): offline llm_review with --llm-scope + resume checkpoint
+  04728d5 fix(bench): llm_review — atomic .tmp cleanup + parse_error in manifest + per-row exception + boundary test
+
+Task 6 — fit_profile.py
+  accdf89 feat(bench): release-gate fit_profile — grid search t_publish/t_reject
+  ac96558 fix(bench): fit_profile — human-only latest-wins + TOML escape
+
+Task 7 — viz_server POST /api/label
+  2f86448 feat(viz): POST /api/label + GET /api/labels for calibration
+  2e0e2b2 fix(viz): label endpoint — dedupe issue_flags + doc README sync step + docstrings
+
+Task 8 — Viz UI labeling form
+  b4f778b feat(viz): calibration label form on detail card (POST /api/label)
+```
+
+### End-to-end smoke (OmniDocBench 100)
+
+```
+uv run python -m pdfsys_bench.release_gate \
+    --bench-jsonl out/bench_omnidoc100.jsonl \
+    --out out/release_manifest_smoke.jsonl \
+    --profile packages/pdfsys-bench/calibration/profiles/default-v1.toml
+```
+
+Output:
+- `num_rows = 100`
+- `by_decision = {"review": 74, "publish": 24, "reject": 2}`
+- `grade_distribution = {"good": 46, "fair": 19, "excellent": 3, "poor": 2, null: 30}`
+
+Notes:
+- The `default-v1@0.1.0` profile uses hand-set placeholder thresholds.
+  Distribution skew is expected pre-calibration. Re-fit via
+  `fit_profile.py` once ≥ 50 / 100 rows are human-labeled.
+
+### LLM external review smoke (5 rows)
+
+```
+uv run python -m pdfsys_bench.llm_review \
+    --manifest out/release_manifest_smoke_5.jsonl \
+    --markdown-dir out/viz_final/markdown \
+    --llm-scope all \
+    --workers 2
+```
+
+Result: `num_scored=5 / no failures — all 5 rows scored successfully via mimo-v2.5-pro; quality_score_llm populated (e.g. 1.0), quality_parse_error_llm=null`
+
+### Schema deviation from §5
+
+Task 5's review surfaced an information gap: a row whose LLM score had a
+parse error was indistinguishable from a row that had never been scored.
+The fix extended both `_NULL_LLM_FIELDS` in `release_gate.py` and
+`_PATCH_FIELDS` in `llm_review.py` to include
+`quality_parse_error_llm`. Every manifest row now carries this 4th LLM
+field (`null` until reviewed).
+
+The schema example in §5 of this spec was written before that fix —
+update the §5 manifest example to include `quality_parse_error_llm`
+when this spec is next revised.
+
+### Architectural boundary now machine-enforced
+
+`tests/architecture/test_boundary.py` gained
+`test_llm_review_not_imported_by_decision_modules`: an AST scan that
+fails the build if `loop.py`, `cascade.py`, or `release_gate.py` ever
+imports `llm_review`. This codifies the invariant from §9.
+
+### Known follow-ups
+
+- `default-v1@0.1.0` thresholds are hand-set; re-fit via `fit_profile.py`
+  once `calibration/labels.jsonl` has enough human labels. Bump to `0.2.0`.
+- The viz server writes `<bundle>/labels.jsonl` (bundle-local, matching
+  `badcases.jsonl`). Operators must sync to
+  `packages/pdfsys-bench/calibration/labels.jsonl` before fitting —
+  documented in `calibration/README.md` step 2.5.
+- Layer 3 (visual verifier / consensus) is the next spec on the critical
+  path for catching fluent-hallucination escapes that BERT alone misses.
+
+### Test surface added
+
+- `tests/bench/test_release_gate.py` — 26 tests (loader / decide / run_gate / boundary / null score / atomic write / CLI).
+- `tests/bench/test_llm_review.py` — 7 tests (scope filter, resume, missing markdown, scorer exception).
+- `tests/bench/test_fit_profile.py` — 5 tests (evaluate, fit, no-feasible, human-only, TOML escape).
+- `tests/architecture/test_boundary.py` — +1 (`llm_review` not imported by decision modules).
+
+All pass via `uv run pytest tests/bench/ tests/architecture/ -v`.
