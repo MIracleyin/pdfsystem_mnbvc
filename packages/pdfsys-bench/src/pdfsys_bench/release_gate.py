@@ -12,6 +12,7 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 
 SCORER_VERSION = "release-gate-v0.1"
 
@@ -31,7 +32,7 @@ class ThresholdProfile:
     description: str
     t_publish: float
     t_reject: float
-    grade_boundaries: dict[str, float]
+    grade_boundaries: MappingProxyType[str, float]
     disabled_blockers: frozenset[str] = field(default_factory=frozenset)
 
     @property
@@ -77,6 +78,9 @@ def load_profile(path: str | Path) -> ThresholdProfile:
         )
 
     grades = {k: float(grades_raw[k]) for k in _REQUIRED_GRADE_KEYS}
+    extra = set(grades_raw) - set(_REQUIRED_GRADE_KEYS)
+    if extra:
+        raise ValueError(f"grade_boundaries has unexpected keys: {sorted(extra)}")
     # Strict descending: excellent > good > fair
     if not (grades["excellent"] > grades["good"] > grades["fair"]):
         raise ValueError(
@@ -85,6 +89,10 @@ def load_profile(path: str | Path) -> ThresholdProfile:
 
     blockers_raw = raw.get("blockers", {})
     disabled = frozenset(blockers_raw.get("disable", []))
+    if not all(isinstance(x, str) for x in disabled):
+        raise ValueError(
+            f"blockers.disable must be a list of strings; got {sorted(disabled, key=str)!r}"
+        )
 
     return ThresholdProfile(
         name=str(raw["name"]),
@@ -93,6 +101,6 @@ def load_profile(path: str | Path) -> ThresholdProfile:
         description=str(raw["description"]),
         t_publish=t_publish,
         t_reject=t_reject,
-        grade_boundaries=grades,
+        grade_boundaries=MappingProxyType(grades),
         disabled_blockers=disabled,
     )

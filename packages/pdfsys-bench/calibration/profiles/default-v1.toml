@@ -3,6 +3,10 @@
 # Thresholds here are HAND-SET starting points; re-fit with fit_profile.py
 # once calibration/labels.jsonl has enough human labels and bump `version`.
 name = "default-v1"
+# Versioning convention:
+#   0.x.x = pre-fit placeholders (thresholds set by hand).
+#   >= 0.2.0 = re-fit by fit_profile.py from calibration/labels.jsonl.
+# Bump version whenever thresholds change so manifests stay traceable.
 version = "0.1.0"
 created_at = "2026-05-22"
 description = "v0 calibration on OmniDocBench 150 samples — placeholder thresholds before fitting"
