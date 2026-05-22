@@ -96,3 +96,54 @@ def test_fit_raises_when_no_feasible_thresholds(tmp_path: Path) -> None:
             bench_jsonl=bench, labels_jsonl=labels,
             false_publish_max=0.0, review_rate_max=0.0,
         )
+
+
+def test_load_human_labels_ignores_llm_draft_overrides(tmp_path: Path) -> None:
+    """An llm_draft row for the same doc_id must NOT overwrite a prior
+    human label. The classic re-calibration workflow appends llm_draft
+    rows after humans have reviewed — humans win regardless of order.
+    """
+    from pdfsys_bench.fit_profile import _load_human_labels
+
+    labels_path = tmp_path / "labels.jsonl"
+    labels_path.write_text(
+        # Human row first — declares "a" unpublishable.
+        json.dumps({
+            "doc_id": "a", "doc_publishable": False, "source": "human",
+            "doc_quality": 1, "severity": "minor", "issue_flags": [], "note": "",
+            "labeled_by": "t", "labeled_at": "2026-05-22T01:00:00",
+        }) + "\n"
+        # llm_draft re-seed after — claims "a" is publishable.
+        + json.dumps({
+            "doc_id": "a", "doc_publishable": True, "source": "llm_draft",
+            "draft_score_llm": 2.5, "draft_reason_llm": "looks fine",
+            "labeled_by": "llm", "labeled_at": "2026-05-22T02:00:00",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    labels = _load_human_labels(labels_path)
+    # The human row must win — "a" → False — not the llm_draft → True.
+    assert labels == {"a": False}
+
+
+def test_emit_profile_escapes_quotes_in_description(tmp_path: Path) -> None:
+    """A description containing a double-quote must NOT produce invalid
+    TOML — release_gate.load_profile must accept the round-trip."""
+    from pdfsys_bench.fit_profile import _emit_profile
+    from pdfsys_bench.release_gate import load_profile
+
+    out = tmp_path / "fitted.toml"
+    _emit_profile(
+        out,
+        name="quoted-v1",
+        version="0.2.0",
+        description='fitted from "v1" run on 2026-05-22',
+        t_publish=2.0,
+        t_reject=0.5,
+    )
+    # If escaping is broken, load_profile raises a tomllib parse error.
+    p = load_profile(out)
+    assert p.name == "quoted-v1"
+    assert p.t_publish == 2.0
+    assert p.t_reject == 0.5
+    assert '"v1"' in p.description  # description round-trips faithfully

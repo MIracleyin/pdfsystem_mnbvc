@@ -51,9 +51,12 @@ def _load_scores(bench_jsonl: Path) -> dict[str, float]:
 
 
 def _load_human_labels(labels_jsonl: Path) -> dict[str, bool]:
-    """Latest-wins across the file. Only ``source=human`` rows count;
-    LLM-draft rows are ignored. ``doc_publishable=null`` rows are also
-    ignored."""
+    """Latest-wins per ``doc_id`` AMONG HUMAN ROWS only.
+
+    ``source=llm_draft`` rows never overwrite a prior human label.
+    Rows without a ``doc_id`` or with ``doc_publishable=null`` are
+    ignored.
+    """
     by_id: dict[str, dict[str, Any]] = {}
     with labels_jsonl.open("r", encoding="utf-8") as f:
         for line in f:
@@ -64,11 +67,12 @@ def _load_human_labels(labels_jsonl: Path) -> dict[str, bool]:
             sha = rec.get("doc_id")
             if not sha:
                 continue
-            by_id[sha] = rec  # later rows overwrite
+            if rec.get("source") == "human":
+                by_id[sha] = rec
     return {
         sha: bool(rec["doc_publishable"])
         for sha, rec in by_id.items()
-        if rec.get("source") == "human" and rec.get("doc_publishable") is not None
+        if rec.get("doc_publishable") is not None
     }
 
 
@@ -190,6 +194,22 @@ def _today() -> str:
     return datetime.date.today().isoformat()
 
 
+def _toml_escape(s: str) -> str:
+    """Escape a string for inclusion inside a double-quoted TOML basic string.
+
+    TOML basic strings need backslash, double-quote, newline, tab, and
+    other control chars escaped. We handle the common cases — operators
+    aren't expected to put binary in profile metadata.
+    """
+    return (
+        s.replace("\\", "\\\\")
+         .replace('"', '\\"')
+         .replace("\n", "\\n")
+         .replace("\r", "\\r")
+         .replace("\t", "\\t")
+    )
+
+
 def _emit_profile(
     out_path: Path,
     *,
@@ -200,10 +220,10 @@ def _emit_profile(
     t_reject: float,
 ) -> None:
     body = (
-        f'name = "{name}"\n'
-        f'version = "{version}"\n'
+        f'name = "{_toml_escape(name)}"\n'
+        f'version = "{_toml_escape(version)}"\n'
         f'created_at = "{_today()}"\n'
-        f'description = "{description}"\n'
+        f'description = "{_toml_escape(description)}"\n'
         "\n"
         "[grade_boundaries]\n"
         "excellent = 2.5\n"
