@@ -9,7 +9,12 @@ See ``docs/superpowers/specs/2026-05-22-release-gate-layer4-design.md``.
 
 from __future__ import annotations
 
+import argparse
+import json
+import sys
 import tomllib
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -202,3 +207,117 @@ def decide(
         f"[{profile.t_reject:.2f}, {profile.t_publish:.2f}) — needs review"
     )
     return DECISION_REVIEW, grade, reasons
+
+
+# v1 reserves these schema keys for future Layer-3 / page-level work.
+# Always emitted as null so consumers can rely on their presence.
+_NULL_RESERVED_FIELDS = (
+    "page_quality_p05",
+    "page_quality_min",
+    "bad_page_ratio",
+    "visual_alignment_score",
+    "consensus_score",
+)
+
+# LLM review fields — populated later by llm_review.py if it runs.
+_NULL_LLM_FIELDS = (
+    "quality_score_llm",
+    "quality_reason_llm",
+    "quality_model_llm",
+)
+
+
+def build_manifest_row(row: dict, profile: ThresholdProfile) -> dict:
+    """Build one manifest row from one bench-loop row."""
+    decision, grade, reasons = decide(row, profile)
+    blockers = _final_blockers(row)
+    score = row.get("quality_score")
+
+    manifest: dict = {
+        "doc_id": row.get("sha256"),
+        "decision": decision,
+        "doc_quality_score": score,
+        "doc_quality_grade": grade,
+        "blockers": blockers,
+        "reasons": reasons,
+        "cascade_final_stage": row.get("cascade_final_stage"),
+    }
+    for k in _NULL_RESERVED_FIELDS:
+        manifest[k] = None
+    manifest["scorer_version"] = SCORER_VERSION
+    manifest["threshold_profile"] = profile.identifier
+    for k in _NULL_LLM_FIELDS:
+        manifest[k] = None
+    return manifest
+
+
+def _iter_jsonl(path: Path) -> Iterable[dict]:
+    with path.open("r", encoding="utf-8") as f:
+        for line_no, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"{path}:{line_no}: invalid JSON: {e}") from e
+
+
+def run_gate(
+    bench_jsonl: str | Path,
+    out_path: str | Path,
+    profile_path: str | Path,
+) -> dict:
+    """Read bench JSONL, apply the gate, write the release manifest.
+
+    Returns a summary dict with ``num_rows`` and ``by_decision``.
+    """
+    bench_jsonl = Path(bench_jsonl)
+    out_path = Path(out_path)
+    profile = load_profile(profile_path)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    counts: Counter[str] = Counter()
+    num_rows = 0
+    with out_path.open("w", encoding="utf-8") as out:
+        for row in _iter_jsonl(bench_jsonl):
+            manifest = build_manifest_row(row, profile)
+            out.write(json.dumps(manifest, ensure_ascii=False) + "\n")
+            counts[manifest["decision"]] += 1
+            num_rows += 1
+
+    return {
+        "num_rows": num_rows,
+        "by_decision": dict(counts),
+        "out_path": str(out_path),
+        "profile": profile.identifier,
+    }
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="pdfsys_bench.release_gate",
+        description="Apply Layer-4 release decisions to a bench JSONL.",
+    )
+    p.add_argument("--bench-jsonl", required=True, type=Path,
+                   help="Input bench JSONL from `python -m pdfsys_bench`")
+    p.add_argument("--out", required=True, type=Path,
+                   help="Output release manifest JSONL path")
+    p.add_argument("--profile", required=True, type=Path,
+                   help="Path to a TOML threshold profile")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
+    summary = run_gate(args.bench_jsonl, args.out, args.profile)
+    print(f"[release-gate] profile      = {summary['profile']}")
+    print(f"[release-gate] num_rows     = {summary['num_rows']}")
+    print(f"[release-gate] by_decision  = {summary['by_decision']}")
+    print(f"[release-gate] manifest at  = {summary['out_path']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

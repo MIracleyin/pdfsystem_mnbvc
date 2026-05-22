@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import textwrap
 from pathlib import Path
 
 import pytest
 
-from pdfsys_bench.release_gate import ThresholdProfile, decide, grade_for_score, load_profile
+from pdfsys_bench.release_gate import (
+    ThresholdProfile,
+    build_manifest_row,
+    decide,
+    grade_for_score,
+    load_profile,
+    run_gate,
+)
 
 
 def _write(tmp_path: Path, content: str) -> Path:
@@ -326,3 +334,94 @@ def test_threshold_profile_direct_construction_normalizes_grade_boundaries() -> 
     )
     with pytest.raises(TypeError):
         profile.grade_boundaries["excellent"] = 99.0  # type: ignore[index]
+
+
+def test_build_manifest_row_publish_with_cascade(tmp_path: Path) -> None:
+    profile = _profile()
+    row = _bench_row(quality_score=2.3)
+    manifest = build_manifest_row(row, profile)
+    assert manifest["doc_id"] == "abc123"
+    assert manifest["decision"] == "publish"
+    assert manifest["doc_quality_score"] == 2.3
+    assert manifest["doc_quality_grade"] == "good"
+    assert manifest["blockers"] == {
+        "empty_output": False, "too_short": False,
+        "high_replacement_chars": False, "high_garbage_chars": False,
+        "repetition_loop": False,
+    }
+    assert isinstance(manifest["reasons"], list) and manifest["reasons"]
+    assert manifest["cascade_final_stage"] == "mupdf"
+    # v1 page-level + Layer-3 fields are reserved as null
+    assert manifest["page_quality_p05"] is None
+    assert manifest["page_quality_min"] is None
+    assert manifest["bad_page_ratio"] is None
+    assert manifest["visual_alignment_score"] is None
+    assert manifest["consensus_score"] is None
+    # Traceability fields
+    assert manifest["scorer_version"] == "release-gate-v0.1"
+    assert manifest["threshold_profile"] == "t@1.0.0"
+    # LLM fields are null until llm_review runs
+    assert manifest["quality_score_llm"] is None
+    assert manifest["quality_reason_llm"] is None
+    assert manifest["quality_model_llm"] is None
+
+
+def test_build_manifest_row_non_cascade_run() -> None:
+    """When the bench was run without --cascade, blockers must be {} and
+    cascade_final_stage None — decide() then falls through on the score."""
+    profile = _profile()
+    row = {
+        "sha256": "noxcd",
+        "quality_score": 2.5,
+        "cascade_decision": None,
+        "cascade_final_stage": None,
+        "cascade_attempts": None,
+    }
+    manifest = build_manifest_row(row, profile)
+    assert manifest["decision"] == "publish"
+    assert manifest["blockers"] == {}
+    assert manifest["cascade_final_stage"] is None
+
+
+def test_run_gate_reads_jsonl_and_writes_manifest(tmp_path: Path) -> None:
+    profile_path = tmp_path / "profile.toml"
+    profile_path.write_text(textwrap.dedent("""
+        name = "t"
+        version = "1.0.0"
+        created_at = "2026-05-22"
+        description = ""
+        [grade_boundaries]
+        excellent = 2.5
+        good = 1.5
+        fair = 0.5
+        [decision]
+        t_publish = 2.0
+        t_reject = 0.5
+        [blockers]
+        disable = []
+    """), encoding="utf-8")
+
+    bench_path = tmp_path / "bench.jsonl"
+    rows = [
+        _bench_row(quality_score=2.3),                   # publish
+        _bench_row(quality_score=1.0),                   # review (grey)
+        _bench_row(quality_score=0.1),                   # reject (score)
+    ]
+    rows[0]["sha256"] = "row0"
+    rows[1]["sha256"] = "row1"
+    rows[2]["sha256"] = "row2"
+    bench_path.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
+    )
+
+    out_path = tmp_path / "manifest.jsonl"
+    summary = run_gate(bench_path, out_path, profile_path)
+
+    assert summary["num_rows"] == 3
+    assert summary["by_decision"] == {"publish": 1, "review": 1, "reject": 1}
+
+    lines = out_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 3
+    parsed = [json.loads(line) for line in lines]
+    assert [m["decision"] for m in parsed] == ["publish", "review", "reject"]
+    assert [m["doc_id"] for m in parsed] == ["row0", "row1", "row2"]
