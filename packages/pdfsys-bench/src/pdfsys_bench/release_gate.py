@@ -224,6 +224,7 @@ _NULL_LLM_FIELDS = (
     "quality_score_llm",
     "quality_reason_llm",
     "quality_model_llm",
+    "quality_parse_error_llm",
 )
 
 

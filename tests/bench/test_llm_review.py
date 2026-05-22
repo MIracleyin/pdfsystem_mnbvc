@@ -155,3 +155,56 @@ def test_run_review_resume_skips_already_scored(tmp_path: Path) -> None:
     assert by_id["a"]["quality_reason_llm"] == "from ckpt"
     assert by_id["b"]["quality_score_llm"] == 1.0   # fresh
     assert by_id["b"]["quality_reason_llm"] == "fresh"
+
+
+def test_run_review_records_missing_markdown(tmp_path: Path) -> None:
+    """If markdown_dir has no matching file, the row gets a sentinel
+    record with parse_error='missing markdown' — but the manifest
+    must still be rewritten cleanly."""
+    md_dir = tmp_path / "md"
+    md_dir.mkdir()  # empty dir — no markdown files
+    manifest = tmp_path / "manifest.jsonl"
+    rows = [_manifest_row("ghost", "publish", markdown_path="ghost.md")]
+    manifest.write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+
+    scorer = MagicMock()
+    scorer.client.config.model = "mimo-v2.5-pro"
+    # score() should NOT be called for a missing-markdown row.
+    summary = run_review(
+        manifest_path=manifest, markdown_dir=md_dir,
+        scope="all", scorer=scorer, workers=1,
+    )
+    assert scorer.score.call_count == 0
+    assert summary["num_scored"] == 1
+    patched = json.loads(manifest.read_text(encoding="utf-8").strip())
+    assert patched["quality_score_llm"] is None
+    assert "markdown not found" in patched["quality_reason_llm"]
+    assert patched["quality_parse_error_llm"] == "missing markdown"
+
+
+def test_run_review_captures_scorer_exception(tmp_path: Path) -> None:
+    """A scorer exception on one row must NOT abort the batch — it
+    becomes a sentinel record with parse_error=<exception> so the
+    batch continues and the manifest is still rewritten."""
+    md_dir = tmp_path / "md"
+    md_dir.mkdir()
+    (md_dir / "a.md").write_text("text", encoding="utf-8")
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(
+        json.dumps(_manifest_row("a", "publish", markdown_path="a.md")) + "\n",
+        encoding="utf-8",
+    )
+
+    scorer = MagicMock()
+    scorer.client.config.model = "mimo-v2.5-pro"
+    scorer.score.side_effect = RuntimeError("transient API error")
+
+    summary = run_review(
+        manifest_path=manifest, markdown_dir=md_dir,
+        scope="all", scorer=scorer, workers=1,
+    )
+    assert summary["num_scored"] == 1
+    patched = json.loads(manifest.read_text(encoding="utf-8").strip())
+    assert patched["quality_score_llm"] is None
+    assert "RuntimeError" in patched["quality_parse_error_llm"]
+    assert "transient API error" in patched["quality_parse_error_llm"]

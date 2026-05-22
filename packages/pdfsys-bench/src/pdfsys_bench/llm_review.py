@@ -31,7 +31,12 @@ from typing import Any
 from .quality_llm import LlmQualityScorer
 
 _VALID_SCOPES = ("all", "review")
-_PATCH_FIELDS = ("quality_score_llm", "quality_reason_llm", "quality_model_llm")
+_PATCH_FIELDS = (
+    "quality_score_llm",
+    "quality_reason_llm",
+    "quality_model_llm",
+    "quality_parse_error_llm",
+)
 
 
 def filter_manifest_rows(
@@ -62,11 +67,21 @@ def _load_manifest(path: Path) -> list[dict]:
 
 
 def _write_manifest(path: Path, rows: list[dict]) -> None:
+    """Write rows to ``path`` atomically via a .tmp + rename.
+
+    On any failure (including KeyboardInterrupt) the .tmp file is
+    unlinked so we never leave litter that could be mistaken for the
+    real manifest by another tool.
+    """
     tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    tmp.replace(path)
+    try:
+        with tmp.open("w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _load_checkpoint(path: Path) -> dict[str, dict[str, Any]]:
@@ -121,7 +136,16 @@ def _score_row(
             "quality_parse_error_llm": "missing markdown",
         }
     text = md_path.read_text(encoding="utf-8", errors="replace")
-    result = scorer.score(text)
+    try:
+        result = scorer.score(text)
+    except Exception as exc:  # keep the batch going on transient errors
+        return {
+            "doc_id": row["doc_id"],
+            "quality_score_llm": None,
+            "quality_reason_llm": "",
+            "quality_model_llm": scorer.client.config.model,
+            "quality_parse_error_llm": f"{type(exc).__name__}: {exc}"[:300],
+        }
     return {
         "doc_id": row["doc_id"],
         "quality_score_llm": result.score,

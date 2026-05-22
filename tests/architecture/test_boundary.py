@@ -180,10 +180,9 @@ def test_core_has_no_external_imports():
                         )
             elif isinstance(node, ast.ImportFrom) and node.module:
                 top = node.module.split(".")[0]
-                if top not in STDLIB and top != "pdfsys_core":
-                    # Relative imports (node.level > 0) are intra-package.
-                    if node.level == 0:
-                        violations.append(
+                # Relative imports (node.level > 0) are intra-package.
+                if top not in STDLIB and top != "pdfsys_core" and node.level == 0:
+                    violations.append(
                             f"{py_file.relative_to(PROJECT_ROOT)}:{node.lineno} "
                             f"imports {node.module} (not stdlib)"
                         )
@@ -193,3 +192,41 @@ def test_core_has_no_external_imports():
         + "\n".join(violations)
         + "\nSee docs/golden-principles/ZERO_DEP_CORE.md"
     )
+
+
+def test_llm_review_not_imported_by_decision_modules() -> None:
+    """Architectural invariant: the LLM score must NEVER enter the
+    release-gate decision rule. Enforced by AST scan — these three
+    modules must not import ``llm_review`` directly or via a relative
+    import.
+    """
+    bench_src = PACKAGES_DIR / "pdfsys-bench" / "src" / "pdfsys_bench"
+    forbidden_consumers = ("loop.py", "cascade.py", "release_gate.py")
+    for fname in forbidden_consumers:
+        path = bench_src / fname
+        assert path.exists(), f"missing source file: {path}"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                # Absolute or relative — both unwelcome.
+                if "llm_review" in module:
+                    raise AssertionError(
+                        f"{fname}:{node.lineno} imports 'llm_review' "
+                        f"({module!r}); this breaks the release-gate boundary"
+                    )
+                # Also catch `from . import llm_review` (module=None, names contain it).
+                if node.module is None:
+                    for alias in node.names:
+                        if alias.name == "llm_review":
+                            raise AssertionError(
+                                f"{fname}:{node.lineno} imports 'llm_review' "
+                                f"via relative import; this breaks the boundary"
+                            )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if "llm_review" in alias.name:
+                        raise AssertionError(
+                            f"{fname}:{node.lineno} imports 'llm_review' "
+                            f"({alias.name!r}); this breaks the release-gate boundary"
+                        )

@@ -365,6 +365,7 @@ def test_build_manifest_row_publish_with_cascade() -> None:
     assert manifest["quality_score_llm"] is None
     assert manifest["quality_reason_llm"] is None
     assert manifest["quality_model_llm"] is None
+    assert manifest["quality_parse_error_llm"] is None
 
 
 def test_build_manifest_row_non_cascade_run() -> None:
