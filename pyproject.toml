@@ -37,6 +37,11 @@ pdfsys-cli              = { workspace = true }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15.14",
+]
+
 [tool.hatch.build.targets.wheel]
 # Root is a virtual meta-package — no source of its own.
 bypass-selection = true
