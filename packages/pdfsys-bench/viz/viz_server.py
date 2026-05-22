@@ -31,7 +31,13 @@ from pathlib import Path
 
 BUNDLE_DIR = Path(__file__).resolve().parent
 BADCASES_PATH = BUNDLE_DIR / "badcases.jsonl"
+LABELS_PATH = BUNDLE_DIR / "labels.jsonl"
 VALID_STAGES = ("router", "layout", "extract", "quality", "overall")
+VALID_SEVERITIES = ("none", "minor", "major", "critical")
+VALID_ISSUE_FLAGS = (
+    "garbage_text", "repetition", "encoding_issue",
+    "missing_content", "broken_table", "reading_order",
+)
 
 USER = os.environ.get("USER", "anon")
 
@@ -65,6 +71,43 @@ def _append_badcase(rec: dict) -> None:
     BADCASES_PATH.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(rec, ensure_ascii=False) + "\n"
     with BADCASES_PATH.open("a", encoding="utf-8") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(line)
+            f.flush()
+            os.fsync(f.fileno())
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+def _load_labels() -> list[dict]:
+    """Load all label records, latest-per-doc_id wins."""
+    if not LABELS_PATH.exists():
+        return []
+    latest: dict[str, dict] = {}
+    with LABELS_PATH.open("r", encoding="utf-8") as f:
+        for line_no, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"[viz_server] WARN: labels line {line_no} not JSON", file=sys.stderr)
+                continue
+            sha = rec.get("doc_id")
+            if not sha:
+                continue
+            prev = latest.get(sha)
+            if prev is None or rec.get("labeled_at", "") >= prev.get("labeled_at", ""):
+                latest[sha] = rec
+    return list(latest.values())
+
+
+def _append_label(rec: dict) -> None:
+    LABELS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(rec, ensure_ascii=False) + "\n"
+    with LABELS_PATH.open("a", encoding="utf-8") as f:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
             f.write(line)
@@ -141,12 +184,19 @@ class VizHandler(BaseHTTPRequestHandler):
         if self.path == "/api/badcases":
             self._send_json(HTTPStatus.OK, {"badcases": _load_badcases()})
             return
+        if self.path == "/api/labels":
+            self._send_json(HTTPStatus.OK, {"labels": _load_labels()})
+            return
         self._serve_static()
 
     def do_POST(self) -> None:
-        if self.path != "/api/badcase":
-            self._send_text(HTTPStatus.NOT_FOUND, "no such endpoint")
-            return
+        if self.path == "/api/badcase":
+            return self._handle_post_badcase()
+        if self.path == "/api/label":
+            return self._handle_post_label()
+        self._send_text(HTTPStatus.NOT_FOUND, "no such endpoint")
+
+    def _handle_post_badcase(self) -> None:
         body = self._read_json_body()
         if not isinstance(body, dict):
             self._send_text(HTTPStatus.BAD_REQUEST, "body must be JSON object")
@@ -173,10 +223,54 @@ class VizHandler(BaseHTTPRequestHandler):
             "stage": stage,
             "tags": tags,
             "note": note[:1000],
-            "flagged_at": datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(timespec="seconds"),
+            "flagged_at": datetime.datetime.now(datetime.UTC).astimezone().isoformat(timespec="seconds"),
             "flagged_by": USER,
         }
         _append_badcase(rec)
+        self._send_json(HTTPStatus.OK, rec)
+
+    def _handle_post_label(self) -> None:
+        body = self._read_json_body()
+        if not isinstance(body, dict):
+            self._send_text(HTTPStatus.BAD_REQUEST, "body must be JSON object")
+            return
+        sha = body.get("doc_id")
+        if not isinstance(sha, str) or not sha:
+            self._send_text(HTTPStatus.BAD_REQUEST, "missing doc_id")
+            return
+        quality = body.get("doc_quality")
+        if isinstance(quality, bool) or not isinstance(quality, int) or not (0 <= quality <= 3):
+            self._send_text(HTTPStatus.BAD_REQUEST, "doc_quality must be int 0..3")
+            return
+        publishable = body.get("doc_publishable")
+        if publishable is not None and not isinstance(publishable, bool):
+            self._send_text(HTTPStatus.BAD_REQUEST, "doc_publishable must be bool or null")
+            return
+        severity = body.get("severity", "none")
+        if severity not in VALID_SEVERITIES:
+            self._send_text(HTTPStatus.BAD_REQUEST, f"severity must be one of {VALID_SEVERITIES}")
+            return
+        issue_flags = body.get("issue_flags") or []
+        if not isinstance(issue_flags, list) or not all(f in VALID_ISSUE_FLAGS for f in issue_flags):
+            self._send_text(HTTPStatus.BAD_REQUEST,
+                            f"issue_flags must be a subset of {VALID_ISSUE_FLAGS}")
+            return
+        note = body.get("note", "")
+        if not isinstance(note, str):
+            self._send_text(HTTPStatus.BAD_REQUEST, "note must be str")
+            return
+        rec = {
+            "doc_id": sha,
+            "doc_quality": quality,
+            "doc_publishable": publishable,
+            "severity": severity,
+            "issue_flags": issue_flags,
+            "note": note[:1000],
+            "labeled_by": USER,
+            "labeled_at": datetime.datetime.now(datetime.UTC).astimezone().isoformat(timespec="seconds"),
+            "source": "human",
+        }
+        _append_label(rec)
         self._send_json(HTTPStatus.OK, rec)
 
     def do_DELETE(self) -> None:
@@ -193,7 +287,7 @@ class VizHandler(BaseHTTPRequestHandler):
             "stage": "overall",
             "tags": [],
             "note": "",
-            "flagged_at": datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(timespec="seconds"),
+            "flagged_at": datetime.datetime.now(datetime.UTC).astimezone().isoformat(timespec="seconds"),
             "flagged_by": USER,
         }
         _append_badcase(rec)
@@ -211,10 +305,12 @@ def main() -> int:
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), VizHandler)
     n_existing = len(_load_badcases())
+    n_labels = len(_load_labels())
     print(f"pdfsys viz server: http://localhost:{args.port}/")
     print(f"  bundle dir: {BUNDLE_DIR}")
     print(f"  user (flagged_by): {USER}")
     print(f"  badcases.jsonl: {BADCASES_PATH} ({n_existing} active flags)")
+    print(f"  labels.jsonl:   {LABELS_PATH} ({n_labels} active labels)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
