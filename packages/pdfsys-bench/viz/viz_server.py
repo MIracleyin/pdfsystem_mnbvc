@@ -1,14 +1,21 @@
-"""pdfsys viz server — static file serving + bad-case flagging API.
+"""pdfsys viz server — static file serving + bad-case flagging + calibration labeling API.
 
-Replaces `python -m http.server` for the viz bundle. Adds three API
-endpoints backed by an append-only badcases.jsonl in the bundle dir.
+Replaces `python -m http.server` for the viz bundle. Adds five API
+endpoints backed by two append-only JSONL files in the bundle dir
+(``badcases.jsonl`` and ``labels.jsonl``).
 
 API:
-    GET  /api/badcases             → {"badcases": [<latest-per-sha>...]}
-    POST /api/badcase              ← {sha256, stage, tags, note}
-                                   → {<full record with server-filled
-                                     flagged_at/by, is_bad: true>}
-    DELETE /api/badcase/<sha256>   → {sha256, is_bad: false, ...}
+    GET    /api/badcases            → {"badcases": [<latest-per-sha>...]}
+    POST   /api/badcase             ← {sha256, stage, tags, note}
+                                    → {<full record with server-filled
+                                      flagged_at/by, is_bad: true>}
+    DELETE /api/badcase/<sha256>    → {sha256, is_bad: false, ...}
+
+    GET    /api/labels              → {"labels": [<latest-per-doc_id>...]}
+    POST   /api/label               ← {doc_id, doc_quality, doc_publishable,
+                                       severity, issue_flags, note}
+                                    → {<full record with server-filled
+                                      labeled_at/by, source: "human">}
 
 Anything else falls through to static file serving from the bundle dir
 (resolved as the directory containing this script).
@@ -105,6 +112,7 @@ def _load_labels() -> list[dict]:
 
 
 def _append_label(rec: dict) -> None:
+    """Append a record to labels.jsonl with an exclusive flock + fsync."""
     LABELS_PATH.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(rec, ensure_ascii=False) + "\n"
     with LABELS_PATH.open("a", encoding="utf-8") as f:
@@ -255,6 +263,8 @@ class VizHandler(BaseHTTPRequestHandler):
             self._send_text(HTTPStatus.BAD_REQUEST,
                             f"issue_flags must be a subset of {VALID_ISSUE_FLAGS}")
             return
+        # Dedupe while preserving order — "subset of a fixed vocab" implies unique.
+        issue_flags = list(dict.fromkeys(issue_flags))
         note = body.get("note", "")
         if not isinstance(note, str):
             self._send_text(HTTPStatus.BAD_REQUEST, "note must be str")

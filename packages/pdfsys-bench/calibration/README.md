@@ -52,6 +52,20 @@ Spec: `docs/superpowers/specs/2026-05-22-release-gate-layer4-design.md`.
    `labels.jsonl` directly. New rows for the same `doc_id` override
    prior ones.
 
+2.5. **Sync labels from the viz bundle into the calibration set.** Each
+   labeling session writes to `<bundle_dir>/labels.jsonl` (bundle-local,
+   matching the `badcases.jsonl` convention). Before re-fitting, append
+   those rows into the canonical `calibration/labels.jsonl`:
+
+   ```
+   cat out/viz_final/labels.jsonl >> packages/pdfsys-bench/calibration/labels.jsonl
+   ```
+
+   The file is append-only with latest-wins semantics on `doc_id` (and
+   `fit_profile.py` only uses `source=human` rows), so re-running the
+   sync is idempotent — duplicate rows simply get overridden by the
+   newer copy of themselves.
+
 3. Once ≥ 50 / 150 rows are human-labeled, re-fit:
    ```
    uv run python -m pdfsys_bench.fit_profile \
