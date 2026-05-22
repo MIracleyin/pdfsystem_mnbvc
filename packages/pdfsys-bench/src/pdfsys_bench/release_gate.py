@@ -14,7 +14,7 @@ import json
 import sys
 import tomllib
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -251,7 +251,7 @@ def build_manifest_row(row: dict, profile: ThresholdProfile) -> dict:
     return manifest
 
 
-def _iter_jsonl(path: Path) -> Iterable[dict]:
+def _iter_jsonl(path: Path) -> Iterator[dict]:
     with path.open("r", encoding="utf-8") as f:
         for line_no, line in enumerate(f, 1):
             line = line.strip()
@@ -270,6 +270,10 @@ def run_gate(
 ) -> dict:
     """Read bench JSONL, apply the gate, write the release manifest.
 
+    Writes to ``<out_path>.tmp`` first, then renames atomically on
+    success. On any error during streaming, the partial temp file is
+    deleted so ``out_path`` is never left in an inconsistent state.
+
     Returns a summary dict with ``num_rows`` and ``by_decision``.
     """
     bench_jsonl = Path(bench_jsonl)
@@ -277,15 +281,21 @@ def run_gate(
     profile = load_profile(profile_path)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
 
     counts: Counter[str] = Counter()
     num_rows = 0
-    with out_path.open("w", encoding="utf-8") as out:
-        for row in _iter_jsonl(bench_jsonl):
-            manifest = build_manifest_row(row, profile)
-            out.write(json.dumps(manifest, ensure_ascii=False) + "\n")
-            counts[manifest["decision"]] += 1
-            num_rows += 1
+    try:
+        with tmp_path.open("w", encoding="utf-8") as out:
+            for row in _iter_jsonl(bench_jsonl):
+                manifest = build_manifest_row(row, profile)
+                out.write(json.dumps(manifest, ensure_ascii=False) + "\n")
+                counts[manifest["decision"]] += 1
+                num_rows += 1
+        tmp_path.replace(out_path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
     return {
         "num_rows": num_rows,
@@ -314,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = run_gate(args.bench_jsonl, args.out, args.profile)
     print(f"[release-gate] profile      = {summary['profile']}")
     print(f"[release-gate] num_rows     = {summary['num_rows']}")
-    print(f"[release-gate] by_decision  = {summary['by_decision']}")
+    print(f"[release-gate] by_decision  = {json.dumps(summary['by_decision'])}")
     print(f"[release-gate] manifest at  = {summary['out_path']}")
     return 0
 

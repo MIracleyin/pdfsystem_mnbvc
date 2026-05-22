@@ -14,6 +14,7 @@ from pdfsys_bench.release_gate import (
     decide,
     grade_for_score,
     load_profile,
+    main,
     run_gate,
 )
 
@@ -336,7 +337,7 @@ def test_threshold_profile_direct_construction_normalizes_grade_boundaries() -> 
         profile.grade_boundaries["excellent"] = 99.0  # type: ignore[index]
 
 
-def test_build_manifest_row_publish_with_cascade(tmp_path: Path) -> None:
+def test_build_manifest_row_publish_with_cascade() -> None:
     profile = _profile()
     row = _bench_row(quality_score=2.3)
     manifest = build_manifest_row(row, profile)
@@ -425,3 +426,144 @@ def test_run_gate_reads_jsonl_and_writes_manifest(tmp_path: Path) -> None:
     parsed = [json.loads(line) for line in lines]
     assert [m["decision"] for m in parsed] == ["publish", "review", "reject"]
     assert [m["doc_id"] for m in parsed] == ["row0", "row1", "row2"]
+
+
+def test_run_gate_empty_bench_jsonl(tmp_path: Path) -> None:
+    """Empty input produces an empty manifest and zero counts."""
+    profile_path = tmp_path / "profile.toml"
+    profile_path.write_text(textwrap.dedent("""
+        name = "t"
+        version = "1.0.0"
+        created_at = "2026-05-22"
+        description = ""
+        [grade_boundaries]
+        excellent = 2.5
+        good = 1.5
+        fair = 0.5
+        [decision]
+        t_publish = 2.0
+        t_reject = 0.5
+        [blockers]
+        disable = []
+    """), encoding="utf-8")
+    bench = tmp_path / "bench.jsonl"
+    bench.write_text("", encoding="utf-8")
+    out = tmp_path / "manifest.jsonl"
+    summary = run_gate(bench, out, profile_path)
+    assert summary["num_rows"] == 0
+    assert summary["by_decision"] == {}
+    assert out.read_text(encoding="utf-8") == ""
+
+
+def test_run_gate_malformed_json_raises_with_file_and_line(tmp_path: Path) -> None:
+    """Parse errors must surface ``<path>:<line_no>: invalid JSON:`` — that
+    format is part of the contract CI/log triage relies on."""
+    profile_path = tmp_path / "profile.toml"
+    profile_path.write_text(textwrap.dedent("""
+        name = "t"
+        version = "1.0.0"
+        created_at = "2026-05-22"
+        description = ""
+        [grade_boundaries]
+        excellent = 2.5
+        good = 1.5
+        fair = 0.5
+        [decision]
+        t_publish = 2.0
+        t_reject = 0.5
+        [blockers]
+        disable = []
+    """), encoding="utf-8")
+    bench = tmp_path / "bench.jsonl"
+    bench.write_text(
+        json.dumps({"sha256": "ok", "quality_score": 2.5}) + "\n"
+        "{not json}\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "manifest.jsonl"
+    with pytest.raises(ValueError, match=r"bench\.jsonl:2: invalid JSON:"):
+        run_gate(bench, out, profile_path)
+    # And the manifest must not exist (the .tmp must have been cleaned up).
+    assert not out.exists()
+
+
+def test_run_gate_null_score_routes_to_review(tmp_path: Path) -> None:
+    """A bench row with ``quality_score: null`` (e.g. ``--no-quality`` run)
+    must be routed to review with a null grade — not crash and not
+    silently treated as zero."""
+    profile_path = tmp_path / "profile.toml"
+    profile_path.write_text(textwrap.dedent("""
+        name = "t"
+        version = "1.0.0"
+        created_at = "2026-05-22"
+        description = ""
+        [grade_boundaries]
+        excellent = 2.5
+        good = 1.5
+        fair = 0.5
+        [decision]
+        t_publish = 2.0
+        t_reject = 0.5
+        [blockers]
+        disable = []
+    """), encoding="utf-8")
+    bench = tmp_path / "bench.jsonl"
+    bench.write_text(
+        json.dumps({
+            "sha256": "no-score",
+            "quality_score": None,
+            "cascade_final_stage": "mupdf",
+            "cascade_attempts": [],
+        }) + "\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "manifest.jsonl"
+    summary = run_gate(bench, out, profile_path)
+    assert summary["by_decision"] == {"review": 1}
+    record = json.loads(out.read_text(encoding="utf-8").strip())
+    assert record["decision"] == "review"
+    assert record["doc_quality_score"] is None
+    assert record["doc_quality_grade"] is None
+
+
+def test_main_via_argv_returns_zero_and_prints_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI entry must be callable with explicit argv, exit 0, and
+    emit a JSON-parseable by_decision line."""
+    profile_path = tmp_path / "profile.toml"
+    profile_path.write_text(textwrap.dedent("""
+        name = "t"
+        version = "1.0.0"
+        created_at = "2026-05-22"
+        description = ""
+        [grade_boundaries]
+        excellent = 2.5
+        good = 1.5
+        fair = 0.5
+        [decision]
+        t_publish = 2.0
+        t_reject = 0.5
+        [blockers]
+        disable = []
+    """), encoding="utf-8")
+    bench = tmp_path / "bench.jsonl"
+    bench.write_text(json.dumps(_bench_row(quality_score=2.3)) + "\n", encoding="utf-8")
+    out = tmp_path / "manifest.jsonl"
+    rc = main([
+        "--bench-jsonl", str(bench),
+        "--out", str(out),
+        "--profile", str(profile_path),
+    ])
+    assert rc == 0
+    captured = capsys.readouterr().out
+    assert "[release-gate]" in captured
+    # by_decision line must be JSON-parseable
+    for line in captured.splitlines():
+        if "by_decision" in line:
+            payload = line.split("=", 1)[1].strip()
+            parsed = json.loads(payload)
+            assert parsed == {"publish": 1}
+            break
+    else:
+        raise AssertionError("by_decision line not found in CLI output")
