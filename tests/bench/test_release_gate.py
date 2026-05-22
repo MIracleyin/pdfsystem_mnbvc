@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pdfsys_bench.release_gate import ThresholdProfile, load_profile
+from pdfsys_bench.release_gate import ThresholdProfile, decide, grade_for_score, load_profile
 
 
 def _write(tmp_path: Path, content: str) -> Path:
@@ -185,3 +185,108 @@ def test_load_profile_rejects_unknown_grade_keys(tmp_path: Path) -> None:
     """)
     with pytest.raises(ValueError, match="unexpected keys"):
         load_profile(p)
+
+
+def _profile(t_publish: float = 2.0, t_reject: float = 0.5) -> ThresholdProfile:
+    return ThresholdProfile(
+        name="t", version="1.0.0", created_at="2026-05-22", description="",
+        t_publish=t_publish, t_reject=t_reject,
+        grade_boundaries={"excellent": 2.5, "good": 1.5, "fair": 0.5},
+        disabled_blockers=frozenset(),
+    )
+
+
+def _bench_row(
+    *,
+    quality_score: float | None = 2.3,
+    cascade_attempts: list[dict] | None = None,
+) -> dict:
+    return {
+        "sha256": "abc123",
+        "quality_score": quality_score,
+        "cascade_decision": "publish",
+        "cascade_final_stage": "mupdf",
+        "cascade_attempts": cascade_attempts
+            or [{"stage": "mupdf", "decision": "publish",
+                 "blockers": {"empty_output": False, "too_short": False,
+                              "high_replacement_chars": False, "high_garbage_chars": False,
+                              "repetition_loop": False},
+                 "metrics": {}, "error": None, "wall_ms": 1.0}],
+    }
+
+
+def test_decide_publish_when_score_above_t_publish_and_no_blockers() -> None:
+    decision, grade, reasons = decide(_bench_row(quality_score=2.3), _profile())
+    assert decision == "publish"
+    assert grade == "good"
+    assert any("t_publish" in r for r in reasons)
+
+
+def test_decide_reject_when_blocker_triggered() -> None:
+    bad = _bench_row(
+        quality_score=2.8,  # high score, but blocker vetoes
+        cascade_attempts=[{
+            "stage": "vlm",
+            "decision": "escalate",
+            "blockers": {"empty_output": False, "too_short": False,
+                         "high_replacement_chars": False, "high_garbage_chars": False,
+                         "repetition_loop": True},
+            "metrics": {},
+            "error": None,
+            "wall_ms": 1.0,
+        }],
+    )
+    decision, _grade, reasons = decide(bad, _profile())
+    assert decision == "reject"
+    assert any("repetition_loop" in r for r in reasons)
+
+
+def test_decide_reject_when_score_below_t_reject() -> None:
+    decision, _, reasons = decide(_bench_row(quality_score=0.2), _profile())
+    assert decision == "reject"
+    assert any("t_reject" in r for r in reasons)
+
+
+def test_decide_review_in_grey_band() -> None:
+    decision, grade, reasons = decide(_bench_row(quality_score=1.0), _profile())
+    assert decision == "review"
+    assert grade == "fair"
+    assert any("grey band" in r for r in reasons)
+
+
+def test_decide_review_when_score_missing() -> None:
+    decision, grade, reasons = decide(_bench_row(quality_score=None), _profile())
+    assert decision == "review"
+    assert grade is None
+    assert any("missing" in r for r in reasons)
+
+
+def test_decide_ignores_disabled_blockers() -> None:
+    profile = ThresholdProfile(
+        name="t", version="1.0.0", created_at="2026-05-22", description="",
+        t_publish=2.0, t_reject=0.5,
+        grade_boundaries={"excellent": 2.5, "good": 1.5, "fair": 0.5},
+        disabled_blockers=frozenset({"repetition_loop"}),
+    )
+    bad = _bench_row(
+        quality_score=2.5,
+        cascade_attempts=[{
+            "stage": "mupdf", "decision": "publish",
+            "blockers": {"empty_output": False, "too_short": False,
+                         "high_replacement_chars": False, "high_garbage_chars": False,
+                         "repetition_loop": True},
+            "metrics": {}, "error": None, "wall_ms": 1.0,
+        }],
+    )
+    decision, _, _ = decide(bad, profile)
+    assert decision == "publish"
+
+
+def test_grade_for_score_thresholds() -> None:
+    profile = _profile()
+    assert grade_for_score(2.5, profile) == "excellent"
+    assert grade_for_score(2.49, profile) == "good"
+    assert grade_for_score(1.5, profile) == "good"
+    assert grade_for_score(0.5, profile) == "fair"
+    assert grade_for_score(0.49, profile) == "poor"
+    assert grade_for_score(None, profile) is None

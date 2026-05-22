@@ -104,3 +104,95 @@ def load_profile(path: str | Path) -> ThresholdProfile:
         grade_boundaries=MappingProxyType(grades),
         disabled_blockers=disabled,
     )
+
+
+DECISION_PUBLISH = "publish"
+DECISION_REVIEW = "review"
+DECISION_REJECT = "reject"
+
+
+def grade_for_score(score: float | None, profile: ThresholdProfile) -> str | None:
+    """Map a numeric score to a grade label via the profile boundaries.
+
+    Returns ``None`` if ``score`` is ``None`` (e.g. the bench was run
+    with ``--no-quality``).
+    """
+    if score is None:
+        return None
+    g = profile.grade_boundaries
+    if score >= g["excellent"]:
+        return "excellent"
+    if score >= g["good"]:
+        return "good"
+    if score >= g["fair"]:
+        return "fair"
+    return "poor"
+
+
+def _final_blockers(row: dict) -> dict[str, bool]:
+    """Pull Layer-1 blockers off the last cascade attempt (if any).
+
+    Non-cascade rows have no ``cascade_attempts``; treat them as empty.
+    """
+    attempts = row.get("cascade_attempts") or []
+    if not attempts:
+        return {}
+    last = attempts[-1]
+    return dict(last.get("blockers") or {})
+
+
+def decide(
+    row: dict,
+    profile: ThresholdProfile,
+) -> tuple[str, str | None, list[str]]:
+    """Apply the release-gate rules to one bench row.
+
+    Returns:
+        ``(decision, grade, reasons)`` where ``decision`` is one of
+        ``"publish"``, ``"review"``, ``"reject"``; ``grade`` is the
+        score-derived label (or ``None`` when score is missing); and
+        ``reasons`` is a human-readable trail.
+
+    Order:
+        1. Any non-disabled Layer-1 blocker → reject (vetoes score).
+        2. score is None → review (with explanatory reason).
+        3. score >= t_publish → publish.
+        4. score < t_reject → reject.
+        5. else → review (grey band).
+    """
+    reasons: list[str] = []
+    grade = grade_for_score(row.get("quality_score"), profile)
+
+    blockers = _final_blockers(row)
+    triggered = [
+        name
+        for name, hit in blockers.items()
+        if hit and name not in profile.disabled_blockers
+    ]
+    if triggered:
+        reasons.append(f"Layer-1 blockers triggered: {triggered}")
+        return DECISION_REJECT, grade, reasons
+
+    score = row.get("quality_score")
+    if score is None:
+        reasons.append("doc_quality_score missing — routed to review")
+        return DECISION_REVIEW, grade, reasons
+
+    if score >= profile.t_publish:
+        reasons.append(
+            f"doc_quality_score={score:.2f} >= t_publish={profile.t_publish:.2f}"
+        )
+        reasons.append("no Layer-1 blockers triggered")
+        return DECISION_PUBLISH, grade, reasons
+
+    if score < profile.t_reject:
+        reasons.append(
+            f"doc_quality_score={score:.2f} < t_reject={profile.t_reject:.2f}"
+        )
+        return DECISION_REJECT, grade, reasons
+
+    reasons.append(
+        f"doc_quality_score={score:.2f} in grey band "
+        f"[{profile.t_reject:.2f}, {profile.t_publish:.2f}) — needs review"
+    )
+    return DECISION_REVIEW, grade, reasons
