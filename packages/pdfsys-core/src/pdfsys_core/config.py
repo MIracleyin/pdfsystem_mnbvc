@@ -12,6 +12,7 @@ values after loading. If you need an immutable snapshot, ``serde.to_dict``
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass(slots=True)
@@ -64,20 +65,31 @@ class MupdfConfig:
 
 @dataclass(slots=True)
 class PipelineConfig:
-    """OCR-pipeline backend (parser-pipeline) configuration."""
+    """Mineru pipeline-mode backend (parser-pipeline) configuration.
 
-    ocr_engine: str = "rapidocr"                  # rapidocr | paddleocr-classic
-    languages: tuple[str, ...] = ("ch", "en")
-    render_dpi: int = 200
+    All fields map directly to ``mineru.cli.common.do_parse`` kwargs.
+    """
+
+    formula_enable: bool = True                   # do_parse(formula_enable=...)
+    table_enable: bool = True                     # do_parse(table_enable=...)
+    p_lang: str = "ch"                            # do_parse(p_lang_list=[p_lang])
+    output_dir: Path | None = None                # None = use tmpdir, delete after
 
 
 @dataclass(slots=True)
 class VlmConfig:
-    """VLM backend (parser-vlm) configuration."""
+    """Mineru VLM-mode backend (parser-vlm) configuration.
 
-    model: str = "mineru-2.5"                     # mineru-2.5 | paddleocr-vl
-    max_batch_size: int = 4
-    render_dpi: int = 300
+    ``engine`` is appended to ``vlm-`` and passed to do_parse(backend=...).
+    Available engines (per mineru 3.x): ``transformers`` (default, portable),
+    ``mlx-engine`` (Apple Silicon), ``vllm-engine`` (NVIDIA GPU).
+    """
+
+    engine: str = "transformers"                  # transformers | mlx-engine | vllm-engine
+    formula_enable: bool = True
+    table_enable: bool = True
+    p_lang: str = "ch"
+    output_dir: Path | None = None
 
 
 @dataclass(slots=True)
@@ -101,5 +113,5 @@ class PdfsysConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
 
     @classmethod
-    def default(cls) -> "PdfsysConfig":
+    def default(cls) -> PdfsysConfig:
         return cls()
