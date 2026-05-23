@@ -278,3 +278,149 @@ Tier A tests live in `tests/parsers/test_pipeline_parser.py` and `tests/parsers/
 - **Per-PDF language detection** — `p_lang="ch"` is the v1 default.
 - **vLLM / lmdeploy / hybrid backends** — flag accepts `transformers` and `mlx-engine`; vllm/lmdeploy/hybrid are theoretically supported by mineru but require platform-specific deps not in this venv.
 - **Mineru CLI passthrough (e.g. `mineru -i ... -o ...`)** — we call `do_parse` directly; the `mineru` shell command is not a dependency.
+
+## 15. Post-build note (2026-05-22 / 2026-05-23)
+
+Implementation landed across 9 planned tasks + 3 unplanned fix iterations
+when in-process integration hit unanticipated macOS issues. Plan:
+`docs/superpowers/plans/2026-05-22-mineru-parsers-migration.md`.
+
+### Commits (in chronological order)
+
+```
+─── Planned 9 tasks ───
+d3649a5  Task 1  test(parsers): lock mineru + cv2 import surface
+b27d1d5  Task 1  fix(parsers): deepen import guards + pin opencv-python
+0970640  Task 2  refactor(core): PipelineConfig + VlmConfig → mineru fields
+823f262  Task 2  fix(core): serde Path support + tighter config tests
+19e8e1d  Task 3  deps(parsers): swap rapidocr → mineru[pipeline]; mineru[vlm]
+ed9f70a  Task 4  refactor(parser-pipeline): mineru pipeline-mode wrapper
+c3cd758  Task 4  fix(parser-pipeline): glob fallback + version sync + sidecar test
+2bce47a  Task 5  refactor(parser-vlm): mineru VLM-mode wrapper
+4dcbdcc  Task 6  feat(bench): wire mineru parsers + --vlm-engine flag
+bd5af21  Task 7  refactor(cli): align YAML schema + runner with mineru
+af5c4a3  Task 8  test(parsers): Tier B integration tests (gated)
+
+─── Architectural pivot: in-process → out-of-process ───
+ffefec6  hack    feat(bench): --cascade-skip-pipeline flag for macOS workaround
+16466f8  hack    fix(parsers): swap do_parse → aio_do_parse (didn't fully fix)
+31ce715  hack    fix(parsers): ThreadPoolExecutor workaround + VLM subdir
+5bf81fa  hack    fix(parsers): mp.set_start_method('fork') (still hung)
+3847b6f  PIVOT   refactor(parsers): out-of-process HTTP client via mineru-api subprocess
+a4fed31  fix     fix(parsers): HF_HUB_OFFLINE=1 + add mineru[mlx] for arm64-darwin
+```
+
+### Why the architectural pivot
+
+The plan assumed in-process `mineru.cli.common.do_parse(...)` would work. On
+macOS Apple Silicon (M4 Pro, 48GB) it didn't. Sequential debug:
+
+1. **`do_parse` (sync) deadlocks.** Mineru's PDF render uses a
+   `ProcessPoolExecutor` with `mp_context=spawn`. Spawn-mode workers must
+   re-import the parent process; bench's heavy import surface (torch +
+   MLX + transformers + parsers) makes them deadlock during re-import.
+2. **`aio_do_parse` (async) also deadlocks** — same `ProcessPoolExecutor`
+   under the hood. Async only changes how the parent waits, not how
+   workers spawn.
+3. **`ThreadPoolExecutor` monkey-patch** of mineru's PDF render fixed
+   that one executor but **DocAnalysis init has its own mp.Pool** that
+   also deadlocks. Each component in mineru could spawn its own pool.
+4. **`mp.set_start_method('fork', force=True)`** unblocked DocAnalysis
+   init and pipeline mode actually ran (25s/page in isolation). But VLM
+   still hung at `Predict: 0%` — torch+MPS context from pipeline
+   conflicts with MLX-VLM trying to allocate Metal afterwards in the
+   same process.
+5. **Out-of-process via mineru-api subprocess + HTTP.** Each parser
+   spawns its own `mineru-api` subprocess on first `extract()`. Bench
+   never imports mineru, so its heavy import surface cannot collide
+   with mineru's machinery. mineru's PDF render mp.Pool now spawns
+   from a clean `mineru-api` Python process — works correctly.
+
+### End-to-end smoke (verified on M4 Pro / macOS)
+
+```
+uv run python -m pdfsys_bench \
+    --pdf-dir packages/pdfsys-bench/omnidocbench_100/pdfs \
+    --out out/bench_mineru_smoke.jsonl \
+    --cascade --vlm --vlm-engine mlx-engine \
+    --limit 5 --no-quality
+```
+
+Result:
+```
+ROW 1  be=mupdf      cascade=['mupdf']             wall=16ms    md=399 chars
+ROW 2  be=mupdf      cascade=['mupdf']             wall=10ms    md=441 chars
+ROW 3  be=pipeline   cascade=['mupdf','pipeline']  wall=11.1s   md=2498 chars  MINERU=pipeline
+ROW 4  be=mupdf      cascade=['mupdf']             wall=9ms     md=559 chars
+ROW 5  be=mupdf      cascade=['mupdf']             wall=5ms     md=5734 chars
+```
+
+Standalone parser smokes (proving all three backends usable):
+
+```
+mupdf      (in-process)                : ~10ms/page,  399-5734 chars
+pipeline   (mineru-api subprocess HTTP) : 27.9s/page, 2498 chars
+vlm        (mineru-api + mlx-engine)    : 20.4s/page, 1773 chars
+```
+
+### Architectural changes from the original spec
+
+The original spec assumed in-process calls. After the pivot:
+
+1. **§5 Parser interface unchanged** — still `parser.extract(pdf_path) -> ExtractedDoc`.
+   Bench code DID NOT change.
+2. **§5 ExtractedDoc.stats: new key** — `mineru_api_url` records the
+   subprocess URL. `middle_json_path` / `content_list_path` still recorded.
+3. **§5 ExtractedDoc.stats: removed key** — `mineru_version` is now
+   `payload.get("version")` from the HTTP response (server's mineru
+   version), still semantically correct.
+4. **Parser internals 100% rewritten** — no more `mineru.cli.common`
+   import. Just `httpx` + `subprocess.Popen` for the `mineru-api` binary.
+5. **`_macos_workaround.py` deleted** — fork start-method no longer
+   needed because bench never imports mineru.
+6. **New runtime dep**: `mineru-api` binary must be on PATH or next to
+   `sys.executable`. Comes for free via `mineru[vlm]` / `mineru[pipeline]`
+   extras.
+7. **New runtime dep**: `mineru[mlx]>=3.1,<4.0` declared with
+   `sys_platform == 'darwin' and platform_machine == 'arm64'` marker so
+   Apple Silicon users get MLX automatically without breaking
+   Linux/Intel installs.
+8. **Subprocess env**: `HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1` set
+   when spawning mineru-api — mineru otherwise hits HF Hub for revision
+   checks at every cold start, which fails on flaky HF connectivity.
+   Cached weights under `~/.cache/huggingface/hub/` are used directly.
+
+### Known follow-ups
+
+- **subprocess lifetime**: each parser keeps its mineru-api subprocess
+  alive across all `extract()` calls and terminates on GC. For long-
+  running benches this is correct. Short-lived scripts can leak the
+  subprocess if `__del__` doesn't fire — explicit `parser.close()` is
+  available and recommended.
+- **Port collision race**: `_pick_free_port` binds to port 0 to find a
+  free port, then closes. Theoretical race if another process grabs it
+  before mineru-api binds. For single-user dev this is fine.
+- **Pipeline OCR quality**: pipeline mode replaces periods with `?`
+  characters in some numeric contexts (`14.70` → `14?? 70`). This is
+  mineru pipeline mode's OCR engine — not our problem to fix; VLM mode
+  produces clean output.
+- **Spec #2** (Docker containers + service orchestration) is the
+  natural next step. The HTTP-client architecture this pivot landed is
+  essentially Spec #2's core; Dockerfile packaging is the remaining
+  delta. The parser interface won't change.
+
+### Test surface
+
+```
+tests/parsers/test_mineru_smoke.py       3 tests   (cv2 + mineru imports)
+tests/parsers/test_pipeline_parser.py    9 tests   (Tier A, mocked httpx)
+tests/parsers/test_vlm_parser.py        10 tests   (Tier A, mocked httpx)
+tests/parsers/integration/               2 tests   (Tier B, gated, real HTTP)
+tests/core/test_parser_configs.py        6 tests   (config dataclasses + serde)
+─────────────────────────────────────────────────────────────────────────
+Total                                   30 new tests; 94 passed + 2 skipped
+                                        across the full suite.
+```
+
+Run: `uv run pytest tests/parsers/ tests/core/ -v`.
+
