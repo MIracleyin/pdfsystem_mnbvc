@@ -1,16 +1,16 @@
-"""pdfsys-parser-vlm — mineru VLM-mode wrapper.
+"""pdfsys-parser-vlm — out-of-process mineru VLM-mode parser.
 
-Thin shim over ``mineru.cli.common.do_parse(backend="vlm-<engine>")``.
-The old region-based ModelSingleton path was deleted in the mineru
-migration (2026-05-22).
+Talks to a ``mineru-api`` subprocess over HTTP. The bench / CLI client
+never imports mineru, so MLX + torch + Metal cannot collide with the
+client's import surface. Spec:
+``docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md``.
 """
 
 from __future__ import annotations
 
-from . import _macos_workaround  # noqa: F401  — must run before mineru is used
 from .extract import VlmParser
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "VlmParser",

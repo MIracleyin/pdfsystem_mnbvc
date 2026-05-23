@@ -4,15 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdfsys-parser-pipeline"
-version = "0.1.0"
-description = "OCR pipeline backend: thin wrapper around mineru.cli.common.do_parse(backend='pipeline')."
+version = "0.2.0"
+description = "OCR pipeline backend: out-of-process HTTP client to mineru-api (pipeline)."
 requires-python = ">=3.11"
 dependencies = [
     "pdfsys-core",
-    "pymupdf>=1.25",
+    "httpx>=0.27",
     "mineru[pipeline]>=3.1,<4.0",
-    "numpy>=1.24",
-    "Pillow>=10.0",
 ]
 
 [tool.uv.sources]

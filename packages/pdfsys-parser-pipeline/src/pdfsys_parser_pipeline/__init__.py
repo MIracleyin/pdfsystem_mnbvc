@@ -1,16 +1,16 @@
-"""pdfsys-parser-pipeline — mineru pipeline-mode wrapper.
+"""pdfsys-parser-pipeline — out-of-process mineru pipeline-mode parser.
 
-Thin shim over ``mineru.cli.common.do_parse(backend="pipeline")``. The
-old RapidOCR / region-OCR pipeline was deleted in the mineru migration
-(2026-05-22, spec: docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md).
+Talks to a ``mineru-api`` subprocess over HTTP. The bench / CLI client
+never imports mineru, so mineru's torch + multiprocessing + Metal
+machinery cannot collide with the client's import surface. Spec:
+``docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md``.
 """
 
 from __future__ import annotations
 
-from . import _macos_workaround  # noqa: F401  — must run before mineru is used
 from .extract import PipelineParser
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "PipelineParser",

@@ -1,14 +1,14 @@
-"""Tier A: VlmParser unit tests with mocked mineru.cli.common.do_parse.
+"""Tier A: VlmParser unit tests.
 
-These tests must NEVER load real mineru VLM weights (~7GB).
+Mock the HTTP layer + subprocess startup so tests don't spawn
+``mineru-api`` or load MLX weights. Each test runs in well under 100ms.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,136 +22,186 @@ def _make_pdf(tmp_path: Path, content: bytes = b"%PDF-1.4\n%stub\n") -> Path:
     return p
 
 
-def _fake_do_parse(expected_md: str):
-    """Returns a side_effect writing mineru-shaped outputs."""
-    async def _side_effect(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-                           backend, **kwargs):
-        parse_method = "vlm"  # mineru writes vlm output here regardless of parse_method kwarg
-        for name in pdf_file_names:
-            md_dir = Path(output_dir) / name / parse_method
-            md_dir.mkdir(parents=True, exist_ok=True)
-            (md_dir / "images").mkdir(exist_ok=True)
-            (md_dir / f"{name}.md").write_text(expected_md, encoding="utf-8")
-            (md_dir / f"{name}_middle.json").write_text(
-                json.dumps({"pages": []}), encoding="utf-8"
-            )
-            (md_dir / f"{name}_content_list.json").write_text(
-                json.dumps([]), encoding="utf-8"
-            )
-    return _side_effect
+def _fake_response(
+    *,
+    status_code: int = 200,
+    status: str = "completed",
+    backend: str = "vlm-transformers",
+    markdown: str | None = "# VLM\n",
+    middle_json: dict | None = None,
+    content_list: list | None = None,
+    error: str | None = None,
+    version: str = "3.1.14",
+) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status_code
+    if status_code != 200:
+        resp.text = error or "server error"
+        return resp
+    result = {}
+    if markdown is not None:
+        result["md_content"] = markdown
+    if middle_json is not None:
+        result["middle_json"] = middle_json
+    if content_list is not None:
+        result["content_list"] = content_list
+    resp.json.return_value = {
+        "task_id": "fake-task-id",
+        "status": status,
+        "backend": backend,
+        "version": version,
+        "error": error,
+        "results": {"fake.pdf": result} if status == "completed" else {},
+    }
+    return resp
+
+
+def _patched_parser(response: MagicMock) -> tuple:
+    server_patch = patch.object(
+        VlmParser, "_ensure_server", return_value="http://test"
+    )
+    post_patch = patch(
+        "pdfsys_parser_vlm.extract.httpx.post", return_value=response
+    )
+    return server_patch, post_patch
+
+
+# ---------------------------------------------------------------- happy path
 
 
 def test_vlm_extract_returns_doc(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
     expected_sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    response = _fake_response(backend="vlm-transformers", markdown="# VLM\n")
 
-    fake = _fake_do_parse("# VLM Output\n\n$$E=mc^2$$\n")
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake) as m:
-        parser = VlmParser(VlmConfig(output_dir=tmp_path / "out"))
+    sp, pp = _patched_parser(response)
+    with sp, pp as post:
+        parser = VlmParser(VlmConfig())
         doc = parser.extract(pdf)
 
     assert isinstance(doc, ExtractedDoc)
     assert doc.backend == Backend.VLM
     assert doc.sha256 == expected_sha
-    assert doc.markdown == "# VLM Output\n\n$$E=mc^2$$\n"
+    assert doc.markdown == "# VLM\n"
 
-    _, kwargs = m.call_args
-    assert kwargs["backend"] == "vlm-transformers"
+    _, kwargs = post.call_args
+    assert kwargs["data"]["backend"] == "vlm-transformers"
 
 
 def test_vlm_extract_with_mlx_engine(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
+    response = _fake_response(backend="vlm-mlx-engine")
 
-    fake = _fake_do_parse("md")
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake) as m:
-        parser = VlmParser(VlmConfig(engine="mlx-engine", output_dir=tmp_path / "o"))
+    sp, pp = _patched_parser(response)
+    with sp, pp as post:
+        parser = VlmParser(VlmConfig(engine="mlx-engine"))
         parser.extract(pdf)
 
-    _, kwargs = m.call_args
-    assert kwargs["backend"] == "vlm-mlx-engine"
+    _, kwargs = post.call_args
+    assert kwargs["data"]["backend"] == "vlm-mlx-engine"
 
 
 def test_vlm_extract_with_vllm_engine(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
+    response = _fake_response(backend="vlm-vllm-engine")
 
-    fake = _fake_do_parse("md")
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake) as m:
-        parser = VlmParser(VlmConfig(engine="vllm-engine", output_dir=tmp_path / "o"))
+    sp, pp = _patched_parser(response)
+    with sp, pp as post:
+        parser = VlmParser(VlmConfig(engine="vllm-engine"))
         parser.extract(pdf)
 
-    _, kwargs = m.call_args
-    assert kwargs["backend"] == "vlm-vllm-engine"
+    _, kwargs = post.call_args
+    assert kwargs["data"]["backend"] == "vlm-vllm-engine"
 
 
-def test_vlm_extract_records_sidecars(tmp_path: Path) -> None:
+def test_vlm_extract_uses_config_p_lang(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    response = _fake_response()
+
+    sp, pp = _patched_parser(response)
+    with sp, pp as post:
+        parser = VlmParser(VlmConfig(p_lang="en"))
+        parser.extract(pdf)
+
+    _, kwargs = post.call_args
+    assert kwargs["data"]["lang_list"] == "en"
+
+
+# ---------------------------------------------------------------- sidecars
+
+
+def test_vlm_extract_persists_sidecars(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
     out_dir = tmp_path / "out"
+    middle = {"pages": [{"a": 1}]}
+    content = [{"type": "text", "text": "hi"}]
+    response = _fake_response(middle_json=middle, content_list=content)
 
-    fake = _fake_do_parse("md")
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake):
+    sp, pp = _patched_parser(response)
+    with sp, pp:
         parser = VlmParser(VlmConfig(output_dir=out_dir))
         doc = parser.extract(pdf)
 
-    assert doc.stats["mineru_backend"] == "vlm-transformers"
-    assert doc.stats["middle_json_path"] is not None
-    assert doc.stats["content_list_path"] is not None
+    sha = doc.sha256
+    assert doc.stats["middle_json_path"] == f"{sha}/{sha}_middle.json"
+    assert (out_dir / sha / f"{sha}_middle.json").exists()
+    assert (out_dir / sha / f"{sha}_content_list.json").exists()
 
 
-def test_vlm_extract_tmpdir_when_output_dir_none(tmp_path: Path) -> None:
+def test_vlm_extract_no_sidecars_when_output_dir_none(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
+    response = _fake_response(middle_json={"pages": []}, content_list=[])
 
-    fake = _fake_do_parse("# Y")
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake):
+    sp, pp = _patched_parser(response)
+    with sp, pp:
         parser = VlmParser(VlmConfig(output_dir=None))
         doc = parser.extract(pdf)
 
-    assert doc.markdown == "# Y"
     assert doc.stats["middle_json_path"] is None
+    assert doc.stats["content_list_path"] is None
 
 
-def test_vlm_extract_propagates_errors(tmp_path: Path) -> None:
+# ---------------------------------------------------------------- errors
+
+
+def test_vlm_extract_raises_on_http_error(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
+    response = _fake_response(status_code=500, error="boom")
 
-    async def _raise(*a, **kw):
-        raise RuntimeError("simulated vlm failure")
-
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=_raise):
-        parser = VlmParser(VlmConfig(output_dir=tmp_path / "o"))
-        with pytest.raises(RuntimeError, match="simulated vlm failure"):
-            parser.extract(pdf)
+    sp, pp = _patched_parser(response)
+    with sp, pp, pytest.raises(RuntimeError, match="500"):
+        VlmParser().extract(pdf)
 
 
-def test_vlm_extract_raises_when_markdown_missing(tmp_path: Path) -> None:
+def test_vlm_extract_raises_on_task_failure(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
+    response = _fake_response(status="failed", error="OOM")
 
-    async def _do_nothing(*a, **kw):
-        pass
-
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=_do_nothing):
-        parser = VlmParser(VlmConfig(output_dir=tmp_path / "o"))
-        with pytest.raises(FileNotFoundError, match="markdown"):
-            parser.extract(pdf)
+    sp, pp = _patched_parser(response)
+    with sp, pp, pytest.raises(RuntimeError, match="OOM"):
+        VlmParser().extract(pdf)
 
 
-def test_vlm_extract_sidecar_none_when_mineru_skips_middle_json(tmp_path: Path) -> None:
-    """Mineru sometimes omits ``_middle.json`` for empty PDFs (spec §11)."""
+def test_vlm_extract_raises_when_markdown_empty(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
-    out_dir = tmp_path / "out"
+    response = _fake_response(markdown="")
 
-    async def _fake_no_middle(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-                              backend, **kwargs):
-        parse_method = "vlm"  # mineru writes vlm output here regardless of parse_method kwarg
-        for name in pdf_file_names:
-            md_dir = Path(output_dir) / name / parse_method
-            md_dir.mkdir(parents=True, exist_ok=True)
-            (md_dir / f"{name}.md").write_text("sparse vlm content", encoding="utf-8")
-            (md_dir / f"{name}_content_list.json").write_text("[]", encoding="utf-8")
-            # no _middle.json
+    sp, pp = _patched_parser(response)
+    with sp, pp, pytest.raises(RuntimeError, match="empty markdown"):
+        VlmParser().extract(pdf)
 
-    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=_fake_no_middle):
-        parser = VlmParser(VlmConfig(output_dir=out_dir))
+
+# ---------------------------------------------------------------- stats
+
+
+def test_vlm_stats_include_backend_and_url(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    response = _fake_response(backend="vlm-mlx-engine")
+
+    sp, pp = _patched_parser(response)
+    with sp, pp:
+        parser = VlmParser(VlmConfig(engine="mlx-engine"))
         doc = parser.extract(pdf)
 
-    assert doc.markdown == "sparse vlm content"
-    assert doc.stats["middle_json_path"] is None
-    assert doc.stats["content_list_path"] is not None
+    assert doc.stats["mineru_backend"] == "vlm-mlx-engine"
+    assert doc.stats["mineru_api_url"] == "http://test"
