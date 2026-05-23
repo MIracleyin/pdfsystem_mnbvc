@@ -93,6 +93,7 @@ def run_loop(
     vlm_engine: str = "transformers",
     cascade: bool = False,
     cascade_skip_mupdf_threshold: float = 0.9,
+    cascade_skip_pipeline: bool = False,
 ) -> dict[str, Any]:
     """Drive the full loop over a PDF directory.
 
@@ -190,7 +191,9 @@ def run_loop(
                     vlm_parser=vlm_parser,
                     layout_cache=layout_cache,
                     vlm_enabled=vlm_enabled,
+                    vlm_engine=vlm_engine,
                     skip_mupdf_threshold=cascade_skip_mupdf_threshold,
+                    skip_pipeline=cascade_skip_pipeline,
                 )
             else:
                 row = _run_one(
@@ -375,6 +378,7 @@ def _run_one_cascade(
     vlm_enabled: bool,
     vlm_engine: str = "transformers",
     skip_mupdf_threshold: float,
+    skip_pipeline: bool = False,
 ) -> LoopResult:
     """Quality-driven cascade: cheapest parser → gate → escalate on fail.
 
@@ -426,10 +430,11 @@ def _run_one_cascade(
             CascadeStage(name="mupdf", extract=lambda p: mupdf_extract(p))
         )
 
-    def _pipeline_extract(p: Path) -> Any:
-        return pipeline_parser.extract(p)
+    if not skip_pipeline:
+        def _pipeline_extract(p: Path) -> Any:
+            return pipeline_parser.extract(p)
 
-    stages.append(CascadeStage(name="pipeline", extract=_pipeline_extract))
+        stages.append(CascadeStage(name="pipeline", extract=_pipeline_extract))
 
     if vlm_enabled and vlm_parser is not None:
         def _vlm_extract(p: Path) -> Any:

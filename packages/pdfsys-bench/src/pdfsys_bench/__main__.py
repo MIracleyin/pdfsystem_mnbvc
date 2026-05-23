@@ -121,6 +121,15 @@ def build_parser() -> argparse.ArgumentParser:
             "OCR). Default 0.9."
         ),
     )
+    p.add_argument(
+        "--cascade-skip-pipeline",
+        action="store_true",
+        help=(
+            "Skip the mineru-pipeline stage in cascade (mupdf → vlm only). "
+            "Use on platforms where mineru's pipeline mode hangs (e.g., "
+            "macOS without CUDA). Requires --vlm to be useful."
+        ),
+    )
     return p
 
 
@@ -141,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         vlm_engine=args.vlm_engine,
         cascade=args.cascade,
         cascade_skip_mupdf_threshold=args.cascade_skip_mupdf_threshold,
+        cascade_skip_pipeline=args.cascade_skip_pipeline,
     )
 
     print(f"\n[pdfsys-bench] processed {summary['num_pdfs']} PDFs in {summary['wall_seconds']:.1f}s")
