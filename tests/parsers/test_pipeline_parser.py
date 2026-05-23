@@ -134,3 +134,31 @@ def test_extract_raises_when_markdown_missing(tmp_path: Path) -> None:
         parser = PipelineParser(PipelineConfig(output_dir=tmp_path / "o"))
         with pytest.raises(FileNotFoundError, match="markdown"):
             parser.extract(pdf)
+
+
+def test_extract_sidecar_none_when_mineru_skips_middle_json(tmp_path: Path) -> None:
+    """Mineru sometimes omits ``_middle.json`` for empty or near-empty PDFs.
+
+    The parser must surface ``middle_json_path=None`` rather than crashing
+    or returning a path to a non-existent file.
+    """
+    pdf = _make_pdf(tmp_path)
+    out_dir = tmp_path / "out"
+
+    def _fake_no_middle(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
+                        backend, **kwargs):
+        parse_method = "auto"
+        for name in pdf_file_names:
+            md_dir = Path(output_dir) / name / parse_method
+            md_dir.mkdir(parents=True, exist_ok=True)
+            (md_dir / f"{name}.md").write_text("sparse content", encoding="utf-8")
+            (md_dir / f"{name}_content_list.json").write_text("[]", encoding="utf-8")
+            # NOTE: no _middle.json written — simulates mineru's "empty page" path
+
+    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=_fake_no_middle):
+        parser = PipelineParser(PipelineConfig(output_dir=out_dir))
+        doc = parser.extract(pdf)
+
+    assert doc.markdown == "sparse content"
+    assert doc.stats["middle_json_path"] is None  # graceful: not absent-but-string
+    assert doc.stats["content_list_path"] is not None  # this one WAS written
