@@ -5,13 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "pdfsys-parser-vlm"
 version = "0.0.1"
-description = "VLM backend: complex-content pages handed to MinerU 2.5 / PaddleOCR-VL."
+description = "VLM backend: thin wrapper around mineru.cli.common.do_parse(backend='vlm-<engine>')."
 requires-python = ">=3.11"
 dependencies = [
     "pdfsys-core",
     "pymupdf>=1.25",
-    "mineru>=3.1,<4.0",
-    "accelerate>=1.0",
+    "mineru[vlm]>=3.1,<4.0",
     "numpy>=1.24",
     "Pillow>=10.0",
 ]
