@@ -18,6 +18,7 @@ dependencies = [
     "pdfsys-parser-vlm",
     "pdfsys-bench",
     "pdfsys-cli",
+    "opencv-python>=4.11.0.86",   # pin to non-headless variant; mineru requires it
 ]
 
 [tool.uv.workspace]
