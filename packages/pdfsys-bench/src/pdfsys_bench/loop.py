@@ -90,6 +90,7 @@ def run_loop(
     full_pipeline: bool = False,
     cache_dir: str | Path | None = None,
     vlm_enabled: bool = False,
+    vlm_engine: str = "transformers",
     cascade: bool = False,
     cascade_skip_mupdf_threshold: float = 0.9,
 ) -> dict[str, Any]:
@@ -154,9 +155,10 @@ def run_loop(
         pipeline_parser = PipelineParser()
 
         if vlm_enabled:
+            from pdfsys_core import VlmConfig
             from pdfsys_parser_vlm import VlmParser
 
-            vlm_parser = VlmParser()
+            vlm_parser = VlmParser(VlmConfig(engine=vlm_engine))
 
     summary: dict[str, Any] = {
         "pdf_dir": str(pdf_dir),
@@ -310,7 +312,7 @@ def _run_one(
     if stage_b.backend == Backend.PIPELINE and pipeline_parser is not None:
         try:
             t4 = time.perf_counter()
-            extracted = pipeline_parser.extract(pdf_path, layout, sha256=layout.sha256)
+            extracted = pipeline_parser.extract(pdf_path)
             t5 = time.perf_counter()
             row.sha256 = extracted.sha256
             row.extract_stats = dict(extracted.stats)
@@ -324,9 +326,7 @@ def _run_one(
     elif stage_b.backend == Backend.VLM and vlm_parser is not None:
         try:
             t4 = time.perf_counter()
-            extracted = vlm_parser.extract_complex_pages(
-                pdf_path, layout, sha256=layout.sha256
-            )
+            extracted = vlm_parser.extract(pdf_path)
             t5 = time.perf_counter()
             row.sha256 = extracted.sha256
             row.extract_stats = dict(extracted.stats)
@@ -373,6 +373,7 @@ def _run_one_cascade(
     vlm_parser: Any,
     layout_cache: LayoutCache | None,
     vlm_enabled: bool,
+    vlm_engine: str = "transformers",
     skip_mupdf_threshold: float,
 ) -> LoopResult:
     """Quality-driven cascade: cheapest parser → gate → escalate on fail.
@@ -426,15 +427,13 @@ def _run_one_cascade(
         )
 
     def _pipeline_extract(p: Path) -> Any:
-        layout = _ensure_layout(p)
-        return pipeline_parser.extract(p, layout, sha256=layout.sha256)
+        return pipeline_parser.extract(p)
 
     stages.append(CascadeStage(name="pipeline", extract=_pipeline_extract))
 
     if vlm_enabled and vlm_parser is not None:
         def _vlm_extract(p: Path) -> Any:
-            layout = _ensure_layout(p)
-            return vlm_parser.extract_complex_pages(p, layout, sha256=layout.sha256)
+            return vlm_parser.extract(p)
 
         stages.append(CascadeStage(name="vlm", extract=_vlm_extract))
 

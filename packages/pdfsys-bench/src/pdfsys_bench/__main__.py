@@ -93,6 +93,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="vlm_enabled",
         help="Enable the VLM lane (MinerU) for complex-content pages.",
     )
+    p.add_argument(
+        "--vlm-engine",
+        choices=("transformers", "mlx-engine", "vllm-engine"),
+        default="transformers",
+        help="Mineru VLM inference engine. Default transformers is portable; "
+             "mlx-engine is faster on Apple Silicon; vllm-engine needs NVIDIA GPU.",
+    )
     # --- Cascade flags ---
     p.add_argument(
         "--cascade",
@@ -131,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         full_pipeline=args.full_pipeline,
         cache_dir=args.cache_dir,
         vlm_enabled=args.vlm_enabled,
+        vlm_engine=args.vlm_engine,
         cascade=args.cascade,
         cascade_skip_mupdf_threshold=args.cascade_skip_mupdf_threshold,
     )
