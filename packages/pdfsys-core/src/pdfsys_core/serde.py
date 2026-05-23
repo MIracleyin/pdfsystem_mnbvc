@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+from pathlib import Path
 from types import NoneType, UnionType
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
@@ -29,6 +30,8 @@ def to_dict(obj: Any) -> Any:
         return {f.name: to_dict(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
     if isinstance(obj, enum.Enum):
         return obj.value
+    if isinstance(obj, Path):
+        return str(obj)
     if isinstance(obj, (tuple, list)):
         return [to_dict(v) for v in obj]
     if isinstance(obj, dict):
@@ -49,6 +52,10 @@ def from_dict(cls: Any, data: Any) -> Any:
     # Enum — dispatch by value.
     if isinstance(cls, type) and issubclass(cls, enum.Enum):
         return cls(data)
+
+    # Path — reconstruct from string representation.
+    if cls is Path:
+        return Path(data)
 
     origin = get_origin(cls)
 

@@ -80,16 +80,20 @@ class PipelineConfig:
 class VlmConfig:
     """Mineru VLM-mode backend (parser-vlm) configuration.
 
-    ``engine`` is appended to ``vlm-`` and passed to do_parse(backend=...).
-    Available engines (per mineru 3.x): ``transformers`` (default, portable),
-    ``mlx-engine`` (Apple Silicon), ``vllm-engine`` (NVIDIA GPU).
+    ``engine`` is the SHORT form (e.g. ``"transformers"``, NOT
+    ``"vlm-transformers"``). The parser prepends ``vlm-`` before passing
+    to ``do_parse(backend=...)``. Available short forms (per mineru 3.x):
+
+    - ``transformers`` (default; portable, CPU + GPU)
+    - ``mlx-engine``   (Apple Silicon)
+    - ``vllm-engine``  (NVIDIA GPU)
     """
 
     engine: str = "transformers"                  # transformers | mlx-engine | vllm-engine
-    formula_enable: bool = True
-    table_enable: bool = True
-    p_lang: str = "ch"
-    output_dir: Path | None = None
+    formula_enable: bool = True                   # do_parse(formula_enable=...)
+    table_enable: bool = True                     # do_parse(table_enable=...)
+    p_lang: str = "ch"                            # do_parse(p_lang_list=[p_lang])
+    output_dir: Path | None = None                # None = use tmpdir, delete after
 
 
 @dataclass(slots=True)
