@@ -1,23 +1,17 @@
-"""pdfsys-parser-pipeline — OCR-pipeline backend.
+"""pdfsys-parser-pipeline — mineru pipeline-mode wrapper.
 
-Handles the "needs-ocr AND no complex content" branch. Reads the cached
-LayoutDocument produced by pdfsys-layout-analyser, renders each region via
-PyMuPDF, runs line-level OCR (RapidOCR / PaddleOCR-classic, selectable via
-config), and assembles the Markdown output. CPU-friendly.
+Thin shim over ``mineru.cli.common.do_parse(backend="pipeline")``. The
+old RapidOCR / region-OCR pipeline was deleted in the mineru migration
+(2026-05-22, spec: docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md).
 """
 
 from __future__ import annotations
 
-from .extract import PipelineParser, extract_doc_from_layout
-from .ocr_engine import OcrEngine, RapidOcrEngine, create_ocr_engine
+from .extract import PipelineParser
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
-    "__version__",
     "PipelineParser",
-    "extract_doc_from_layout",
-    "OcrEngine",
-    "RapidOcrEngine",
-    "create_ocr_engine",
+    "__version__",
 ]
