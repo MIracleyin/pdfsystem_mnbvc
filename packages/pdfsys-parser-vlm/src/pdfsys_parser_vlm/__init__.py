@@ -7,6 +7,7 @@ migration (2026-05-22).
 
 from __future__ import annotations
 
+from . import _macos_workaround  # noqa: F401  — must run before mineru is used
 from .extract import VlmParser
 
 __version__ = "0.1.0"

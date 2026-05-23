@@ -7,6 +7,7 @@ old RapidOCR / region-OCR pipeline was deleted in the mineru migration
 
 from __future__ import annotations
 
+from . import _macos_workaround  # noqa: F401  — must run before mineru is used
 from .extract import PipelineParser
 
 __version__ = "0.1.0"

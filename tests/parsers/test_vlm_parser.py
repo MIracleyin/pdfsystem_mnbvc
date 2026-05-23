@@ -26,7 +26,7 @@ def _fake_do_parse(expected_md: str):
     """Returns a side_effect writing mineru-shaped outputs."""
     async def _side_effect(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
                            backend, **kwargs):
-        parse_method = "auto"
+        parse_method = "vlm"  # mineru writes vlm output here regardless of parse_method kwarg
         for name in pdf_file_names:
             md_dir = Path(output_dir) / name / parse_method
             md_dir.mkdir(parents=True, exist_ok=True)
@@ -140,7 +140,7 @@ def test_vlm_extract_sidecar_none_when_mineru_skips_middle_json(tmp_path: Path) 
 
     async def _fake_no_middle(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
                               backend, **kwargs):
-        parse_method = "auto"
+        parse_method = "vlm"  # mineru writes vlm output here regardless of parse_method kwarg
         for name in pdf_file_names:
             md_dir = Path(output_dir) / name / parse_method
             md_dir.mkdir(parents=True, exist_ok=True)

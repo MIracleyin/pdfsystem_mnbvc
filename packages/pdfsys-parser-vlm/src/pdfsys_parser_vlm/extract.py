@@ -82,7 +82,11 @@ class VlmParser:
             image_analysis=True,
         ))
 
-        md_dir = output_root / sha / _PARSE_METHOD
+        # Mineru writes VLM output under "<output>/<sha>/vlm/" regardless of
+        # parse_method (verified against mineru._process_output + CLI runs).
+        # For pipeline backend it writes under "<output>/<sha>/auto/".
+        subdir = "vlm"
+        md_dir = output_root / sha / subdir
         md_path = md_dir / f"{sha}.md"
         if not md_path.exists():
             # Defensive fallback: glob, in case mineru changes layout.
