@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import socket
 import subprocess
@@ -69,10 +70,13 @@ class PipelineParser:
         bin_path = _resolve_mineru_api_bin()
         port = _pick_free_port()
         _LOG.info("starting mineru-api (pipeline) at 127.0.0.1:%d", port)
+        # Force offline model resolution — see VLM parser for rationale.
+        env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
         self._proc = subprocess.Popen(
             [bin_path, "--host", "127.0.0.1", "--port", str(port)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
         )
 
         base = f"http://127.0.0.1:{port}"

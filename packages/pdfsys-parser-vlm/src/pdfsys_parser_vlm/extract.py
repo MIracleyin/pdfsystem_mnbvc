@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import socket
 import subprocess
@@ -79,10 +80,16 @@ class VlmParser:
         bin_path = _resolve_mineru_api_bin()
         port = _pick_free_port()
         _LOG.info("starting mineru-api at 127.0.0.1:%d", port)
+        # Force offline model resolution — mineru otherwise hits HF Hub for
+        # revision checks at every cold start, which fails when HF is down
+        # or behind a flaky proxy. Our weights live in ~/.cache/huggingface
+        # already so this is the safe default.
+        env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
         self._proc = subprocess.Popen(
             [bin_path, "--host", "127.0.0.1", "--port", str(port)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
         )
 
         base = f"http://127.0.0.1:{port}"
