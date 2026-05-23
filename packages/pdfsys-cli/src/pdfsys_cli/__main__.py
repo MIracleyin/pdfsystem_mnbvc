@@ -74,6 +74,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ocr-threshold", type=float, default=None, help="P(ocr) threshold.")
     p.add_argument("--router-weights", type=str, default=None, help="XGBoost weights path.")
     p.add_argument("--vlm", action="store_true", dest="vlm_enabled", default=None, help="Enable VLM lane.")
+    p.add_argument(
+        "--vlm-engine",
+        choices=("transformers", "mlx-engine", "vllm-engine"),
+        default=None,
+        help="Mineru VLM inference engine. mlx-engine is much faster on "
+             "Apple Silicon; vllm-engine needs NVIDIA GPU; transformers is "
+             "the portable default.",
+    )
     p.add_argument("--no-quality", action="store_true", default=False, help="Skip quality scoring.")
     p.add_argument("--quality-model", type=str, default=None, help="HuggingFace quality model.")
 
@@ -121,6 +129,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         ocr_threshold=args.ocr_threshold,
         router_weights=args.router_weights,
         vlm_enabled=args.vlm_enabled,
+        vlm_engine=args.vlm_engine,
         no_quality=args.no_quality,
         quality_model=args.quality_model,
     )

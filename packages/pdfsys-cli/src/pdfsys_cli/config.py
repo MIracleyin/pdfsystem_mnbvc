@@ -192,6 +192,8 @@ def apply_cli_overrides(cfg: RunConfig, **overrides: Any) -> RunConfig:
         cfg.router.weights = str(overrides["router_weights"])
     if overrides.get("vlm_enabled") is True:
         cfg.vlm.enabled = True
+    if overrides.get("vlm_engine") is not None:
+        cfg.vlm.engine = str(overrides["vlm_engine"])
     if overrides.get("no_quality") is True:
         cfg.quality.enabled = False
         # parquet depends on quality (quality_score feeds kept) — drop both together
