@@ -1,21 +1,17 @@
-"""pdfsys-parser-vlm — VLM extraction backend.
+"""pdfsys-parser-vlm — mineru VLM-mode wrapper.
 
-Handles the "needs-ocr AND complex content" branch (tables, formulas,
-heavy mixed layouts). Uses MinerU 2.5 Pro (magic-pdf) for end-to-end
-processing of complex document pages. GPU path.
-
-Supports both the newer ``mineru`` (>= 2.0) and older ``magic_pdf`` APIs.
+Thin shim over ``mineru.cli.common.do_parse(backend="vlm-<engine>")``.
+The old region-based ModelSingleton path was deleted in the mineru
+migration (2026-05-22).
 """
 
 from __future__ import annotations
 
-from .extract import VlmParser, extract_doc, extract_doc_from_layout
+from .extract import VlmParser
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
-    "__version__",
     "VlmParser",
-    "extract_doc",
-    "extract_doc_from_layout",
+    "__version__",
 ]
