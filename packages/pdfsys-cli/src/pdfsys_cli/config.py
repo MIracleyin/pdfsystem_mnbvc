@@ -52,16 +52,18 @@ class LayoutCfg:
 
 @dataclass(slots=True)
 class PipelineCfg:
-    ocr_engine: str = "rapidocr"
-    languages: list[str] = field(default_factory=lambda: ["ch", "en"])
-    render_dpi: int = 200
+    formula_enable: bool = True
+    table_enable: bool = True
+    p_lang: str = "ch"
 
 
 @dataclass(slots=True)
 class VlmCfg:
-    model: str = "mineru-2.5"
+    engine: str = "transformers"     # transformers | mlx-engine | vllm-engine
     enabled: bool = False
-    device_mode: str = "cpu"  # "mps" on Apple Silicon; written to ~/magic-pdf.json
+    formula_enable: bool = True
+    table_enable: bool = True
+    p_lang: str = "ch"
 
 
 @dataclass(slots=True)
@@ -141,7 +143,7 @@ def _fill_dataclass(cls: type, data: dict[str, Any] | None) -> Any:
 
 def load_config(path: str | Path) -> RunConfig:
     """Load a YAML config file and return a :class:`RunConfig`."""
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         raw: dict[str, Any] = yaml.safe_load(f) or {}
 
     stages = raw.get("stages", list(VALID_STAGES))
@@ -269,14 +271,16 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
       render_dpi: 200
 
     pipeline:
-      ocr_engine: rapidocr          # rapidocr | paddleocr
-      languages: [ch, en]
-      render_dpi: 200
+      formula_enable: true
+      table_enable: true
+      p_lang: ch
 
     vlm:
-      model: mineru-2.5
-      enabled: false                # set true to enable MinerU VLM lane
-      device_mode: cpu              # cpu | mps | cuda — written to ~/magic-pdf.json
+      engine: transformers          # transformers | mlx-engine | vllm-engine
+      enabled: false
+      formula_enable: true
+      table_enable: true
+      p_lang: ch
 
     quality:
       enabled: true

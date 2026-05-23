@@ -73,7 +73,7 @@ class ParquetSink:
     def rows_written(self) -> int:
         return self._rows_written
 
-    def write_row(self, row: "DocResult", markdown: str | None) -> None:
+    def write_row(self, row: DocResult, markdown: str | None) -> None:
         kept = (
             row.error_class is None
             and row.quality_score is not None
@@ -87,9 +87,7 @@ class ParquetSink:
         )
 
         md_value: str | None
-        if not self.include_markdown:
-            md_value = None
-        elif markdown is None or markdown == "":
+        if not self.include_markdown or markdown is None or markdown == "":
             md_value = None
         else:
             md_value = markdown
@@ -131,7 +129,7 @@ class ParquetSink:
     def close(self) -> None:
         self._writer.close()
 
-    def __enter__(self) -> "ParquetSink":
+    def __enter__(self) -> ParquetSink:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

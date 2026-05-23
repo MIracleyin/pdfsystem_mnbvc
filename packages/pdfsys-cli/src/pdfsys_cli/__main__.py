@@ -29,7 +29,13 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .config import EXAMPLE_CONFIG, VALID_STAGES, RunConfig, apply_cli_overrides, default_config, load_config
+from .config import (
+    EXAMPLE_CONFIG,
+    VALID_STAGES,
+    apply_cli_overrides,
+    default_config,
+    load_config,
+)
 from .runner import run
 
 
@@ -102,10 +108,7 @@ def cmd_init_config() -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     # Load config: YAML file → defaults → CLI overrides.
-    if args.config:
-        cfg = load_config(args.config)
-    else:
-        cfg = default_config()
+    cfg = load_config(args.config) if args.config else default_config()
 
     cfg = apply_cli_overrides(
         cfg,
@@ -135,7 +138,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if cfg.has_stage("layout"):
         print(f"[pdfsys] layout:  {cfg.layout.model}")
     if cfg.has_stage("extract") and cfg.vlm.enabled:
-        print(f"[pdfsys] vlm:     {cfg.vlm.model} (enabled)")
+        print(f"[pdfsys] vlm:     {cfg.vlm.engine} (enabled)")
     print()
 
     # Run pipeline.
@@ -195,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "run":
         return cmd_run(args)
     elif args.command == "visualize":
-        from . import viz  # noqa: PLC0415 — lazy import (pyarrow)
+        from . import viz
         return viz.main([
             "-r", args.run_dir,
             *(("-o", args.out_dir) if args.out_dir else ()),

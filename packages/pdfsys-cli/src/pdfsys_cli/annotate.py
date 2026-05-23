@@ -21,8 +21,7 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -39,7 +38,7 @@ def _find_bench_dir() -> Path | None:
     ]
     # Also try via the installed package.
     try:
-        import pdfsys_bench  # noqa: PLC0415
+        import pdfsys_bench
 
         pkg_dir = Path(pdfsys_bench.__file__).resolve().parent.parent.parent
         candidates.insert(0, pkg_dir)
@@ -59,7 +58,7 @@ def _get_analyser(backend: str | None = None) -> Any:
     """Lazy-load a layout analyser by backend name. Cached per backend."""
     key = backend or "default"
     if key not in _layout_analysers:
-        from pdfsys_layout_analyser import LayoutAnalyser  # noqa: PLC0415
+        from pdfsys_layout_analyser import LayoutAnalyser
 
         if backend == "pp-doclayoutv3":
             _layout_analysers[key] = LayoutAnalyser(
@@ -79,7 +78,7 @@ class AnnotationHandler(SimpleHTTPRequestHandler):
         self.metadata_path = bench_dir / "annotation" / "metadata.json"
         super().__init__(*args, directory=str(bench_dir), **kwargs)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/save-annotations":
@@ -87,7 +86,7 @@ class AnnotationHandler(SimpleHTTPRequestHandler):
         else:
             self.send_error(404, "Not Found")
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/export-annotations":
@@ -194,7 +193,7 @@ class AnnotationHandler(SimpleHTTPRequestHandler):
             annotated = [p for p in data["pdfs"] if p.get("label") is not None]
 
             response = json.dumps({
-                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "exported_at": datetime.now(UTC).isoformat(),
                 "total": len(annotated),
                 "annotations": annotated,
             }, ensure_ascii=False, indent=2)
@@ -239,7 +238,7 @@ def _merge_annotations(
         else:
             items = [{"id": k, **v} for k, v in annotations.items()]
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     merged_count = 0
 
     for ann in items:
@@ -280,11 +279,11 @@ def serve(bench_dir: Path, port: int = 8234) -> None:
 
     print(f"[pdfsys annotate] serving from: {bench_dir}")
     print(f"[pdfsys annotate] annotation UI: http://localhost:{port}/annotation/index.html")
-    print(f"[pdfsys annotate] API endpoints:")
-    print(f"  POST /api/save-annotations       — save from browser")
-    print(f"  GET  /api/export-annotations     — download annotated JSON")
-    print(f"  GET  /api/layout/<rel_path>.pdf  — run layout analysis (on demand)")
-    print(f"[pdfsys annotate] press Ctrl+C to stop")
+    print("[pdfsys annotate] API endpoints:")
+    print("  POST /api/save-annotations       — save from browser")
+    print("  GET  /api/export-annotations     — download annotated JSON")
+    print("  GET  /api/layout/<rel_path>.pdf  — run layout analysis (on demand)")
+    print("[pdfsys annotate] press Ctrl+C to stop")
     print()
 
     try:

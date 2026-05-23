@@ -12,9 +12,10 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .config import RunConfig
 from .parquet_writer import ParquetSink
@@ -79,7 +80,7 @@ class Components:
     @property
     def router(self) -> Any:
         if self._router is None:
-            from pdfsys_router import Router  # noqa: PLC0415
+            from pdfsys_router import Router
 
             self._router = Router(
                 model_path=self.cfg.router.weights,
@@ -90,8 +91,8 @@ class Components:
     @property
     def analyser(self) -> Any:
         if self._analyser is None:
-            from pdfsys_layout_analyser import LayoutAnalyser  # noqa: PLC0415
-            from pdfsys_core import LayoutConfig  # noqa: PLC0415
+            from pdfsys_core import LayoutConfig
+            from pdfsys_layout_analyser import LayoutAnalyser
 
             lc = LayoutConfig(render_dpi=self.cfg.layout.render_dpi)
             self._analyser = LayoutAnalyser(
@@ -106,13 +107,13 @@ class Components:
     @property
     def pipeline_parser(self) -> Any:
         if self._pipeline is None:
-            from pdfsys_parser_pipeline import PipelineParser  # noqa: PLC0415
-            from pdfsys_core import PipelineConfig  # noqa: PLC0415
+            from pdfsys_core import PipelineConfig
+            from pdfsys_parser_pipeline import PipelineParser
 
             pc = PipelineConfig(
-                ocr_engine=self.cfg.pipeline.ocr_engine,
-                languages=tuple(self.cfg.pipeline.languages),
-                render_dpi=self.cfg.pipeline.render_dpi,
+                formula_enable=self.cfg.pipeline.formula_enable,
+                table_enable=self.cfg.pipeline.table_enable,
+                p_lang=self.cfg.pipeline.p_lang,
             )
             self._pipeline = PipelineParser(config=pc)
         return self._pipeline
@@ -120,17 +121,22 @@ class Components:
     @property
     def vlm_parser(self) -> Any:
         if self._vlm is None:
-            from pdfsys_parser_vlm import VlmParser  # noqa: PLC0415
-            from pdfsys_core import VlmConfig  # noqa: PLC0415
+            from pdfsys_core import VlmConfig
+            from pdfsys_parser_vlm import VlmParser
 
-            vc = VlmConfig(model=self.cfg.vlm.model)
+            vc = VlmConfig(
+                engine=self.cfg.vlm.engine,
+                formula_enable=self.cfg.vlm.formula_enable,
+                table_enable=self.cfg.vlm.table_enable,
+                p_lang=self.cfg.vlm.p_lang,
+            )
             self._vlm = VlmParser(config=vc)
         return self._vlm
 
     @property
     def scorer(self) -> Any:
         if self._scorer is None:
-            from pdfsys_bench.quality import OcrQualityScorer  # noqa: PLC0415
+            from pdfsys_bench.quality import OcrQualityScorer
 
             self._scorer = OcrQualityScorer(
                 model_name=self.cfg.quality.model,
@@ -142,7 +148,7 @@ class Components:
     @property
     def layout_cache(self) -> Any:
         if self._layout_cache is None:
-            from pdfsys_core import LayoutCache  # noqa: PLC0415
+            from pdfsys_core import LayoutCache
 
             self._layout_cache = LayoutCache(self.cfg.cache_path / "layout")
         return self._layout_cache
@@ -172,12 +178,6 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         "sum_quality": 0.0,
         "started_at": time.time(),
     }
-
-    # ---- optional pre-flight: configure mineru for the requested device ----
-    if cfg.has_stage("extract") and cfg.vlm.enabled:
-        from ._vlm_config import ensure_mineru_env  # noqa: PLC0415
-
-        ensure_mineru_env(cfg.vlm.device_mode)
 
     # ---- optional parquet sink (opened lazily, closed via context) ----
     parquet_sink: ParquetSink | None = None
@@ -281,7 +281,7 @@ def _process_one(
 
 
 def _needs_ocr(row: DocResult) -> bool:
-    from pdfsys_core import Backend  # noqa: PLC0415
+    from pdfsys_core import Backend
 
     return row.backend is not None and row.backend != Backend.MUPDF.value
 
@@ -323,14 +323,14 @@ def _stage_layout(
         comps.layout_cache.save(layout)
 
         # Stage-B decision.
-        from pdfsys_router import decide  # noqa: PLC0415
-        from pdfsys_core import RouterConfig  # noqa: PLC0415
+        from pdfsys_core import RouterConfig
+        from pdfsys_router import decide
 
         sb = decide(layout, config=RouterConfig(vlm_enabled=cfg.vlm.enabled))
         row.stage_b_backend = sb.backend.value
 
         return layout
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         _set_error(row, "layout", e)
         return None
 
@@ -339,7 +339,7 @@ def _stage_extract(
     row: DocResult, pdf_path: Path, layout: Any, comps: Components, cfg: RunConfig
 ) -> Any:
     """Run extraction. Returns the ExtractedDoc or None on error."""
-    from pdfsys_core import Backend  # noqa: PLC0415
+    from pdfsys_core import Backend
 
     backend = row.stage_b_backend or row.backend
     extracted = None
@@ -347,7 +347,7 @@ def _stage_extract(
     # MUPDF fast path.
     if backend == Backend.MUPDF.value or backend is None:
         try:
-            from pdfsys_parser_mupdf import extract_doc  # noqa: PLC0415
+            from pdfsys_parser_mupdf import extract_doc
 
             t0 = time.perf_counter()
             extracted = extract_doc(pdf_path)
@@ -357,7 +357,7 @@ def _stage_extract(
             row.extract_stats = dict(extracted.stats)
             row.markdown_chars = extracted.char_count
             row.wall_ms_extract = (t1 - t0) * 1000.0
-        except Exception as e:  # noqa: BLE001 — mupdf
+        except Exception as e:
             _set_error(row, "extract_mupdf", e)
             return None
 
@@ -372,7 +372,7 @@ def _stage_extract(
             row.extract_stats = dict(extracted.stats)
             row.markdown_chars = extracted.char_count
             row.wall_ms_extract = (t1 - t0) * 1000.0
-        except Exception as e:  # noqa: BLE001 — pipeline
+        except Exception as e:
             _set_error(row, "extract_pipeline", e)
             return None
 
@@ -399,7 +399,7 @@ def _stage_extract(
                 }
                 for s in extracted.segments
             ]
-        except Exception as e:  # noqa: BLE001 — vlm
+        except Exception as e:
             _set_error(row, "extract_vlm", e)
             return None
 
@@ -428,7 +428,7 @@ def _stage_quality(row: DocResult, extracted: Any, comps: Components) -> None:
         row.quality_num_tokens = q.num_tokens
         row.quality_model = q.model
         row.wall_ms_quality = (t1 - t0) * 1000.0
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         _set_error(row, "quality", e)
 
 

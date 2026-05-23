@@ -351,7 +351,7 @@ def _render_page1_jpegs(rows: list[dict[str, Any]], dst_dir: Path) -> None:
     view can overlay layout bboxes without a backend. Total budget for
     150 PDFs at quality=70 / DPI=80 is ~5-10 MB.
     """
-    import pymupdf  # noqa: PLC0415 — lazy import, only when running viz
+    import pymupdf
 
     dst_dir.mkdir(parents=True, exist_ok=True)
     rendered = 0
@@ -381,7 +381,7 @@ def _render_page1_jpegs(rows: list[dict[str, Any]], dst_dir: Path) -> None:
             pix.pil_save(str(target), format="JPEG", quality=70, optimize=True)
             doc.close()
             rendered += 1
-        except Exception as e:  # noqa: BLE001 — log + continue, viz can degrade
+        except Exception as e:
             print(f"[viz] WARN: failed to render page 1 of {src.name}: {e}")
             skipped += 1
     print(f"[viz] rendered {rendered} page-1 JPEGs (skipped {skipped})")
