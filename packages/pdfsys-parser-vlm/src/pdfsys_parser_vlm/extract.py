@@ -10,6 +10,7 @@ See ``docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md``.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import tempfile
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import mineru
-from mineru.cli.common import do_parse
+from mineru.cli.common import aio_do_parse
 
 from pdfsys_core import Backend, ExtractedDoc, VlmConfig
 
@@ -58,7 +59,11 @@ class VlmParser:
         persistent: bool,
     ) -> ExtractedDoc:
         backend = f"vlm-{self.config.engine}"
-        do_parse(
+        # NOTE: aio_do_parse (asyncio) instead of do_parse (sync) — the
+        # sync path triggers a multiprocessing.Pool that deadlocks on macOS
+        # without CUDA. aio_do_parse uses asyncio.gather internally and
+        # bypasses the multiprocess PDF render executor.
+        asyncio.run(aio_do_parse(
             output_dir=str(output_root),
             pdf_file_names=[sha],
             pdf_bytes_list=[pdf_bytes],
@@ -75,7 +80,7 @@ class VlmParser:
             f_draw_layout_bbox=False,
             f_draw_span_bbox=False,
             image_analysis=True,
-        )
+        ))
 
         md_dir = output_root / sha / _PARSE_METHOD
         md_path = md_dir / f"{sha}.md"

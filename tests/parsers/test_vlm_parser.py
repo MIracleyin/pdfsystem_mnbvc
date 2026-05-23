@@ -24,8 +24,8 @@ def _make_pdf(tmp_path: Path, content: bytes = b"%PDF-1.4\n%stub\n") -> Path:
 
 def _fake_do_parse(expected_md: str):
     """Returns a side_effect writing mineru-shaped outputs."""
-    def _side_effect(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-                     backend, **kwargs):
+    async def _side_effect(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
+                           backend, **kwargs):
         parse_method = "auto"
         for name in pdf_file_names:
             md_dir = Path(output_dir) / name / parse_method
@@ -46,7 +46,7 @@ def test_vlm_extract_returns_doc(tmp_path: Path) -> None:
     expected_sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
 
     fake = _fake_do_parse("# VLM Output\n\n$$E=mc^2$$\n")
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=fake) as m:
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake) as m:
         parser = VlmParser(VlmConfig(output_dir=tmp_path / "out"))
         doc = parser.extract(pdf)
 
@@ -63,7 +63,7 @@ def test_vlm_extract_with_mlx_engine(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
     fake = _fake_do_parse("md")
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=fake) as m:
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake) as m:
         parser = VlmParser(VlmConfig(engine="mlx-engine", output_dir=tmp_path / "o"))
         parser.extract(pdf)
 
@@ -75,7 +75,7 @@ def test_vlm_extract_with_vllm_engine(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
     fake = _fake_do_parse("md")
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=fake) as m:
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake) as m:
         parser = VlmParser(VlmConfig(engine="vllm-engine", output_dir=tmp_path / "o"))
         parser.extract(pdf)
 
@@ -88,7 +88,7 @@ def test_vlm_extract_records_sidecars(tmp_path: Path) -> None:
     out_dir = tmp_path / "out"
 
     fake = _fake_do_parse("md")
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=fake):
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake):
         parser = VlmParser(VlmConfig(output_dir=out_dir))
         doc = parser.extract(pdf)
 
@@ -101,7 +101,7 @@ def test_vlm_extract_tmpdir_when_output_dir_none(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
     fake = _fake_do_parse("# Y")
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=fake):
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=fake):
         parser = VlmParser(VlmConfig(output_dir=None))
         doc = parser.extract(pdf)
 
@@ -112,10 +112,10 @@ def test_vlm_extract_tmpdir_when_output_dir_none(tmp_path: Path) -> None:
 def test_vlm_extract_propagates_errors(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
-    def _raise(*a, **kw):
+    async def _raise(*a, **kw):
         raise RuntimeError("simulated vlm failure")
 
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=_raise):
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=_raise):
         parser = VlmParser(VlmConfig(output_dir=tmp_path / "o"))
         with pytest.raises(RuntimeError, match="simulated vlm failure"):
             parser.extract(pdf)
@@ -124,10 +124,10 @@ def test_vlm_extract_propagates_errors(tmp_path: Path) -> None:
 def test_vlm_extract_raises_when_markdown_missing(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
-    def _do_nothing(*a, **kw):
+    async def _do_nothing(*a, **kw):
         pass
 
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=_do_nothing):
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=_do_nothing):
         parser = VlmParser(VlmConfig(output_dir=tmp_path / "o"))
         with pytest.raises(FileNotFoundError, match="markdown"):
             parser.extract(pdf)
@@ -138,8 +138,8 @@ def test_vlm_extract_sidecar_none_when_mineru_skips_middle_json(tmp_path: Path) 
     pdf = _make_pdf(tmp_path)
     out_dir = tmp_path / "out"
 
-    def _fake_no_middle(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-                        backend, **kwargs):
+    async def _fake_no_middle(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
+                              backend, **kwargs):
         parse_method = "auto"
         for name in pdf_file_names:
             md_dir = Path(output_dir) / name / parse_method
@@ -148,7 +148,7 @@ def test_vlm_extract_sidecar_none_when_mineru_skips_middle_json(tmp_path: Path) 
             (md_dir / f"{name}_content_list.json").write_text("[]", encoding="utf-8")
             # no _middle.json
 
-    with patch("pdfsys_parser_vlm.extract.do_parse", side_effect=_fake_no_middle):
+    with patch("pdfsys_parser_vlm.extract.aio_do_parse", side_effect=_fake_no_middle):
         parser = VlmParser(VlmConfig(output_dir=out_dir))
         doc = parser.extract(pdf)
 

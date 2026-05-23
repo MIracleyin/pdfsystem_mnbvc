@@ -27,8 +27,8 @@ def _make_pdf(tmp_path: Path, content: bytes = b"%PDF-1.4\n%stub\n") -> Path:
 def _fake_do_parse(expected_md: str, expected_middle: dict, expected_content: list):
     """Returns a side_effect that writes mineru-shaped outputs to the dir
     the parser would pass in."""
-    def _side_effect(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-                     backend, **kwargs):
+    async def _side_effect(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
+                           backend, **kwargs):
         # mineru lays files at <output_dir>/<pdf_name>/<parse_method>/<pdf_name>.md
         parse_method = "auto"
         for name in pdf_file_names:
@@ -50,7 +50,7 @@ def test_extract_returns_doc_with_markdown(tmp_path: Path) -> None:
     expected_sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
 
     fake = _fake_do_parse("# Hello\n\nWorld.\n", {"pages": []}, [])
-    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=fake) as m:
+    with patch("pdfsys_parser_pipeline.extract.aio_do_parse", side_effect=fake) as m:
         parser = PipelineParser(PipelineConfig(output_dir=tmp_path / "out"))
         doc = parser.extract(pdf)
 
@@ -73,7 +73,7 @@ def test_extract_records_sidecar_paths(tmp_path: Path) -> None:
     out_dir = tmp_path / "out"
 
     fake = _fake_do_parse("md", {"pages": []}, [])
-    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=fake):
+    with patch("pdfsys_parser_pipeline.extract.aio_do_parse", side_effect=fake):
         parser = PipelineParser(PipelineConfig(output_dir=out_dir))
         doc = parser.extract(pdf)
 
@@ -89,7 +89,7 @@ def test_extract_tmpdir_when_output_dir_none(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
     fake = _fake_do_parse("# X", {"pages": []}, [])
-    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=fake):
+    with patch("pdfsys_parser_pipeline.extract.aio_do_parse", side_effect=fake):
         parser = PipelineParser(PipelineConfig(output_dir=None))
         doc = parser.extract(pdf)
 
@@ -103,7 +103,7 @@ def test_extract_uses_config_p_lang(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
     fake = _fake_do_parse("md", {"pages": []}, [])
-    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=fake) as m:
+    with patch("pdfsys_parser_pipeline.extract.aio_do_parse", side_effect=fake) as m:
         parser = PipelineParser(PipelineConfig(p_lang="en", output_dir=tmp_path / "o"))
         parser.extract(pdf)
 
@@ -114,10 +114,10 @@ def test_extract_uses_config_p_lang(tmp_path: Path) -> None:
 def test_extract_propagates_do_parse_errors(tmp_path: Path) -> None:
     pdf = _make_pdf(tmp_path)
 
-    def _raise(*a, **kw):
+    async def _raise(*a, **kw):
         raise RuntimeError("simulated mineru failure")
 
-    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=_raise):
+    with patch("pdfsys_parser_pipeline.extract.aio_do_parse", side_effect=_raise):
         parser = PipelineParser(PipelineConfig(output_dir=tmp_path / "o"))
         with pytest.raises(RuntimeError, match="simulated mineru failure"):
             parser.extract(pdf)
@@ -127,10 +127,10 @@ def test_extract_raises_when_markdown_missing(tmp_path: Path) -> None:
     """If mineru returns without writing a .md, surface a clear error."""
     pdf = _make_pdf(tmp_path)
 
-    def _do_nothing(*a, **kw):
+    async def _do_nothing(*a, **kw):
         pass  # mineru wrote nothing
 
-    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=_do_nothing):
+    with patch("pdfsys_parser_pipeline.extract.aio_do_parse", side_effect=_do_nothing):
         parser = PipelineParser(PipelineConfig(output_dir=tmp_path / "o"))
         with pytest.raises(FileNotFoundError, match="markdown"):
             parser.extract(pdf)
@@ -145,8 +145,8 @@ def test_extract_sidecar_none_when_mineru_skips_middle_json(tmp_path: Path) -> N
     pdf = _make_pdf(tmp_path)
     out_dir = tmp_path / "out"
 
-    def _fake_no_middle(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-                        backend, **kwargs):
+    async def _fake_no_middle(output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
+                              backend, **kwargs):
         parse_method = "auto"
         for name in pdf_file_names:
             md_dir = Path(output_dir) / name / parse_method
@@ -155,7 +155,7 @@ def test_extract_sidecar_none_when_mineru_skips_middle_json(tmp_path: Path) -> N
             (md_dir / f"{name}_content_list.json").write_text("[]", encoding="utf-8")
             # NOTE: no _middle.json written — simulates mineru's "empty page" path
 
-    with patch("pdfsys_parser_pipeline.extract.do_parse", side_effect=_fake_no_middle):
+    with patch("pdfsys_parser_pipeline.extract.aio_do_parse", side_effect=_fake_no_middle):
         parser = PipelineParser(PipelineConfig(output_dir=out_dir))
         doc = parser.extract(pdf)
 
