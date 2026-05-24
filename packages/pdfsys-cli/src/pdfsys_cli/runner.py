@@ -365,7 +365,7 @@ def _stage_extract(
     elif backend == Backend.PIPELINE.value and layout is not None:
         try:
             t0 = time.perf_counter()
-            extracted = comps.pipeline_parser.extract(pdf_path, layout)
+            extracted = comps.pipeline_parser.extract(pdf_path)
             t1 = time.perf_counter()
             row.extract_backend = Backend.PIPELINE.value
             row.sha256 = extracted.sha256
@@ -380,7 +380,7 @@ def _stage_extract(
     elif backend == Backend.VLM.value and layout is not None:
         try:
             t0 = time.perf_counter()
-            extracted = comps.vlm_parser.extract_complex_pages(pdf_path, layout)
+            extracted = comps.vlm_parser.extract(pdf_path)
             t1 = time.perf_counter()
             row.extract_backend = Backend.VLM.value
             row.sha256 = extracted.sha256
