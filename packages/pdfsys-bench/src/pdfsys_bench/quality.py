@@ -1,34 +1,46 @@
-"""OCR quality scorer backed by the FinePDFs ModernBERT classifier.
+"""OCR quality scorer — out-of-process HTTP client to ``_quality_server``.
 
-Wraps ``HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn`` — a
-single-head regression fine-tune of ModernBERT-large (~0.4 B params)
-that emits a float in ``[0, 3]`` where:
+The actual ModernBERT / transformers stack lives in a subprocess (see
+``pdfsys_bench._quality_server``). The bench / CLI client posts text to
+it over HTTP and receives a float score. Lifecycle mirrors the parser
+HTTP-client design.
 
-* 0 → garbage / unreadable OCR
-* 1 → formatting issues but mostly readable
-* 2 → minor problems
-* 3 → clean text
+Why a subprocess for a model the bench process used to load in-process?
 
-The scorer takes raw extracted text (Markdown or plain), truncates to at
-most ``max_chars`` characters before tokenization, tokenizes with the
-model's own tokenizer, runs one forward pass, and returns the scalar.
+* Cold-start ``transformers.from_pretrained`` triggers HF Hub revision
+  probes which retry on flaky network — we observed 8000+ s wall clock
+  for a 20-PDF run that should have taken minutes.
+* Heavy import surface (torch + transformers + safetensors) ballooned
+  the bench parent process and slowed cascade workflows that don't
+  need quality scoring at all.
 
-Heavy dependencies (``torch`` + ``transformers``) are imported lazily so
-that merely importing :mod:`pdfsys_bench` does not pull them in.
+Subprocess + ``HF_HUB_OFFLINE=1`` ensures predictable behavior and a
+lean bench parent.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import os
+import socket
+import subprocess
+import sys
+import time
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
+_LOG = logging.getLogger(__name__)
+
 DEFAULT_MODEL = "HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn"
 DEFAULT_MAX_CHARS = 10_000
-# Upstream FinePDFs uses max_tokens=2048, but ModernBERT-large activations
-# at that length need ≈ 3 GB of RAM — too much for a 4 GB dev box. 512
-# tokens is enough to give a stable quality signal in practice and keeps
-# peak memory well under a gig.
 DEFAULT_MAX_TOKENS = 512
+
+_READY_TIMEOUT_S = 180.0  # cold-start incl. model load
+_READY_POLL_S = 1.0
+_SCORE_TIMEOUT_S = 60.0
 
 
 @dataclass(slots=True)
@@ -49,8 +61,14 @@ class QualityScore:
         }
 
 
+def _pick_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 class OcrQualityScorer:
-    """Lazy ModernBERT regression scorer. Re-uses model/tokenizer across calls."""
+    """Lazy HTTP client to a ModernBERT scoring subprocess."""
 
     def __init__(
         self,
@@ -63,86 +81,113 @@ class OcrQualityScorer:
         self.model_name = model_name
         self.max_chars = max_chars
         self.max_tokens = max_tokens
-        self._device_name = device
-        self.dtype_name = dtype
-        self._tokenizer: Any = None
-        self._model: Any = None
-        self._torch: Any = None
-        self._device: Any = None
+        self.device = device
+        self.dtype = dtype
+        self._proc: subprocess.Popen | None = None
+        self._base_url: str | None = None
 
-    def _ensure_loaded(self) -> None:
-        if self._model is not None:
-            return
-        import torch
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    def _ensure_server(self) -> str:
+        if self._base_url is not None:
+            return self._base_url
 
-        self._torch = torch
-        self._device = torch.device(
-            self._device_name
-            or ("cuda" if torch.cuda.is_available() else "cpu")
+        port = _pick_free_port()
+        cmd = [
+            sys.executable, "-m", "pdfsys_bench._quality_server",
+            "--host", "127.0.0.1",
+            "--port", str(port),
+            "--model", self.model_name,
+            "--dtype", self.dtype,
+            "--max-tokens", str(self.max_tokens),
+            "--max-chars", str(self.max_chars),
+        ]
+        if self.device:
+            cmd += ["--device", self.device]
+
+        # Inherit env + force HF offline so cold-start can't block on
+        # flaky network. Models are expected to be cached locally.
+        env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
+
+        _LOG.info("starting quality scorer subprocess on 127.0.0.1:%d", port)
+        self._proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
         )
-        # Use bfloat16 on CPU to halve the model's memory footprint —
-        # ModernBERT-large is ~0.4 B params, so fp32 weights alone take
-        # ~1.6 GB and OOM a 4 GB-RAM dev box. bf16 inference is
-        # numerically stable enough for a regression head like this.
-        torch_dtype = getattr(torch, self.dtype_name, torch.float32)
 
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        # ``dtype`` is the transformers≥5 name; ``torch_dtype`` was the
-        # transformers<5 name. Pass ``dtype`` and fall back for older releases.
-        try:
-            model = AutoModelForSequenceClassification.from_pretrained(
-                self.model_name,
-                dtype=torch_dtype,
-            )
-        except TypeError:
-            model = AutoModelForSequenceClassification.from_pretrained(
-                self.model_name,
-                torch_dtype=torch_dtype,
-            )
-        model.eval()
-        model.to(self._device)
-        self._model = model
+        base = f"http://127.0.0.1:{port}"
+        deadline = time.monotonic() + _READY_TIMEOUT_S
+        while time.monotonic() < deadline:
+            if self._proc.poll() is not None:
+                raise RuntimeError(
+                    f"quality-server exited early (rc={self._proc.returncode})"
+                )
+            try:
+                r = httpx.get(f"{base}/health", timeout=2.0)
+                if r.status_code == 200:
+                    _LOG.info(
+                        "quality-server ready at %s (pid=%s)",
+                        base, self._proc.pid,
+                    )
+                    self._base_url = base
+                    return base
+            except httpx.HTTPError:
+                pass
+            time.sleep(_READY_POLL_S)
+
+        self.close()
+        raise TimeoutError(
+            f"quality-server did not become ready at {base} in {_READY_TIMEOUT_S}s"
+        )
 
     def score(self, text: str) -> QualityScore:
-        """Score a single document. Empty input returns 0.0."""
+        """Score a single document. Empty input returns 0.0 without RPC."""
         if not text or not text.strip():
             return QualityScore(
-                score=0.0, num_chars=0, num_tokens=0, model=self.model_name
+                score=0.0,
+                num_chars=0,
+                num_tokens=0,
+                model=self.model_name,
             )
 
-        self._ensure_loaded()
-        assert self._tokenizer is not None and self._model is not None
-        torch = self._torch
-
-        clipped = text[: self.max_chars]
-        enc = self._tokenizer(
-            clipped,
-            return_tensors="pt",
-            truncation=True,
-            max_length=self.max_tokens,
+        url = self._ensure_server()
+        resp = httpx.post(
+            f"{url}/score",
+            content=json.dumps({"text": text}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            timeout=_SCORE_TIMEOUT_S,
         )
-        num_tokens = int(enc["input_ids"].shape[1])
-        enc = {k: v.to(self._device) for k, v in enc.items()}
-
-        with torch.inference_mode():
-            out = self._model(**enc)
-            logits = out.logits  # shape [1, 1] for regression
-            raw = float(logits.squeeze().item())
-        # Drop the forward-pass tensors eagerly so large-seq runs on CPU
-        # don't hold onto activations between calls.
-        del enc, out, logits
-
-        # Clamp to the documented [0, 3] range.
-        clamped = max(0.0, min(3.0, raw))
-
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"quality-server /score returned {resp.status_code}: {resp.text[:200]}"
+            )
+        data = resp.json()
         return QualityScore(
-            score=clamped,
-            num_chars=len(clipped),
-            num_tokens=num_tokens,
-            model=self.model_name,
+            score=float(data["score"]),
+            num_chars=int(data["num_chars"]),
+            num_tokens=int(data["num_tokens"]),
+            model=str(data.get("model") or self.model_name),
         )
 
     def score_many(self, texts: list[str]) -> list[QualityScore]:
         """Serial scoring — tiny MVP harness, not a batched hot path."""
         return [self.score(t) for t in texts]
+
+    def close(self) -> None:
+        proc = self._proc
+        self._proc = None
+        self._base_url = None
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=2)
+        except Exception:
+            pass
+
+    def __del__(self) -> None:  # pragma: no cover
+        self.close()
