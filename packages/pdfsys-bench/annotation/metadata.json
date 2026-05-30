@@ -1,29 +1,64 @@
 {
-  "version": 1,
+  "version": 2,
   "total": 150,
   "sources": {
     "olmocr_bench_50": 50,
     "omnidocbench_100": 100
   },
   "label_schema": {
-    "labels": [
-      "text_ok",
-      "need_ocr",
-      "ambiguous",
-      "unusable",
-      "discard",
-      "hold",
-      "keep"
+    "data_sources": [
+      "academic_literature",
+      "book",
+      "colorful_textbook",
+      "exam_paper",
+      "magazine",
+      "newspaper",
+      "note",
+      "research_report",
+      "PPT2PDF",
+      "slides",
+      "form",
+      "other"
     ],
-    "ocr_reasons": [
-      "scan_no_ocr_layer",
-      "three_plus_column",
-      "has_tables",
-      "image_with_text",
-      "complex_formula",
+    "languages": [
+      "simplified_chinese",
+      "english",
+      "en_ch_mixed",
+      "other",
+      "unknown"
+    ],
+    "layouts": [
+      "single_column",
+      "double_column",
+      "three_column",
+      "1andmore_column",
+      "multi_column",
+      "other_layout"
+    ],
+    "scan_types": [
+      "born_digital",
+      "scanned",
+      "mixed",
+      "unknown"
+    ],
+    "special_issues": [
+      "watermark",
+      "colorful_background",
+      "fuzzy_scan",
+      "has_table",
+      "has_formula",
+      "has_figure_with_text",
       "handwriting",
-      "pages_gt_10",
-      "all_pages_empty"
+      "vertical_text",
+      "rotated_text",
+      "stamp_seal",
+      "header_footer_heavy",
+      "garbled_text",
+      "partial_text_pages"
+    ],
+    "ocr_decisions": [
+      "text_ok",
+      "need_ocr"
     ]
   },
   "pdfs": [
@@ -37,13 +72,39 @@
       "size_bytes": 364657,
       "page_count": 1,
       "olmocr_test_count": 1,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:43:33.567Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1992,
+        "garbled_ratio": 0.0,
+        "md_chars": 2008,
+        "chars_per_page": 1992,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 15,
+          "formula": 29
+        },
+        "total_regions": 44
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (29 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.04897_pg4",
@@ -55,13 +116,39 @@
       "size_bytes": 70830,
       "page_count": 1,
       "olmocr_test_count": 10,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:43:37.919Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3660,
+        "garbled_ratio": 0.0,
+        "md_chars": 3697,
+        "chars_per_page": 3660,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 16,
+          "formula": 60
+        },
+        "total_regions": 76
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (60 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.06111_pg6",
@@ -73,13 +160,39 @@
       "size_bytes": 44350,
       "page_count": 1,
       "olmocr_test_count": 9,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:43:40.977Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1873,
+        "garbled_ratio": 0.0,
+        "md_chars": 1914,
+        "chars_per_page": 1873,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 11,
+          "formula": 39
+        },
+        "total_regions": 50
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (39 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.06185_pg6",
@@ -91,13 +204,39 @@
       "size_bytes": 63343,
       "page_count": 1,
       "olmocr_test_count": 6,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:43:45.912Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3702,
+        "garbled_ratio": 0.0,
+        "md_chars": 3728,
+        "chars_per_page": 3702,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 19,
+          "formula": 27
+        },
+        "total_regions": 46
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (27 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.06939_pg20",
@@ -109,13 +248,39 @@
       "size_bytes": 306606,
       "page_count": 1,
       "olmocr_test_count": 5,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:43:50.950Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 5035,
+        "garbled_ratio": 0.0,
+        "md_chars": 5065,
+        "chars_per_page": 5035,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 19,
+          "formula": 43
+        },
+        "total_regions": 62
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (43 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.07488_pg6",
@@ -127,13 +292,41 @@
       "size_bytes": 250237,
       "page_count": 1,
       "olmocr_test_count": 10,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:43:54.094Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1756,
+        "garbled_ratio": 0.0,
+        "md_chars": 1774,
+        "chars_per_page": 1756,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "image": 1,
+          "text": 10,
+          "formula": 40
+        },
+        "total_regions": 51
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (40 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.07533_pg5",
@@ -145,13 +338,39 @@
       "size_bytes": 195315,
       "page_count": 1,
       "olmocr_test_count": 4,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:43:56.634Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1362,
+        "garbled_ratio": 0.0,
+        "md_chars": 1367,
+        "chars_per_page": 1362,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 15,
+          "formula": 13
+        },
+        "total_regions": 28
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (13 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.07785_pg20",
@@ -163,13 +382,39 @@
       "size_bytes": 344627,
       "page_count": 1,
       "olmocr_test_count": 1,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:00.305Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 634,
+        "garbled_ratio": 0.0,
+        "md_chars": 688,
+        "chars_per_page": 634,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 14,
+          "formula": 9
+        },
+        "total_regions": 23
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (9 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.08500_pg11",
@@ -181,13 +426,41 @@
       "size_bytes": 89181,
       "page_count": 1,
       "olmocr_test_count": 8,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:03.197Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2727,
+        "garbled_ratio": 0.0,
+        "md_chars": 2754,
+        "chars_per_page": 2727,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "image": 1,
+          "text": 11,
+          "formula": 40
+        },
+        "total_regions": 52
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (40 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.08646_pg17",
@@ -199,13 +472,39 @@
       "size_bytes": 188950,
       "page_count": 1,
       "olmocr_test_count": 9,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:07.009Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1567,
+        "garbled_ratio": 0.0,
+        "md_chars": 1584,
+        "chars_per_page": 1567,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 13,
+          "formula": 27
+        },
+        "total_regions": 40
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (27 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.08773_pg19",
@@ -217,13 +516,39 @@
       "size_bytes": 194010,
       "page_count": 1,
       "olmocr_test_count": 2,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:09.188Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2622,
+        "garbled_ratio": 0.0,
+        "md_chars": 2645,
+        "chars_per_page": 2622,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 20,
+          "formula": 19
+        },
+        "total_regions": 39
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (19 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.09087_pg6",
@@ -235,13 +560,41 @@
       "size_bytes": 83677,
       "page_count": 1,
       "olmocr_test_count": 1,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:13.518Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2474,
+        "garbled_ratio": 0.0,
+        "md_chars": 2502,
+        "chars_per_page": 2474,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 11,
+          "image": 1,
+          "formula": 53
+        },
+        "total_regions": 65
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (53 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.09230_pg13",
@@ -253,13 +606,41 @@
       "size_bytes": 202422,
       "page_count": 1,
       "olmocr_test_count": 5,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:15.896Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2502,
+        "garbled_ratio": 0.0,
+        "md_chars": 2508,
+        "chars_per_page": 2502,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 10,
+          "formula": 43,
+          "image": 2
+        },
+        "total_regions": 55
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (43 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__arxiv_math__2503.09231_pg4",
@@ -271,13 +652,39 @@
       "size_bytes": 254866,
       "page_count": 1,
       "olmocr_test_count": 9,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:17.459Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2281,
+        "garbled_ratio": 0.0,
+        "md_chars": 2320,
+        "chars_per_page": 2281,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 16,
+          "formula": 27
+        },
+        "total_regions": 43
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (27 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__4b91e05fb0fe865391f0f25c41a83c9c5fd37c08_page_1",
@@ -289,13 +696,39 @@
       "size_bytes": 235597,
       "page_count": 1,
       "olmocr_test_count": 5,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
-      "reason_short": "",
+      "reason_short": "日语",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:21.446Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2690,
+        "garbled_ratio": 0.0,
+        "md_chars": 2718,
+        "chars_per_page": 2690,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 38,
+          "table": 1
+        },
+        "total_regions": 39
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__661e8e921def996b7775d17e3e2537092db1dbf3_page_65",
@@ -307,13 +740,41 @@
       "size_bytes": 55281,
       "page_count": 1,
       "olmocr_test_count": 2,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:28.355Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 7507,
+        "garbled_ratio": 0.0,
+        "md_chars": 7530,
+        "chars_per_page": 7507,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 19,
+          "table": 1,
+          "formula": 11
+        },
+        "total_regions": 31
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (11 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__6ddb7cec52f3e008f35a0d3c0c6f20a68a91b419_page_13",
@@ -325,13 +786,36 @@
       "size_bytes": 40177,
       "page_count": 1,
       "olmocr_test_count": 3,
-      "label": null,
+      "label": "text_ok",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:29.949Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 8143,
+        "garbled_ratio": 0.0,
+        "md_chars": 8147,
+        "chars_per_page": 8143,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 36
+        },
+        "total_regions": 36
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__848067e3a69754666b5fe3f152a5245d25041c32_page_2",
@@ -343,13 +827,36 @@
       "size_bytes": 28767,
       "page_count": 1,
       "olmocr_test_count": 1,
-      "label": null,
+      "label": "text_ok",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:34.330Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3283,
+        "garbled_ratio": 0.0,
+        "md_chars": 3302,
+        "chars_per_page": 3283,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 11
+        },
+        "total_regions": 11
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__a09e03201840ca874de0bb5da518259659196e1c_page_6",
@@ -361,13 +868,36 @@
       "size_bytes": 236244,
       "page_count": 1,
       "olmocr_test_count": 2,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
-      "reason_short": "",
+      "reason_short": "阿拉伯语",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:43.857Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3570,
+        "garbled_ratio": 0.0,
+        "md_chars": 3580,
+        "chars_per_page": 3570,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 10
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__b7d405094e779c1318d2e43b1fc897991989fb06_page_1",
@@ -379,13 +909,36 @@
       "size_bytes": 86806,
       "page_count": 1,
       "olmocr_test_count": 4,
-      "label": null,
+      "label": "text_ok",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:47.488Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1139,
+        "garbled_ratio": 0.0,
+        "md_chars": 989,
+        "chars_per_page": 1139,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 34
+        },
+        "total_regions": 34
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__ba6aebad479086f039aa97daa8208472439af6ec_page_1",
@@ -397,13 +950,39 @@
       "size_bytes": 400022,
       "page_count": 1,
       "olmocr_test_count": 2,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:52.518Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2414,
+        "garbled_ratio": 0.0,
+        "md_chars": 2435,
+        "chars_per_page": 2414,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 10,
+          "image": 1
+        },
+        "total_regions": 11
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__headers_footers__f7469518fa45151f23fc0189cd9d284e52f694ce_page_1",
@@ -415,13 +994,39 @@
       "size_bytes": 6025536,
       "page_count": 1,
       "olmocr_test_count": 7,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:44:58.285Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1788,
+        "garbled_ratio": 0.0,
+        "md_chars": 1819,
+        "chars_per_page": 1788,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "image": 38,
+          "text": 59
+        },
+        "total_regions": 97
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__long_tiny_text__11_pg57_pg1",
@@ -433,13 +1038,36 @@
       "size_bytes": 106025,
       "page_count": 1,
       "olmocr_test_count": 7,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:45:00.664Z",
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4754,
+        "garbled_ratio": 0.0,
+        "md_chars": 4786,
+        "chars_per_page": 4754,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 59
+        },
+        "total_regions": 59
+      },
+      "attr_data_source": "book",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__long_tiny_text__15b_pg1",
@@ -451,13 +1079,36 @@
       "size_bytes": 382499,
       "page_count": 1,
       "olmocr_test_count": 4,
-      "label": null,
+      "label": "need_ocr",
       "ocr_reasons": [],
       "n_ocr_pages": null,
       "reason_short": "",
       "custom_tags": [],
-      "annotator": null,
-      "annotated_at": null
+      "annotator": "zy",
+      "annotated_at": "2026-04-24T16:45:04.348Z",
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 19
+        },
+        "total_regions": 19
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__long_tiny_text__15e_pg1",
@@ -475,7 +1126,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 21
+        },
+        "total_regions": 21
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__long_tiny_text__17_pg86_pg1",
@@ -493,7 +1167,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 16
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__00187fe0533b1e8ddc748adab4924b6f7099_page_10_pg1",
@@ -511,7 +1208,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6800,
+        "garbled_ratio": 0.0,
+        "md_chars": 6809,
+        "chars_per_page": 6800,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 44,
+          "formula": 1
+        },
+        "total_regions": 45
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__01ed6dcc6a3d0237daa88b293d0c0667df1a_page_49_pg1",
@@ -529,7 +1252,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6729,
+        "garbled_ratio": 0.0,
+        "md_chars": 6717,
+        "chars_per_page": 6729,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 36
+        },
+        "total_regions": 36
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__038650c9dfd95e7495d0c4d301d9dcca735a_page_1_pg1",
@@ -547,7 +1293,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6504,
+        "garbled_ratio": 0.0,
+        "md_chars": 6512,
+        "chars_per_page": 6504,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 36
+        },
+        "total_regions": 36
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__05aa71fa77e07bccb443ef4fd28dde3ecfd6_page_12_pg1",
@@ -565,7 +1334,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 10103,
+        "garbled_ratio": 0.0,
+        "md_chars": 10115,
+        "chars_per_page": 10103,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 50
+        },
+        "total_regions": 50
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__069577d83be73a2373200ada5599eb824c95_page_2_pg1",
@@ -583,7 +1375,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2826,
+        "garbled_ratio": 0.0,
+        "md_chars": 2832,
+        "chars_per_page": 2826,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 14,
+          "image": 1
+        },
+        "total_regions": 15
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__06ba2a90e81d76b586e6b884bf67133012a9_page_8_pg1",
@@ -601,7 +1419,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6045,
+        "garbled_ratio": 0.0,
+        "md_chars": 6076,
+        "chars_per_page": 6045,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 8,
+          "table": 1
+        },
+        "total_regions": 9
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__0925342e1efabb7957efa34203f65d3cbc4d_page_4_pg1",
@@ -619,7 +1463,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3848,
+        "garbled_ratio": 0.0,
+        "md_chars": 3786,
+        "chars_per_page": 3848,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 15,
+          "image": 1
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__multi_column__0b2e551bbc33b030f810311118e2088d7ae3_page_9_pg1",
@@ -637,7 +1507,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 7642,
+        "garbled_ratio": 0.0,
+        "md_chars": 7507,
+        "chars_per_page": 7642,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 31,
+          "formula": 8
+        },
+        "total_regions": 39
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (8 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans__22",
@@ -655,7 +1551,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 16
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans__49",
@@ -673,7 +1592,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 7
+        },
+        "total_regions": 7
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans__5",
@@ -691,7 +1633,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 11
+        },
+        "total_regions": 11
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans__50",
@@ -709,7 +1674,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 6
+        },
+        "total_regions": 6
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "single_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans__78",
@@ -727,7 +1715,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 9,
+          "table": 1
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "book",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans_math__1_pg19",
@@ -745,7 +1759,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 7,
+          "formula": 12
+        },
+        "total_regions": 19
+      },
+      "attr_data_source": "other",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans_math__3_pg199",
@@ -763,7 +1803,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 12,
+          "formula": 17
+        },
+        "total_regions": 29
+      },
+      "attr_data_source": "other",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans_math__4_pg433",
@@ -781,7 +1847,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1165,
+        "garbled_ratio": 0.0,
+        "md_chars": 1111,
+        "chars_per_page": 1165,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 13,
+          "formula": 5
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "other",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (5 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__old_scans_math__5_pg558",
@@ -799,7 +1891,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 5,
+          "formula": 8
+        },
+        "total_regions": 13
+      },
+      "attr_data_source": "other",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__tables__0953927d7a3f032c46a2e6d0ead837398a0b_pg20",
@@ -817,7 +1935,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3300,
+        "garbled_ratio": 0.0,
+        "md_chars": 3279,
+        "chars_per_page": 3300,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 10,
+          "table": 1
+        },
+        "total_regions": 11
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__tables__1529b213d5db3acb5254d34f81d18e060f28_pg1",
@@ -835,7 +1979,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3058,
+        "garbled_ratio": 0.0,
+        "md_chars": 3034,
+        "chars_per_page": 3058,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 29,
+          "image": 7,
+          "table": 1
+        },
+        "total_regions": 37
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__tables__1a67d1114deeff1a4ad4a6bee9422afebbb1_pg1_pg1",
@@ -853,7 +2025,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3119,
+        "garbled_ratio": 0.0,
+        "md_chars": 3062,
+        "chars_per_page": 3119,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 31,
+          "table": 1
+        },
+        "total_regions": 32
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__tables__a38ac67eb01a33cca0e2894b9c995d52b74c_pg2_pg1",
@@ -871,7 +2069,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4191,
+        "garbled_ratio": 0.0,
+        "md_chars": 4092,
+        "chars_per_page": 4191,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 11,
+          "table": 2,
+          "formula": 3
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (3 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__tables__a7e943f08a413075a49f061eefac173dba49_pg7_pg1",
@@ -889,7 +2115,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 403,
+        "garbled_ratio": 0.0,
+        "md_chars": 407,
+        "chars_per_page": 403,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 6,
+          "table": 1
+        },
+        "total_regions": 7
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__tables__e901b47f7c6c4196c3fc477e48c36d555537_pg4_pg1",
@@ -907,7 +2159,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4341,
+        "garbled_ratio": 0.0,
+        "md_chars": 4375,
+        "chars_per_page": 4341,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 10,
+          "table": 1,
+          "formula": 1
+        },
+        "total_regions": 12
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "olmocr__tables__fbeb6edcf6ad16adbd2a27b54da0c1771389_pg1",
@@ -925,7 +2205,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 175,
+        "garbled_ratio": 0.0,
+        "md_chars": 174,
+        "chars_per_page": 175,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 8,
+          "image": 10,
+          "table": 2
+        },
+        "total_regions": 20
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_dianzishu_zhongwenzaixian-o.O-61465568.pdf_186",
@@ -950,7 +2258,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 414,
+        "garbled_ratio": 0.0,
+        "md_chars": 399,
+        "chars_per_page": 414,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "image": 11,
+          "text": 7,
+          "table": 1
+        },
+        "total_regions": 19
+      },
+      "attr_data_source": "book",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_dianzishu_zhongwenzaixian-o.O-61510863.pdf_73",
@@ -973,7 +2309,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 429,
+        "garbled_ratio": 0.0,
+        "md_chars": 441,
+        "chars_per_page": 429,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 21,
+          "image": 4
+        },
+        "total_regions": 25
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_dianzishu_zhongwenzaixian-o.O-61520814.pdf_185",
@@ -999,7 +2362,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1060,
+        "garbled_ratio": 0.0,
+        "md_chars": 1106,
+        "chars_per_page": 1060,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 13,
+          "formula": 9,
+          "table": 1
+        },
+        "total_regions": 23
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (9 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_dianzishu_zhongwenzaixian-o.O-63678132.pdf_161",
@@ -1022,7 +2413,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 526,
+        "garbled_ratio": 0.0,
+        "md_chars": 559,
+        "chars_per_page": 526,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 9,
+          "image": 1
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "book",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_enbook-zlib-o.O-17208435.pdf_105",
@@ -1045,7 +2462,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 5730,
+        "garbled_ratio": 0.0,
+        "md_chars": 5734,
+        "chars_per_page": 5730,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 8
+        },
+        "total_regions": 8
+      },
+      "attr_data_source": "book",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_enbook-zlib-o.O-17761417.pdf_894",
@@ -1071,7 +2511,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3484,
+        "garbled_ratio": 0.0,
+        "md_chars": 3384,
+        "chars_per_page": 3484,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 16,
+          "table": 1
+        },
+        "total_regions": 17
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "colorful_background"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_enbook-zlib-o.O-19221575.pdf_1173",
@@ -1094,7 +2561,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3569,
+        "garbled_ratio": 0.0,
+        "md_chars": 3477,
+        "chars_per_page": 3569,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 25,
+          "formula": 1
+        },
+        "total_regions": 26
+      },
+      "attr_data_source": "book",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_enbook-zlib-o.O-22206811.pdf_5",
@@ -1117,7 +2610,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1701,
+        "garbled_ratio": 0.0,
+        "md_chars": 1708,
+        "chars_per_page": 1701,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 11,
+          "image": 5
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-ceat.200600266.pdf_2",
@@ -1142,7 +2661,37 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4961,
+        "garbled_ratio": 0.0,
+        "md_chars": 4995,
+        "chars_per_page": 4961,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 24,
+          "formula": 5,
+          "table": 1,
+          "image": 1
+        },
+        "total_regions": 31
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (5 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-hup.777.pdf_7",
@@ -1167,7 +2716,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3518,
+        "garbled_ratio": 0.0,
+        "md_chars": 3542,
+        "chars_per_page": 3518,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 9,
+          "table": 1,
+          "formula": 8
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (8 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-hup.777.pdf_8",
@@ -1192,7 +2769,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3710,
+        "garbled_ratio": 0.0,
+        "md_chars": 3748,
+        "chars_per_page": 3710,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 13,
+          "formula": 22,
+          "table": 1
+        },
+        "total_regions": 36
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (22 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-j.ab.2007.11.016.pdf_5",
@@ -1215,7 +2820,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2164,
+        "garbled_ratio": 0.0,
+        "md_chars": 2173,
+        "chars_per_page": 2164,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 9,
+          "formula": 1
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-j.chroma.2005.08.021.pdf_7",
@@ -1240,7 +2871,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4834,
+        "garbled_ratio": 0.0,
+        "md_chars": 4858,
+        "chars_per_page": 4834,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 22,
+          "formula": 13,
+          "table": 2
+        },
+        "total_regions": 37
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (13 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-s00128-008-9367-z.pdf_4",
@@ -1266,7 +2925,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3835,
+        "garbled_ratio": 0.0,
+        "md_chars": 3863,
+        "chars_per_page": 3835,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 13,
+          "table": 2,
+          "formula": 23
+        },
+        "total_regions": 38
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (23 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-s00128-010-0006-0.pdf_5",
@@ -1291,7 +2978,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4893,
+        "garbled_ratio": 0.0,
+        "md_chars": 4916,
+        "chars_per_page": 4893,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 27,
+          "table": 1,
+          "formula": 16
+        },
+        "total_regions": 44
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (16 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-scihub-o.O-s00374-006-0103-8.pdf_11",
@@ -1316,7 +3031,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2772,
+        "garbled_ratio": 0.0,
+        "md_chars": 2780,
+        "chars_per_page": 2772,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 4,
+          "table": 2,
+          "formula": 1
+        },
+        "total_regions": 7
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-the-eye-o.O-1995_2418.pdf_1",
@@ -1340,7 +3083,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 7094,
+        "garbled_ratio": 0.0,
+        "md_chars": 7107,
+        "chars_per_page": 7094,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 30,
+          "table": 1
+        },
+        "total_regions": 31
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-the-eye-o.O-Character%20Sheet%20-%20Form%20Fillable.pdf_2",
@@ -1366,7 +3135,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 994,
+        "garbled_ratio": 0.0,
+        "md_chars": 934,
+        "chars_per_page": 994,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "table": 9,
+          "text": 3
+        },
+        "total_regions": 12
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; heavy table content (9 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-the-eye-o.O-Something%27s%20Cooking.pdf_4",
@@ -1389,7 +3184,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4071,
+        "garbled_ratio": 0.0,
+        "md_chars": 4077,
+        "chars_per_page": 4071,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 22
+        },
+        "total_regions": 22
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__docstructbench_llm-raw-the-eye-o.O-TraneGuide.pdf_7",
@@ -1413,7 +3231,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1075,
+        "garbled_ratio": 0.0,
+        "md_chars": 436,
+        "chars_per_page": 1075,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "table": 1,
+          "text": 1
+        },
+        "total_regions": 2
+      },
+      "attr_data_source": "book",
+      "attr_language": "english",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__eastmoney_1746461e6e00efee224a9209974b4bb6de3b11e339e4d86c41569eeddcc3c20e.pdf_8",
@@ -1438,7 +3282,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1772,
+        "garbled_ratio": 0.0,
+        "md_chars": 1813,
+        "chars_per_page": 1772,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 23,
+          "table": 1
+        },
+        "total_regions": 24
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__eastmoney_59cde7e939acc3124df9d3f2c85b5a0ec41b9da1157d5be38e098672022b47cb.pdf_11",
@@ -1461,7 +3331,32 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 671,
+        "garbled_ratio": 0.0,
+        "md_chars": 681,
+        "chars_per_page": 671,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 10
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "watermark"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__eastmoney_7cae1642250a3dbabfef7624d3424ec6e162ae91c8de4acfa89a9779092b0189.pdf_16",
@@ -1485,7 +3380,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 813,
+        "garbled_ratio": 0.0,
+        "md_chars": 838,
+        "chars_per_page": 813,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 6,
+          "table": 1
+        },
+        "total_regions": 7
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__eastmoney_d0313ed730f58180b1f005a3607c2a77dc3672410e8f7ee1de3b814668da9bcb.pdf_5",
@@ -1509,7 +3430,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1216,
+        "garbled_ratio": 0.0,
+        "md_chars": 1186,
+        "chars_per_page": 1216,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 40,
+          "table": 1
+        },
+        "total_regions": 41
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__eastmoney_d64a9204564ad81332a4dc3767365740a00228323d2862604d15cb15b318f3af.pdf_3",
@@ -1534,7 +3481,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1666,
+        "garbled_ratio": 0.0,
+        "md_chars": 1586,
+        "chars_per_page": 1666,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 17,
+          "table": 1
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocai_f32828acecb4282c87eaa554d2e1db74e418cd6845843012463a3324028bdd9d.pdf_9",
@@ -1557,7 +3530,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 24,
+        "garbled_ratio": 0.0,
+        "md_chars": 12,
+        "chars_per_page": 24,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 52,
+          "image": 10
+        },
+        "total_regions": 62
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "very few chars (24)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_Chapter9.pdf_46",
@@ -1583,7 +3583,38 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1640,
+        "garbled_ratio": 0.0,
+        "md_chars": 1599,
+        "chars_per_page": 1640,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 21,
+          "formula": 27,
+          "image": 2,
+          "table": 1
+        },
+        "total_regions": 51
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "colorful_background",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (27 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_bde81e42743067b574946698491d7f19.pdf_14",
@@ -1606,7 +3637,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 8,
+          "image": 7
+        },
+        "total_regions": 15
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "fuzzy_scan",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_biz-96816.pdf_48",
@@ -1631,7 +3689,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3371,
+        "garbled_ratio": 0.0,
+        "md_chars": 3397,
+        "chars_per_page": 3371,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 28,
+          "table": 1
+        },
+        "total_regions": 29
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "colorful_background"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_chap10.pdf_8",
@@ -1654,7 +3739,36 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1914,
+        "garbled_ratio": 0.0,
+        "md_chars": 1934,
+        "chars_per_page": 1914,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 28,
+          "formula": 6,
+          "image": 5
+        },
+        "total_regions": 39
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (6 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_eng_gls.pdf_6",
@@ -1677,7 +3791,32 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4949,
+        "garbled_ratio": 0.0,
+        "md_chars": 4954,
+        "chars_per_page": 4949,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 51
+        },
+        "total_regions": 51
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_1118",
@@ -1702,7 +3841,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 5,
+          "table": 1
+        },
+        "total_regions": 6
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table",
+        "colorful_background"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_1349",
@@ -1728,7 +3894,39 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 39,
+          "image": 5,
+          "table": 1,
+          "formula": 37
+        },
+        "total_regions": 82
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table",
+        "watermark",
+        "fuzzy_scan",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_1449",
@@ -1751,7 +3949,32 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 7
+        },
+        "total_regions": 7
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "watermark"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_1719",
@@ -1775,7 +3998,36 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 21,
+          "formula": 3,
+          "image": 1
+        },
+        "total_regions": 25
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "unknown",
+      "attr_layout": "single_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "fuzzy_scan",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_1776",
@@ -1802,7 +4054,39 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 51,
+        "garbled_ratio": 0.0,
+        "md_chars": 51,
+        "chars_per_page": 51,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 5,
+          "image": 4,
+          "table": 1,
+          "formula": 1
+        },
+        "total_regions": 11
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "colorful_background",
+        "fuzzy_scan",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_2263",
@@ -1825,7 +4109,36 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "image": 5,
+          "text": 65,
+          "formula": 16
+        },
+        "total_regions": 86
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "watermark",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_2509",
@@ -1849,7 +4162,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 20,
+          "image": 5
+        },
+        "total_regions": 25
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "watermark",
+        "fuzzy_scan",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_2591",
@@ -1872,7 +4213,36 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1526,
+        "garbled_ratio": 0.0,
+        "md_chars": 1548,
+        "chars_per_page": 1526,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 22,
+          "formula": 55,
+          "image": 3
+        },
+        "total_regions": 80
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "watermark",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (55 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_2604",
@@ -1895,7 +4265,36 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 14,
+          "image": 3,
+          "formula": 106
+        },
+        "total_regions": 123
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "watermark",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_3114",
@@ -1920,7 +4319,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 160,
+        "garbled_ratio": 0.0,
+        "md_chars": 130,
+        "chars_per_page": 160,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 14,
+          "table": 1
+        },
+        "total_regions": 15
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "en_ch_mixed",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "watermark"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_3375",
@@ -1943,7 +4369,32 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3259,
+        "garbled_ratio": 0.0,
+        "md_chars": 3225,
+        "chars_per_page": 3259,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 12
+        },
+        "total_regions": 12
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "watermark"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_383",
@@ -1969,7 +4420,38 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 36,
+          "image": 15,
+          "table": 4,
+          "formula": 1
+        },
+        "total_regions": 56
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula",
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_453",
@@ -1992,7 +4474,32 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2526,
+        "garbled_ratio": 0.0,
+        "md_chars": 2292,
+        "chars_per_page": 2526,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 22
+        },
+        "total_regions": 22
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "watermark"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_467",
@@ -2017,7 +4524,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 28,
+          "table": 1
+        },
+        "total_regions": 29
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table",
+        "fuzzy_scan"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_482",
@@ -2042,7 +4576,36 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 60,
+          "image": 6,
+          "table": 1
+        },
+        "total_regions": 67
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "single_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "watermark",
+        "has_table",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_625",
@@ -2066,7 +4629,37 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 29,
+          "image": 2,
+          "table": 3,
+          "formula": 1
+        },
+        "total_regions": 35
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_769",
@@ -2089,7 +4682,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 50,
+          "image": 15
+        },
+        "total_regions": 65
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "watermark",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_85",
@@ -2116,7 +4736,37 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 17,
+          "table": 2,
+          "image": 10
+        },
+        "total_regions": 29
+      },
+      "attr_data_source": "exam_paper",
+      "attr_language": "unknown",
+      "attr_layout": "single_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table",
+        "watermark",
+        "fuzzy_scan",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_jiaocai_needrop_en_887",
@@ -2140,7 +4790,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 15,
+          "image": 1
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "colorful_textbook",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "fuzzy_scan",
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__jiaocaineedrop_socialsci-74973.pdf_31",
@@ -2164,7 +4842,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4536,
+        "garbled_ratio": 0.0,
+        "md_chars": 4551,
+        "chars_per_page": 4536,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 15,
+          "table": 3
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "book",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; heavy table content (3 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_028a1dd5500fbd774e4d85df3c460c4d_1",
@@ -2185,7 +4889,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 8168,
+        "garbled_ratio": 0.0,
+        "md_chars": 8257,
+        "chars_per_page": 8168,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 90,
+          "image": 3
+        },
+        "total_regions": 93
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_06b975dbc47dc2dc2a3a1468293f6a2c_1",
@@ -2206,7 +4936,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 7374,
+        "garbled_ratio": 0.0,
+        "md_chars": 7432,
+        "chars_per_page": 7374,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 65,
+          "image": 6
+        },
+        "total_regions": 71
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_0edcd83c195557b43279fa73edaa59aa_1",
@@ -2227,7 +4983,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6706,
+        "garbled_ratio": 0.0,
+        "md_chars": 6534,
+        "chars_per_page": 6706,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 35
+        },
+        "total_regions": 35
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_26f4ed67a5e8922e7d42b35d317ebf4b_1",
@@ -2248,7 +5027,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6731,
+        "garbled_ratio": 0.0,
+        "md_chars": 6803,
+        "chars_per_page": 6731,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 88,
+          "image": 2
+        },
+        "total_regions": 90
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_2a6b4fa088699701a6fa9ccecfb5c25d_1",
@@ -2269,7 +5074,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 5438,
+        "garbled_ratio": 0.0,
+        "md_chars": 5341,
+        "chars_per_page": 5438,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 32,
+          "table": 2
+        },
+        "total_regions": 34
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_2a6b4fa088699701a6fa9ccecfb5c25d_5",
@@ -2290,7 +5121,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 7752,
+        "garbled_ratio": 0.0,
+        "md_chars": 7557,
+        "chars_per_page": 7752,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 18
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_2de954934f60ac538c5bd5dc40833a61_1",
@@ -2311,7 +5165,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6532,
+        "garbled_ratio": 0.0,
+        "md_chars": 6614,
+        "chars_per_page": 6532,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 93,
+          "image": 3
+        },
+        "total_regions": 96
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_571a946262006cd89199b67353c408b8_1",
@@ -2332,7 +5212,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 7013,
+        "garbled_ratio": 0.0,
+        "md_chars": 7083,
+        "chars_per_page": 7013,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 78,
+          "image": 4
+        },
+        "total_regions": 82
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_5e266dfd9c498cab274e12a7b4a75755_1",
@@ -2353,7 +5259,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 6788,
+        "garbled_ratio": 0.0,
+        "md_chars": 6622,
+        "chars_per_page": 6788,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 60
+        },
+        "total_regions": 60
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_baa51a22898f0d534a6c404ba8f12fb1_2",
@@ -2374,7 +5303,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 5928,
+        "garbled_ratio": 0.0,
+        "md_chars": 5804,
+        "chars_per_page": 5928,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 50
+        },
+        "total_regions": 50
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__newspaper_fe5ed29024932fad071afc53807b16ba_4",
@@ -2395,7 +5347,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 7510,
+        "garbled_ratio": 0.0,
+        "md_chars": 7358,
+        "chars_per_page": 7510,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 19,
+          "table": 1
+        },
+        "total_regions": 20
+      },
+      "attr_data_source": "newspaper",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_1ba14cb325bc448f7201b20502ecf2b5_100",
@@ -2416,7 +5394,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 16
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_1ba14cb325bc448f7201b20502ecf2b5_101",
@@ -2437,7 +5438,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 18
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_1ba14cb325bc448f7201b20502ecf2b5_103",
@@ -2458,7 +5482,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 20
+        },
+        "total_regions": 20
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_1ba14cb325bc448f7201b20502ecf2b5_14",
@@ -2479,7 +5526,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 4,
+          "image": 1
+        },
+        "total_regions": 5
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_1ba14cb325bc448f7201b20502ecf2b5_35",
@@ -2500,7 +5573,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 10,
+          "table": 2
+        },
+        "total_regions": 12
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_f7f010b78016aeebd76e56d9283eb67f_112",
@@ -2521,7 +5620,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 22
+        },
+        "total_regions": 22
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_f7f010b78016aeebd76e56d9283eb67f_118",
@@ -2542,7 +5664,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 7,
+          "image": 2
+        },
+        "total_regions": 9
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_f7f010b78016aeebd76e56d9283eb67f_23",
@@ -2563,7 +5711,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 12
+        },
+        "total_regions": 12
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_f7f010b78016aeebd76e56d9283eb67f_49",
@@ -2584,7 +5755,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 24,
+          "table": 1
+        },
+        "total_regions": 25
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_f7f010b78016aeebd76e56d9283eb67f_5",
@@ -2605,7 +5802,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 2
+        },
+        "total_regions": 2
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_f7f010b78016aeebd76e56d9283eb67f_51",
@@ -2626,7 +5846,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 18
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "double_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__notes_f7f010b78016aeebd76e56d9283eb67f_89",
@@ -2647,7 +5890,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": false,
+        "text_coverage": 0.0,
+        "total_chars": 0,
+        "garbled_ratio": 0.0,
+        "md_chars": 1,
+        "chars_per_page": 0,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 11
+        },
+        "total_regions": 11
+      },
+      "attr_data_source": "note",
+      "attr_language": "unknown",
+      "attr_layout": "three_column",
+      "attr_scan_type": "scanned",
+      "attr_special_issues": [],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "scanned document, no text layer",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__scihub_ie102256j.pdf_4",
@@ -2672,7 +5938,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4592,
+        "garbled_ratio": 0.0,
+        "md_chars": 4614,
+        "chars_per_page": 4592,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 18,
+          "table": 1,
+          "formula": 31
+        },
+        "total_regions": 50
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (31 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__scihub_jb%2Fmvh022.pdf_1",
@@ -2696,7 +5990,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4479,
+        "garbled_ratio": 0.0,
+        "md_chars": 4481,
+        "chars_per_page": 4479,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 9,
+          "table": 1,
+          "formula": 2
+        },
+        "total_regions": 12
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (2 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__scihub_journal.pone.0166577.pdf_5",
@@ -2721,7 +6043,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 3140,
+        "garbled_ratio": 0.0,
+        "md_chars": 3175,
+        "chars_per_page": 3140,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 7,
+          "table": 3
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; heavy table content (3 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__scihub_s12237-014-9873-7.pdf_4",
@@ -2746,7 +6094,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2896,
+        "garbled_ratio": 0.0,
+        "md_chars": 2901,
+        "chars_per_page": 2896,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 4,
+          "table": 1
+        },
+        "total_regions": 5
+      },
+      "attr_data_source": "academic_literature",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_formula"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_SE14.pdf_1",
@@ -2769,7 +6144,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 532,
+        "garbled_ratio": 0.0,
+        "md_chars": 527,
+        "chars_per_page": 532,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 9,
+          "image": 1
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "english",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_d346b889f1d85c61950a71d4b0ac2752.pdf_89",
@@ -2793,7 +6195,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 4472,
+        "garbled_ratio": 0.0,
+        "md_chars": 4485,
+        "chars_per_page": 4472,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 14,
+          "table": 1
+        },
+        "total_regions": 15
+      },
+      "attr_data_source": "book",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_yanbaoPPT_1090",
@@ -2816,7 +6244,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 89,
+        "garbled_ratio": 0.0,
+        "md_chars": 98,
+        "chars_per_page": 89,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 10,
+          "image": 3
+        },
+        "total_regions": 13
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "ambiguous",
+      "ocr_suggestion_reason": "insufficient signals",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_yanbaoPPT_120",
@@ -2839,7 +6294,32 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 198,
+        "garbled_ratio": 0.0,
+        "md_chars": 179,
+        "chars_per_page": 198,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 6
+        },
+        "total_regions": 6
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "en_ch_mixed",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background"
+      ],
+      "ocr_suggestion": "ambiguous",
+      "ocr_suggestion_reason": "insufficient signals",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_yanbaoPPT_1825",
@@ -2862,7 +6342,36 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1050,
+        "garbled_ratio": 0.0,
+        "md_chars": 861,
+        "chars_per_page": 1050,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 10,
+          "image": 4,
+          "formula": 4
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "en_ch_mixed",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_formula",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; formulas detected (4 regions); complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_yanbaoPPT_3395",
@@ -2886,7 +6395,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 125,
+        "garbled_ratio": 0.0,
+        "md_chars": 128,
+        "chars_per_page": 125,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 3,
+          "table": 1
+        },
+        "total_regions": 4
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_yanbaoPPT_4275",
@@ -2911,7 +6446,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 73,
+        "garbled_ratio": 0.0,
+        "md_chars": 68,
+        "chars_per_page": 73,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "image": 2,
+          "text": 2,
+          "table": 1
+        },
+        "total_regions": 5
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaopptmerge_yanbaoPPT_5945",
@@ -2934,7 +6497,32 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 390,
+        "garbled_ratio": 0.0,
+        "md_chars": 375,
+        "chars_per_page": 390,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 10
+        },
+        "total_regions": 10
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "en_ch_mixed",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_001c0e4e970dcae8f91980266459d41aa0fd9c54245320b5d41d9651c4fc575d.pdf_26",
@@ -2957,7 +6545,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2160,
+        "garbled_ratio": 0.0,
+        "md_chars": 2168,
+        "chars_per_page": 2160,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 19,
+          "image": 1
+        },
+        "total_regions": 20
+      },
+      "attr_data_source": "book",
+      "attr_language": "english",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_0a47b1d6b03103a249101f13e89f2226a273a75378d8110d46eb42c1cfa65ffd.pdf_10",
@@ -2980,7 +6594,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 565,
+        "garbled_ratio": 0.0,
+        "md_chars": 591,
+        "chars_per_page": 565,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 27
+        },
+        "total_regions": 27
+      },
+      "attr_data_source": "book",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_0ef01b835238626f3589faa671abdfb832f2b98987eadad53cb2e35699dcc039.pdf_13",
@@ -3003,7 +6640,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1005,
+        "garbled_ratio": 0.0,
+        "md_chars": 1017,
+        "chars_per_page": 1005,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 15,
+          "image": 1
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "book",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_2c5836d2ee86c7815050e5d75632777fb38f91911d81ddc758249c7c0b8a366a.pdf_9",
@@ -3026,7 +6689,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 467,
+        "garbled_ratio": 0.0,
+        "md_chars": 498,
+        "chars_per_page": 467,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "image": 1,
+          "text": 5
+        },
+        "total_regions": 6
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_4862cd850679e945a98c54c8d4c37be0154b5790d2c32da35d0f5ca0be413693.pdf_9",
@@ -3050,7 +6739,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 625,
+        "garbled_ratio": 0.0,
+        "md_chars": 657,
+        "chars_per_page": 625,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 6,
+          "table": 1
+        },
+        "total_regions": 7
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_75f9d788216f5e26469269defcd466aa8d250542b2142c72782103913bc6e61b.pdf_6",
@@ -3074,7 +6789,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 368,
+        "garbled_ratio": 0.0,
+        "md_chars": 381,
+        "chars_per_page": 368,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 5,
+          "table": 1
+        },
+        "total_regions": 6
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_7d1e64f512712a29658dd6c775c5120c90dda9a50698b42b953882a8a8020dbb.pdf_57",
@@ -3097,7 +6838,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 480,
+        "garbled_ratio": 0.0,
+        "md_chars": 498,
+        "chars_per_page": 480,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 20,
+          "image": 3
+        },
+        "total_regions": 23
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_8072f7ea9b3083ff5e8f9bfbba591771e61115039c96fda1c8ea391a7570f098.pdf_5",
@@ -3120,7 +6888,34 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1044,
+        "garbled_ratio": 0.0,
+        "md_chars": 1090,
+        "chars_per_page": 1044,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 18,
+          "image": 1
+        },
+        "total_regions": 19
+      },
+      "attr_data_source": "research_report",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "colorful_background",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_9be04f6bcbe2c6afc83f0751eb05e361872f9673ccd4bec49cf844c66f34bff0.pdf_19",
@@ -3143,7 +6938,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1123,
+        "garbled_ratio": 0.0,
+        "md_chars": 1136,
+        "chars_per_page": 1123,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 16,
+          "image": 1
+        },
+        "total_regions": 17
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_b2f600a88fc341bdd0b2b58b8bd4b0ab448277b06e167aa879b838e8139db19d.pdf_17",
@@ -3166,7 +6987,30 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 953,
+        "garbled_ratio": 0.0,
+        "md_chars": 1023,
+        "chars_per_page": 953,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 14
+        },
+        "total_regions": 14
+      },
+      "attr_data_source": "book",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_c23ab881b15885d295fd4ea93d0c36a058ba1a53a36574087ddd39df2811d34d.pdf_3",
@@ -3189,7 +7033,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1282,
+        "garbled_ratio": 0.0,
+        "md_chars": 1293,
+        "chars_per_page": 1282,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 15,
+          "image": 3
+        },
+        "total_regions": 18
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "single_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_ey-digital-state-tax-article.pdf_0",
@@ -3212,7 +7082,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 2188,
+        "garbled_ratio": 0.0,
+        "md_chars": 2165,
+        "chars_per_page": 2188,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "image": 1,
+          "text": 15
+        },
+        "total_regions": 16
+      },
+      "attr_data_source": "magazine",
+      "attr_language": "english",
+      "attr_layout": "three_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_f832cad1f46c067198e9df95ae7b150213f16805037c1a5725e72245010d3e97.pdf_3",
@@ -3235,7 +7131,33 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 1784,
+        "garbled_ratio": 0.0,
+        "md_chars": 1784,
+        "chars_per_page": 1784,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": false,
+        "region_counts": {
+          "text": 33,
+          "image": 3
+        },
+        "total_regions": 36
+      },
+      "attr_data_source": "book",
+      "attr_language": "en_ch_mixed",
+      "attr_layout": "double_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "text_ok",
+      "ocr_suggestion_reason": "born digital, good text extraction",
+      "ocr_decision": null,
+      "confirmed": false
     },
     {
       "id": "omnidoc__yanbaor2_yanbaoPPT_916",
@@ -3259,7 +7181,35 @@
       "reason_short": "",
       "custom_tags": [],
       "annotator": null,
-      "annotated_at": null
+      "annotated_at": null,
+      "pre_signals": {
+        "has_text_layer": true,
+        "text_coverage": 1.0,
+        "total_chars": 324,
+        "garbled_ratio": 0.0,
+        "md_chars": 339,
+        "chars_per_page": 324,
+        "layout_model": "pp-doclayoutv3@1.0",
+        "has_complex": true,
+        "region_counts": {
+          "text": 7,
+          "image": 1,
+          "table": 1
+        },
+        "total_regions": 9
+      },
+      "attr_data_source": "PPT2PDF",
+      "attr_language": "simplified_chinese",
+      "attr_layout": "multi_column",
+      "attr_scan_type": "born_digital",
+      "attr_special_issues": [
+        "has_table",
+        "has_figure_with_text"
+      ],
+      "ocr_suggestion": "need_ocr",
+      "ocr_suggestion_reason": "text layer OK but; complex content (table/formula)",
+      "ocr_decision": null,
+      "confirmed": false
     }
   ]
 }
