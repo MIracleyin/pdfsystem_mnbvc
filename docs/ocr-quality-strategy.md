@@ -387,4 +387,80 @@ Consensus Entropy	参考如何用多模型一致性做无监督 OCR quality veri
 5. 发布集必须保留 score、flags、scorer version、threshold profile，方便追溯。
 6. 高风险样本用 VLM visual verifier 或 multi-OCR consensus 兜底。
 
+⸻
+
+13. 指标治理与防 hack（meta-principle）
+
+整套系统对外只承诺两个 KPI：
+
+- **效率**：固定 PDF 集（当前 omnidocbench_100 + olmocr_bench_50）上的总 wall_seconds 与 s/PDF 及 p95。
+- **通过率**：`pass_rate @ scorer-vX`，即在固定 scorer 版本下，达到 publish 决策的文档比例。
+
+但只看这两条会立刻陷入 Goodhart：pipeline 知道 scorer 在打分，就会朝着 scorer 喜欢的输出去优化，而不是朝着真实质量去优化。FinePDFs 模型卡里"不建议用 score threshold 做 curation"的警告，本质就是同一个 hack 风险的反面案例。所以我们必须在系统设计层面把 scorer 隔离开。
+
+13.1 scorer 是独立组件，不是 pipeline 的子模块
+
+物理隔离：
+
+- scorer 单独子包/单独仓库，自带训练代码、训练数据 manifest、模型权重、HTTP server。
+- pipeline 只通过 HTTP/IPC 调用它，**禁止 import scorer 内部模块**。
+- scorer 自己出 release：`scorer-v0.1.0`、`scorer-v0.2.0`，每次发布冻结模型 + tokenizer + prompt template，绑死一个版本号。
+- pipeline 的 `release_manifest.jsonl` 必须把当时用的 `scorer_version` 写进每一行（这条已经有了，要保住）。
+
+这一步当前仓库已经做了一半：`OcrQualityScorer` 改成了走 HTTP 子进程（commit 375c9a2），但训练数据/训练代码还没拆出来。
+
+13.2 三条独立指标线，必须分开报表
+
+| 指标 | 算法 | 用途 | 谁优化 |
+|---|---|---|---|
+| 效率 | 固定 PDF 集 wall_seconds、s/PDF、p95 | 工程目标 | pipeline 团队 |
+| 通过率 | `pass_rate @ scorer-vX`（版本号必须挂着）| 业务 KPI | pipeline 团队 |
+| Scorer 健康 | `scorer-vX vs human-label` agreement（Cohen's κ / F1 / 分级混淆矩阵），在 sealed holdout 上 | 防 hack 锚 | scorer 团队 |
+
+关键判据：
+
+- **通过率涨 + 健康度稳 = 真提质**。
+- **通过率涨 + 健康度跌 = 在 hack scorer，不算贡献**。
+- 健康度本身只在 scorer 团队迭代时变化，pipeline 团队碰不到训练数据。
+
+13.3 训练数据隔离与 sealed holdout
+
+`calibration/labels.jsonl` 从一开始就要 split，而不是等数据多了再切：
+
+- `train.jsonl` → scorer 团队训练用。
+- `val.jsonl` → scorer 团队调参用。
+- `test_sealed.jsonl` → 封存，pipeline dev 期间不开放访问；只在每次 scorer release 评估和 pipeline release 健康度复核时打开。
+
+封存机制：
+
+- `test_sealed.jsonl` 不进 viz 站，不进 LLM draft 复核，不进 fit_profile.py。
+- 物理上放在独立目录或独立仓库分支，权限隔离。
+- 每次开封都记录（who / when / why / 当时的 scorer + pipeline 版本号），写进 `docs/release-log/`。
+
+否则迭代几轮就会循环污染：pipeline 看到 test，针对 test 调，scorer 用同样数据训练，三方共同 overfit 一个 leak 的集合。
+
+13.4 主要 tradeoff：scorer 升级会让历史不可比
+
+任何"分数是模型给的"系统都跑不掉这条。解决办法是**双指标过渡**：
+
+- 每次 scorer 从 vX → vY 升级，把所有历史 `dataset.parquet` 拿出来用 vY 重打分。
+- release notes 里至少保留 N 个 release 周期的并列数字：`pass_rate @ vX = 0.42`，`pass_rate @ vY = 0.51`。
+- 等 vX 不再被任何 in-production 配置引用，才能退役。
+
+代价是必须永久归档所有历史 markdown 输出（不是 PDF，是已抽出的 markdown）。这本来就该做，作为数据集发布前的 provenance trail。
+
+13.5 不能做的几件事（红线）
+
+- 不允许 pipeline 团队读 scorer 训练代码或训练数据。
+- 不允许把 `scorer_version` 字段从 manifest 里去掉。
+- 不允许把 `test_sealed.jsonl` 拿来调 pipeline 参数（包括 layout 模型选择、router 阈值、parser 配置）。
+- 不允许 fit_profile.py 用 `test_sealed.jsonl`（fit_profile 只能用 train + val，但用的是 scorer 输出分布，不是 scorer 内部）。
+- 不允许同一个人同一周内同时 review scorer 的训练数据和 pipeline 的输出 — 必要时按周轮换或按组隔离。
+
+13.6 落地节奏建议
+
+- 第 1 阶段（当前）：scorer 已是 HTTP 子进程，把训练代码先从 monorepo 内移到独立子包 `packages/quality-scorer/`，但还在同一个仓库。
+- 第 2 阶段：scorer 子包独立成 git submodule，pipeline 仓库的 release 版本通过 submodule commit id 锁定 scorer 版本，做到"一个 pipeline release = 一套确定的下游组件版本"。
+- 第 3 阶段：sealed holdout 上线，CI 在每次 pipeline PR 上跑 `pass_rate @ pinned-scorer`，但不能跑 health；health 只在 scorer release 时跑。
+
 这样做出来的东西才是真正的 publishable dataset quality gate，而不是一个“看起来像 OCR quality score 的模型分数”。
