@@ -29,11 +29,6 @@ samples/
 bench_data/
 *.layout.json
 
-# bench annotation/viz generated artifacts
-packages/pdfsys-bench/annotation/layout_cache.json
-packages/pdfsys-bench/annotation/previews.json
-packages/pdfsys-bench/viz/badcases.jsonl
-
 # bench datasets — large binary corpora, distributed out of band
 packages/pdfsys-bench/omnidocbench_100/
 packages/pdfsys-bench/olmocr_bench_50/
