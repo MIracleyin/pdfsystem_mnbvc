@@ -50,3 +50,14 @@ models/
 flagged/
 gradio_cached_examples/
 .gradio/
+
+# bench annotation/viz — generated caches + runtime state
+# (metadata.json is committed; the large previews/layout caches are regenerable
+#  via pdfsys-bench/scripts/build_annotation_meta.py + build_mupdf_previews.py)
+packages/pdfsys-bench/annotation/previews.json
+packages/pdfsys-bench/annotation/layout_cache.json
+packages/pdfsys-bench/viz/badcases.jsonl
+packages/pdfsys-bench/viz/labels.jsonl
+
+# one-time personal helper (hardcoded GH user)
+push_to_github.sh
