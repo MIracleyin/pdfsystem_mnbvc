@@ -60,8 +60,8 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 | **OCR Quality Scorer** | ✅ Ready | ModernBERT-large regression model |
 | **Stage-B Router** | ✅ Ready | LayoutDocument → PIPELINE / VLM / DEFERRED |
 | **Layout Analyser** | ✅ Ready | DocLayout-YOLO + PP-DocLayoutV3 (dual backend) |
-| **Pipeline Parser** | ✅ Ready | Region-level OCR via RapidOCR |
-| **VLM Parser** | ✅ Ready | MinerU 2.5 Pro (magic-pdf) for complex pages |
+| **Pipeline Parser** | ✅ Ready | mineru pipeline mode via out-of-process `mineru-api` HTTP client |
+| **VLM Parser** | ✅ Ready | mineru VLM mode (`mineru-api` HTTP, engine: transformers / mlx / vllm) for complex pages |
 | **Unified CLI** | ✅ Ready | `pdfsys run -c config.yaml --stages ...` |
 | **Annotation UI** | ✅ Ready | `pdfsys annotate` — PDF labeling + layout overlay |
 
@@ -130,6 +130,8 @@ python -m pdfsys_bench \
    └─────────────────────────────────────┘
 ```
 
+> **Heavy-ML isolation:** the PIPELINE and VLM parsers and the Quality Scorer never import `mineru`/`torch` in the host process — each spawns a dedicated subprocess (`mineru-api`, `_quality_server`) and talks to it over HTTP. See `ARCHITECTURE.md` § Key Design Decisions #6.
+
 ---
 
 ## 📦 Workspace Packages
@@ -141,8 +143,8 @@ python -m pdfsys_bench \
 | `pdfsys-parser-mupdf` | Fast PyMuPDF extraction | pymupdf |
 | `pdfsys-bench` | Evaluation harness + quality scorer | torch, transformers |
 | `pdfsys-layout-analyser` | DocLayout-YOLO / PP-DocLayoutV3 detection | doclayout-yolo, transformers |
-| `pdfsys-parser-pipeline` | Region-level OCR via RapidOCR | rapidocr-onnxruntime |
-| `pdfsys-parser-vlm` | MinerU 2.5 Pro VLM extraction | magic-pdf |
+| `pdfsys-parser-pipeline` | mineru pipeline mode (out-of-process HTTP client) | httpx, mineru[pipeline] |
+| `pdfsys-parser-vlm` | mineru VLM mode (out-of-process HTTP client) | httpx, mineru[vlm] (+mineru[mlx] on arm64-darwin) |
 | `pdfsys-cli` | Unified CLI + YAML config + annotation UI | pyyaml |
 
 ---

@@ -4,6 +4,12 @@
 >
 > 本文档把 [`PRD.md`](./PRD.md) 描述的目标转化为**带优先级、带工作量、带验收标准**的可执行任务池。PRD 回答"我们要做什么"，ROADMAP 回答"按什么顺序做、怎么做、做完怎么验证"。
 
+> ⚠️ **状态横幅（更新于 2026-06-02）**：本文为 v0.1 历史规划快照。下面的「现状评分卡」（§1）和 P2 详细设计（§5）已被后续实现大幅超越，**不再代表当前状态**。截至本次更新：
+> - **P0 工程基础**已落地——pytest 套件（94 passed / 2 skipped）、ruff、CI、架构边界测试均在位（§1 的「零测试零 CI · 0/10」已作废）。
+> - **P2 大部分已落地**——Layout Analyser、Stage-B Router、Pipeline Parser、VLM Parser 均 ✅。但 Pipeline/VLM 的实现**不是** §5.2/§5.4 设计的 RapidOCR / LMDeploy 路线，而是统一迁移到了 **mineru `do_parse`，且以 out-of-process `mineru-api` 子进程 + HTTP** 落地（见 `docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md`）。
+> - **质量门禁**（Stage-4 雏形）已实现 `release_gate.py` / `llm_review.py` / `fit_profile.py`，战略方向见 `docs/ocr-quality-strategy.md`。
+> - **活动状态**以最新周报为准：`docs/reports/2026-W22.md`。
+
 ---
 
 ## 0 · 摘要
@@ -584,6 +590,8 @@ class LayoutAnalyser:
 
 ### 5.2 Pipeline Parser · P2-2
 
+> ✅ **已落地，但路线已变更（2026-05-22 mineru 迁移）**：下面的 RapidOCR / `ocr_engine.py` / region-level 设计**已废弃**。实际实现是 mineru pipeline mode（`mineru[pipeline]`），通过 out-of-process `mineru-api` 子进程 + HTTP 调用——layout-analyser 不再喂 parser，mineru 内部自己做 layout+OCR。详见迁移 spec。
+
 **选型**：RapidOCR（PaddleOCR ONNX 前向，无 Paddle 依赖）。
 
 **交付物**：
@@ -656,6 +664,8 @@ def decide_complex_vs_simple(
 ---
 
 ### 5.4 VLM Parser · P2-4
+
+> ✅ **已落地，但路线已变更（2026-05-22 mineru 迁移）**：下面的 LMDeploy + region-based ModelSingleton 设计**已废弃**。实际实现是 mineru VLM mode（`mineru[vlm]`），引擎可选 `transformers` / `mlx-engine`（Apple Silicon）/ `vllm-engine`（NVIDIA），同样通过 out-of-process `mineru-api` 子进程 + HTTP。`--vlm-engine` flag 已在 bench 与 `pdfsys run` 暴露。详见迁移 spec。
 
 **选型**（PRD §4.4）：生产用 LMDeploy 驱动 MinerU 2.5-Pro 1.2B。
 

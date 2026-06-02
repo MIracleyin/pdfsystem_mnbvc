@@ -26,11 +26,11 @@ def extract(pdf_path) -> ExtractedDoc:
 # Bad: parser returns a custom dict with backend-specific fields
 def extract(pdf_path) -> dict:
     return {
-        "ocr_engine": "rapidocr",      # backend-specific
+        "mineru_backend": "pipeline",  # backend-specific
         "raw_boxes": [...],             # not in the shared schema
         "text": "Hello world",          # should be ExtractedDoc.markdown
     }
 ```
 
 ## Why
-The quality scorer, dedup stage, and output packager consume `ExtractedDoc` without caring whether MuPDF, RapidOCR, or MinerU produced it. Backend-specific metadata goes in `ExtractedDoc.stats` (a free-form dict), not in the schema itself.
+The quality scorer, dedup stage, and output packager consume `ExtractedDoc` without caring whether MuPDF or mineru (pipeline / vlm) produced it. Backend-specific metadata goes in `ExtractedDoc.stats` (a free-form dict, e.g. `mineru_backend`, `mineru_api_url`), not in the schema itself.

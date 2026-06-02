@@ -12,8 +12,8 @@
 | PDF engine     | PyMuPDF 1.27+               |
 | ML: router     | XGBoost (FinePDFs port)     |
 | ML: layout     | DocLayout-YOLO (ONNX)       |
-| ML: OCR        | RapidOCR (ONNX)             |
-| ML: VLM        | MinerU 2.5 Pro (magic-pdf)  |
+| ML: OCR        | mineru pipeline (mineru-api HTTP) |
+| ML: VLM        | mineru vlm-`<engine>` (mineru-api HTTP) |
 | ML: quality    | ModernBERT-large (HF)       |
 
 ## Architecture Layers
@@ -26,10 +26,10 @@ pdfsys-core            ← zero external deps, stdlib only
 pdfsys-router          ← pymupdf, xgboost, numpy
 pdfsys-layout-analyser ← doclayout-yolo, pymupdf
 pdfsys-parser-mupdf    ← pymupdf
-pdfsys-parser-pipeline ← rapidocr, pymupdf
-pdfsys-parser-vlm      ← magic-pdf, torch
+pdfsys-parser-pipeline ← httpx, mineru[pipeline]  (spawns mineru-api subprocess)
+pdfsys-parser-vlm      ← httpx, mineru[vlm] (+mineru[mlx] on arm64-darwin)
     ↑
-pdfsys-bench           ← torch, transformers (quality scorer)
+pdfsys-bench           ← torch, transformers (quality scorer spawns _quality_server subprocess)
 pdfsys-cli             ← pyyaml (orchestration layer)
 ```
 
@@ -39,7 +39,7 @@ pdfsys-cli             ← pyyaml (orchestration layer)
 - All parser backends emit identical `ExtractedDoc` / `Segment` schema — see `docs/golden-principles/UNIFORM_OUTPUT.md`
 - BBox coordinates always normalized to `[0, 1]` — never raw pixels or points
 - Frozen dataclasses (`@dataclass(frozen=True, slots=True)`) for all data contracts
-- Heavy deps (torch, transformers, magic-pdf) imported lazily
+- Heavy ML (mineru, torch) runs out-of-process: parsers + quality scorer talk to subprocesses over HTTP, never import it in the host; remaining in-process heavy deps imported lazily
 
 ## Commands
 
@@ -86,5 +86,5 @@ docs/
 - MUST: `pdfsys-core` has zero external deps → enforced by `tests/architecture/test_boundary.py`
 - MUST NOT: parser backends import each other → see `docs/architecture/LAYERS.md`
 - MUST NOT: bench/cli import core internals not in `__init__.py`
-- PREFER: lazy imports for torch/transformers/magic-pdf
+- PREFER: lazy imports for torch/transformers/mineru; parsers + scorer go further and isolate them in HTTP subprocesses
 - VERIFY: `uv run ruff check . && uv run pytest tests/` before PR

@@ -14,7 +14,8 @@ PDF ──► Stage-A Router (XGBoost, CPU, ≤10ms)
             │             simple │          │ complex (TABLE/FORMULA)
             │                    ▼          ▼
             │           parser-pipeline  parser-vlm
-            │           (RapidOCR, CPU)  (MinerU, GPU)
+            │         (mineru pipeline) (mineru vlm-<engine>)
+            │         └── both: out-of-process mineru-api subprocess + HTTP ──┘
             │                    │          │
             └────────────────────┴──────────┘
                                  │
@@ -31,8 +32,8 @@ PDF ──► Stage-A Router (XGBoost, CPU, ≤10ms)
 | `pdfsys-router` | Processing | XGBoost PDF classifier (124 PyMuPDF features) + Stage-B decider |
 | `pdfsys-layout-analyser` | Processing | DocLayout-YOLO region detection → LayoutDocument |
 | `pdfsys-parser-mupdf` | Processing | Text-ok fast path: PyMuPDF blocks → Markdown |
-| `pdfsys-parser-pipeline` | Processing | Region-level OCR: LayoutDocument → RapidOCR → Markdown |
-| `pdfsys-parser-vlm` | Processing | Complex pages: MinerU 2.5 Pro end-to-end extraction |
+| `pdfsys-parser-pipeline` | Processing | OCR pipeline: out-of-process HTTP client to `mineru-api` (pipeline mode) → Markdown |
+| `pdfsys-parser-vlm` | Processing | Complex pages: out-of-process HTTP client to `mineru-api` (vlm-`<engine>`: transformers/mlx/vllm) |
 | `pdfsys-bench` | Evaluation | Quality scorer (ModernBERT) + benchmark datasets |
 | `pdfsys-cli` | Orchestration | YAML config + stage-aware pipeline runner |
 
@@ -46,7 +47,8 @@ See `docs/architecture/LAYERS.md` for the full dependency matrix and enforcement
 2. **Content-addressable cache** — LayoutCache keyed by `sha256 + model_tag`.
 3. **Atomic writes** — `tmp + os.replace()` for crash safety.
 4. **Backend-agnostic output** — all parsers emit the same `ExtractedDoc` / `Segment` schema.
-5. **Lazy heavy deps** — torch, transformers, magic-pdf imported only when needed.
+5. **Lazy heavy deps** — torch, transformers, mineru imported only when needed.
+6. **Out-of-process ML boundary** — `parser-pipeline`, `parser-vlm`, and the quality scorer never import mineru/torch in the host process. Each spawns a dedicated subprocess (`mineru-api` for parsers, `_quality_server` for the scorer) and talks to it over HTTP. This sidesteps the macOS spawn-pool / MPS-vs-MLX deadlocks hit during the mineru migration and is the natural seam for the planned component-versioning split. See `docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md §15`.
 
 ## Storage Layers (Production)
 
