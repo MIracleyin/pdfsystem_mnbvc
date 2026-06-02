@@ -4,37 +4,43 @@
 >
 > 本文档把 [`PRD.md`](./PRD.md) 描述的目标转化为**带优先级、带工作量、带验收标准**的可执行任务池。PRD 回答"我们要做什么"，ROADMAP 回答"按什么顺序做、怎么做、做完怎么验证"。
 
-> ⚠️ **状态横幅（更新于 2026-06-02）**：本文为 v0.1 历史规划快照。下面的「现状评分卡」（§1）和 P2 详细设计（§5）已被后续实现大幅超越，**不再代表当前状态**。截至本次更新：
-> - **P0 工程基础**已落地——pytest 套件（94 passed / 2 skipped）、ruff、CI、架构边界测试均在位（§1 的「零测试零 CI · 0/10」已作废）。
-> - **P2 大部分已落地**——Layout Analyser、Stage-B Router、Pipeline Parser、VLM Parser 均 ✅。但 Pipeline/VLM 的实现**不是** §5.2/§5.4 设计的 RapidOCR / LMDeploy 路线，而是统一迁移到了 **mineru `do_parse`，且以 out-of-process `mineru-api` 子进程 + HTTP** 落地（见 `docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md`）。
-> - **质量门禁**（Stage-4 雏形）已实现 `release_gate.py` / `llm_review.py` / `fit_profile.py`，战略方向见 `docs/ocr-quality-strategy.md`。
+> ⚠️ **状态横幅（更新于 2026-06-02）**：本文是 v0.1 规划，部分内容随实现演进。读法如下：
+> - **§1 现状评分卡**已就地刷新为 2026-06-02 真实分数（括注保留 v0.1 原值供对照）。
+> - **§0 冲刺时序**与 **§5 P2 详细设计**仍是 v0.1 原文。其中 Pipeline/VLM 的实际落地路线**不是** §5.2/§5.4 的 RapidOCR / LMDeploy，而是统一迁移到 **mineru `do_parse` + out-of-process `mineru-api` 子进程 + HTTP**（见 `docs/superpowers/specs/2026-05-22-mineru-parsers-migration-design.md`）；质量门禁（Stage-4 雏形）已实现 `release_gate.py` / `llm_review.py` / `fit_profile.py`（战略见 `docs/ocr-quality-strategy.md`）。
 > - **活动状态**以最新周报为准：`docs/reports/2026-W22.md`。
 
 ---
 
 ## 0 · 摘要
 
-**一句话**：设计文档与架构框架一流，工程基础设施缺失严重，6 个 stage 只落地了 1.5 个。
+**一句话（v0.1 原文，2026-04-17）**：设计文档与架构框架一流，工程基础设施缺失严重，6 个 stage 只落地了 1.5 个。
 
-**冲刺计划**：以 2 周"可协作化"冲刺（P0）作为一切后续工作的前提，再用 4 周打磨性能与可靠性（P1），最后 10–16 周补齐 6-stage 闭环（P2）。P3 是 PB 级规模化与生态，作为长期背景项。
+**一句话（2026-06-02 更新）**：P0 工程基础已补齐（测试 + CI + 架构边界），6-stage 主干大部分打通（Router→MuPDF/mineru pipeline·vlm→Scorer→发布门禁）；当前短板转向**可复现性（`uv.lock` 仍未入库）、observability（无 metrics）、以及质量门禁的标定数据缺失**。
+
+**冲刺计划（v0.1 原文）**：以 2 周"可协作化"冲刺（P0）作为一切后续工作的前提，再用 4 周打磨性能与可靠性（P1），最后 10–16 周补齐 6-stage 闭环（P2）。P3 是 PB 级规模化与生态，作为长期背景项。
 
 ---
 
 ## 1 · 现状评分卡
 
-| 维度 | 状态 | 评分 |
-|---|---|---|
-| 设计文档（PRD） | 441 行，取舍清晰 | 9/10 |
-| 架构分包 | 7 个 workspace 包，边界合理 | 8/10 |
-| 核心契约（`pdfsys-core`） | frozen dataclass + 零依赖 + 原子写 | 9/10 |
-| MVP 闭环（Router→MuPDF→Scorer） | 跑通 OmniDocBench-100 | 7/10 |
-| **测试** | **零测试文件，零 CI** | **0/10** |
-| **依赖管理** | 无 lock 文件，依赖无上界 | 2/10 |
-| **Observability** | 无 logging，无 metrics | 2/10 |
-| 实现完成度 | 2180 行，4/7 包是 stub | 3/10 |
-| Demo & 贡献者体验 | Gradio + Cursor rules 完善 | 8/10 |
+> 评分更新于 **2026-06-02**；括号内为 v0.1（2026-04-17）原始分数。
 
-**关键风险**：当前状态下 1 人可 hack 前进；**任何超过 3 人的协作会立刻失控**——没有测试保护 parity、没有 CI、没有 lock 文件，第一次依赖升级就会毒化路由器。
+| 维度 | 状态（2026-06-02） | 评分 |
+|---|---|---|
+| 设计文档 | PRD 441 行 + ocr-quality-strategy（466 行）+ migration/release-gate specs/plans + W22 周报 | 9/10（原 9） |
+| 架构分包 | **8** 个 workspace 包，边界由 `tests/architecture/test_boundary.py` 强制 | 9/10（原 8） |
+| 核心契约（`pdfsys-core`） | frozen dataclass + 零依赖（测试强制）+ 原子写 + serde Path 支持 | 9/10（原 9） |
+| 闭环完成度 | Router→MuPDF / mineru pipeline·vlm→Scorer→发布门禁，6-stage 主干大部分打通；缺 Stage-3 后处理独立包、Stage-5 Parquet 打包未完整 | 8/10（原 7） |
+| **测试** | **94 passed / 2 skipped**，覆盖 unit/contract/architecture/integration；CI（`ci.yml`：lint + test）在位。尚缺：覆盖率门禁、router parity job、集成测试仅 gated | 7/10（原 0） |
+| **依赖管理** | mineru 已加上界（`<4.0`）；**但 `uv.lock` 仍被 `.gitignore` 排除（未入库）**，且 numpy/pymupdf/torch/transformers/xgboost 仍无上界 | 4/10（原 2） |
+| **Observability** | parsers + quality scorer 用 stdlib `logging.getLogger`（命名 logger）；**无 structlog、无 metrics 导出**，仍残留 ~10 处 `print()` | 4/10（原 2） |
+| 实现完成度 | **7333 LOC / 8 包**，三个 parser 全部实现（不再是 stub），release-gate 三模块落地；postproc/quality/output 尚未拆为独立包 | 7/10（原 3） |
+| Demo & 贡献者体验 | Gradio demo + `AGENTS.md` 向导 + annotation UI v2（`data_sources` 分类法）| 8/10（原 8） |
+
+**关键风险（2026-06-02）**：P0 已补齐，多人协作的硬门槛（测试/CI/边界）已立。当前真实风险转向：
+1. **构建不可复现**——`uv.lock` 仍未入库（ROADMAP §3.4 的"lock 入库 + 移出 gitignore"**未执行**），依赖升级仍可能悄悄改变行为；多数库无上界放大了这一风险。
+2. **发布门禁空转**——`calibration/labels.jsonl` 为 0 行、约 30% 文档 `doc_quality_score=None`，门禁跑在占位阈值上（详见 W22 阻塞项）。
+3. **Observability 仍薄**——无 metrics 导出，PB 级运行时缺可观测性抓手。
 
 ---
 
