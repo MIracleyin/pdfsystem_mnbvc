@@ -31,6 +31,12 @@ _T_PUBLISH_MSG = (
     "t_publish is a gate-profile field; system_release.toml is not a gate profile"
 )
 
+# Keys allowed inside a [components.<name>] table. Anything else is rejected
+# so typos surface immediately instead of being silently ignored.
+_KNOWN_COMPONENT_KEYS = frozenset(
+    {"repo", "path", "commit", "tag", "schema_version"}
+)
+
 
 # ---------------------------------------------------------------------------
 # Dataclasses
@@ -91,48 +97,82 @@ class SystemRelease:
 
 
 def _reject_t_publish(table: dict, location: str) -> None:
+    """Reject a t_publish field anywhere — it belongs in gate profiles, not here."""
     if "t_publish" in table:
         raise ValueError(f"{_T_PUBLISH_MSG} (found in {location})")
 
 
+def _require_str(value: object, location: str, field_name: str) -> str:
+    """Return ``value`` as ``str`` or raise ``ValueError`` with location context.
+
+    Guards against TOML values typed as int/float/bool/list/etc. silently
+    landing in declared-string dataclass fields.
+    """
+    if not isinstance(value, str):
+        raise ValueError(
+            f"{location}.{field_name} must be a string, got {type(value).__name__}"
+        )
+    return value
+
+
 def _parse_component(name: str, raw: dict) -> Component:
-    _reject_t_publish(raw, f"[components.{name}]")
+    location = f"[components.{name}]"
 
     for required_key in ("repo", "path", "commit", "tag"):
         if required_key not in raw:
             raise ValueError(
-                f"[components.{name}] is missing required key '{required_key}'"
+                f"{location} is missing required key '{required_key}'"
             )
 
-    repo: str = raw["repo"]
-    if not repo:
+    unknown = set(raw) - _KNOWN_COMPONENT_KEYS
+    if unknown:
         raise ValueError(
-            f"[components.{name}].repo must not be empty"
-        )
-    if repo.startswith("in-tree:") and not repo[len("in-tree:"):]:
-        raise ValueError(
-            f"[components.{name}].repo starts with 'in-tree:' but the path after it is empty"
+            f"{location} has unknown keys: {sorted(unknown)}"
         )
 
-    commit: str = raw["commit"]
+    repo = _require_str(raw["repo"], location, "repo")
+    if not repo:
+        raise ValueError(f"{location}.repo must not be empty")
+    if repo.startswith("in-tree:") and not repo[len("in-tree:"):]:
+        raise ValueError(
+            f"{location}.repo starts with 'in-tree:' but the path after it is empty"
+        )
+
+    path = _require_str(raw["path"], location, "path")
+    commit = _require_str(raw["commit"], location, "commit")
     if not _SHA_RE.match(commit):
         raise ValueError(
-            f"[components.{name}].commit must be a 40-char lowercase hex SHA; "
+            f"{location}.commit must be a 40-char lowercase hex SHA; "
             f"got {commit!r} ({len(commit)} chars)"
+        )
+    tag = _require_str(raw["tag"], location, "tag")
+
+    schema_version: str | None = None
+    if "schema_version" in raw:
+        schema_version = _require_str(
+            raw["schema_version"], location, "schema_version"
         )
 
     return Component(
         name=name,
         repo=repo,
-        path=raw["path"],
+        path=path,
         commit=commit,
-        tag=raw["tag"],
-        schema_version=raw.get("schema_version"),
+        tag=tag,
+        schema_version=schema_version,
     )
 
 
 def _parse_system_release(data: dict) -> SystemRelease:
-    """Convert a raw TOML dict into a validated :class:`SystemRelease`."""
+    """Convert a raw TOML dict into a validated :class:`SystemRelease`.
+
+    The ``t_publish`` scan is exhaustive: root, [system], every
+    [components.<name>], and [runtime] are all checked so a stray gate-profile
+    field cannot slip in unnoticed.
+    """
+
+    # ---- t_publish guard at root ----
+    _reject_t_publish(data, "root")
 
     # ---- [system] table ----
     if "system" not in data:
@@ -146,6 +186,11 @@ def _parse_system_release(data: dict) -> SystemRelease:
             raise ValueError(
                 f"[system] is missing required key '{key}'"
             )
+
+    version = _require_str(system["version"], "[system]", "version")
+    released_at = _require_str(system["released_at"], "[system]", "released_at")
+    released_by = _require_str(system["released_by"], "[system]", "released_by")
+    notes = _require_str(system.get("notes", ""), "[system]", "notes")
 
     # ---- [components] table ----
     if "components" not in data:
@@ -162,13 +207,14 @@ def _parse_system_release(data: dict) -> SystemRelease:
 
     # ---- [runtime] table (optional, informational) ----
     raw_runtime: dict = data.get("runtime", {})
+    _reject_t_publish(raw_runtime, "[runtime]")
     runtime = Runtime(values=dict(raw_runtime))
 
     return SystemRelease(
-        version=system["version"],
-        released_at=system["released_at"],
-        released_by=system["released_by"],
-        notes=system.get("notes", ""),
+        version=version,
+        released_at=released_at,
+        released_by=released_by,
+        notes=notes,
         components=components,
         runtime=runtime,
     )
@@ -192,12 +238,15 @@ def parse_release(toml_bytes: bytes) -> SystemRelease:
         ValueError: If any validation rule is violated.
         tomllib.TOMLDecodeError: If the bytes are not valid TOML.
     """
-    data = tomllib.loads(toml_bytes.decode())
+    data = tomllib.loads(toml_bytes.decode("utf-8"))
     return _parse_system_release(data)
 
 
 def load_release(toml_path: str | Path) -> SystemRelease:
     """Parse a ``system_release.toml`` from a file path.
+
+    Thin wrapper over :func:`parse_release` so the two entry points share
+    a single validation kernel.
 
     Args:
         toml_path: Path to the TOML file.
@@ -210,7 +259,4 @@ def load_release(toml_path: str | Path) -> SystemRelease:
         tomllib.TOMLDecodeError: If the file is not valid TOML.
         FileNotFoundError: If the file does not exist.
     """
-    path = Path(toml_path)
-    with path.open("rb") as fh:
-        data = tomllib.load(fh)
-    return _parse_system_release(data)
+    return parse_release(Path(toml_path).read_bytes())

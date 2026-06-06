@@ -91,3 +91,109 @@ def test_parse_release_from_bytes() -> None:
     assert sr.components["core"].commit == "aabbccddeeff00112233445566778899aabbccdd"
     assert not sr.components["core"].is_in_tree
     assert sr.runtime.values["python"] == "3.11+"
+
+
+def test_unknown_component_key_rejected() -> None:
+    """Unknown keys inside [components.<name>] must be rejected (typo guard)."""
+    with pytest.raises(ValueError, match=r"unknown keys.*bogus_key"):
+        load_release(_FIXTURES / "unknown_component_key.toml")
+
+
+def test_runtime_table_optional() -> None:
+    """TOML without any [runtime] table must parse with an empty Runtime.values."""
+    toml_bytes = (
+        b"[system]\n"
+        b'version = "1.0.0"\n'
+        b'released_at = "2026-01-01"\n'
+        b'released_by = "ci"\n'
+        b'notes = ""\n'
+        b"\n"
+        b"[components.core]\n"
+        b'repo = "https://github.com/example/core.git"\n'
+        b'path = "external/core"\n'
+        b'commit = "aabbccddeeff00112233445566778899aabbccdd"\n'
+        b'tag = "v1.0.0"\n'
+    )
+    sr = parse_release(toml_bytes)
+    assert sr.runtime.values == {}
+
+
+def test_t_publish_at_root_rejected() -> None:
+    """t_publish at the TOML root must be rejected."""
+    toml_bytes = (
+        b"t_publish = 1.5\n"
+        b"\n"
+        b"[system]\n"
+        b'version = "1.0.0"\n'
+        b'released_at = "2026-01-01"\n'
+        b'released_by = "ci"\n'
+        b'notes = ""\n'
+        b"\n"
+        b"[components.core]\n"
+        b'repo = "https://github.com/example/core.git"\n'
+        b'path = "external/core"\n'
+        b'commit = "aabbccddeeff00112233445566778899aabbccdd"\n'
+        b'tag = "v1.0.0"\n'
+    )
+    with pytest.raises(ValueError, match=r"t_publish.*root"):
+        parse_release(toml_bytes)
+
+
+def test_t_publish_in_runtime_rejected() -> None:
+    """t_publish inside [runtime] must be rejected."""
+    toml_bytes = (
+        b"[system]\n"
+        b'version = "1.0.0"\n'
+        b'released_at = "2026-01-01"\n'
+        b'released_by = "ci"\n'
+        b'notes = ""\n'
+        b"\n"
+        b"[components.core]\n"
+        b'repo = "https://github.com/example/core.git"\n'
+        b'path = "external/core"\n'
+        b'commit = "aabbccddeeff00112233445566778899aabbccdd"\n'
+        b'tag = "v1.0.0"\n'
+        b"\n"
+        b"[runtime]\n"
+        b"t_publish = 1.5\n"
+    )
+    with pytest.raises(ValueError, match=r"t_publish.*runtime"):
+        parse_release(toml_bytes)
+
+
+def test_non_string_version_rejected() -> None:
+    """A non-string [system].version (e.g. int) must be rejected with location context."""
+    toml_bytes = (
+        b"[system]\n"
+        b"version = 1\n"
+        b'released_at = "2026-01-01"\n'
+        b'released_by = "ci"\n'
+        b'notes = ""\n'
+        b"\n"
+        b"[components.core]\n"
+        b'repo = "https://github.com/example/core.git"\n'
+        b'path = "external/core"\n'
+        b'commit = "aabbccddeeff00112233445566778899aabbccdd"\n'
+        b'tag = "v1.0.0"\n'
+    )
+    with pytest.raises(ValueError, match=r"version must be a string"):
+        parse_release(toml_bytes)
+
+
+def test_non_string_commit_rejected() -> None:
+    """A non-string component.commit (e.g. int) must be rejected with location context."""
+    toml_bytes = (
+        b"[system]\n"
+        b'version = "1.0.0"\n'
+        b'released_at = "2026-01-01"\n'
+        b'released_by = "ci"\n'
+        b'notes = ""\n'
+        b"\n"
+        b"[components.core]\n"
+        b'repo = "https://github.com/example/core.git"\n'
+        b'path = "external/core"\n'
+        b"commit = 123\n"
+        b'tag = "v1.0.0"\n'
+    )
+    with pytest.raises(ValueError, match=r"commit must be a string"):
+        parse_release(toml_bytes)
