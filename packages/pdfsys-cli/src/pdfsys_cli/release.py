@@ -18,6 +18,7 @@ Usage::
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -427,16 +428,18 @@ def _working_tree_dirty(base_dir: Path) -> bool:
     """Return True if the git working tree at ``base_dir`` has uncommitted changes.
 
     Uses ``git -C <base_dir> status --porcelain``.  Any non-empty output means
-    the tree is dirty.  Errors (no git binary, timeout) are treated as dirty so
-    we never overwrite the lock file from an unknown state.
+    the tree is dirty.  Errors (no git binary, timeout, or git returning
+    non-zero — e.g. exit 128 when ``base_dir`` is not a git repo) are treated
+    as dirty so we never overwrite the lock file from an unknown state.
 
     Args:
         base_dir: Directory passed to ``git -C``.  Typically the directory that
                   contains ``system_release.toml``.
 
     Returns:
-        ``True`` when the working tree is dirty *or* when git cannot be run.
-        ``False`` only when git exits 0 with empty stdout.
+        ``True`` when the working tree is dirty, when git cannot be run, or
+        when ``base_dir`` is not a git repository.  ``False`` only when git
+        exits 0 with empty stdout.
     """
     try:
         proc = subprocess.run(
@@ -444,18 +447,27 @@ def _working_tree_dirty(base_dir: Path) -> bool:
             capture_output=True,
             text=True,
             check=False,
-            timeout=10,
+            timeout=5,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         # No git binary or timed out — treat as dirty (fail-safe).
         return True
-    return bool(proc.stdout.strip())
+    # Non-zero exit (e.g. 128 when base_dir is not a git repo) is also dirty.
+    return bool(proc.stdout.strip()) or proc.returncode != 0
 
 
-def _abbrev(sha: str | None) -> str:
-    """Return the first 7 chars of a SHA, or ``"(none)"`` for ``None``."""
-    if sha is None:
-        return "(none)"
+def _abbrev_lock(sha: str) -> str:
+    """Return the first 7 chars of a SHA.
+
+    Distinct from :func:`_abbrev_sha` because the lock diff output uses a
+    compact ``a1b2c3d → e4f5g6h`` format where the trailing U+2026 ellipsis
+    in ``_abbrev_sha`` would add visual noise.  The two call sites are kept
+    separate so each can evolve its formatting independently.
+
+    Both ``old`` and ``new`` SHAs at the call site originate from validated
+    :class:`Component` instances or :func:`_resolve_component_heads` after a
+    ``None`` check, so the type is strictly ``str``.
+    """
     return sha[:7]
 
 
@@ -497,7 +509,10 @@ def _write_lock(
 ) -> None:
     """Apply ``changes`` to ``config_path`` in-place, preserving comments.
 
-    Uses :mod:`tomlkit` for a comment-preserving round-trip.
+    Uses :mod:`tomlkit` for a comment-preserving round-trip and an atomic
+    write (write-to-temp + :func:`os.replace`) so a mid-write interrupt
+    (KeyboardInterrupt, ENOSPC, EPERM) cannot leave ``system_release.toml``
+    corrupt or zero-byte.
 
     Args:
         config_path: Absolute path to ``system_release.toml``.
@@ -507,21 +522,31 @@ def _write_lock(
     doc = tomlkit.parse(config_path.read_text(encoding="utf-8"))
     for name, _old, new_sha in changes:
         doc["components"][name]["commit"] = new_sha  # type: ignore[index]
-    config_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+
+    tmp = config_path.with_suffix(config_path.suffix + ".tmp")
+    try:
+        tmp.write_text(tomlkit.dumps(doc), encoding="utf-8")
+        os.replace(tmp, config_path)
+    except BaseException:
+        # Clean up the partial temp file on any failure path, including
+        # KeyboardInterrupt — then re-raise so the caller can decide.
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _print_in_tree_warnings(release: SystemRelease) -> None:
-    """Print a WARNING line for every in-tree component.
+    """Print a WARNING line for every in-tree component (to stderr).
 
     This reminds the user that in-tree components are not automatically
     updated by ``lock`` and must be pinned manually at release time.
+    Warnings go to stderr so they don't pollute structured stdout consumers.
 
     Args:
         release: Parsed :class:`SystemRelease`.
     """
     for name, comp in release.components.items():
         if comp.is_in_tree:
-            print(f"WARNING: components.{name} is still in-tree")
+            print(f"WARNING: components.{name} is still in-tree", file=sys.stderr)
 
 
 def cmd_lock(args: object) -> int:
@@ -570,12 +595,21 @@ def cmd_lock(args: object) -> int:
         _print_in_tree_warnings(release)
         return 0
 
-    # 5. write
-    _write_lock(config_path, changes)
+    # 5. write (atomic; surface disk errors as a clean exit-1, not a traceback)
+    try:
+        _write_lock(config_path, changes)
+    except OSError as exc:
+        print(
+            f"error: failed to write {config_path.name}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
 
     # 6. report
     print(f"Wrote {config_path.name}. Diff:")
     for name, old, new in changes:
-        print(f"  components.{name}.commit: {_abbrev(old)} → {_abbrev(new)}")
+        print(
+            f"  components.{name}.commit: {_abbrev_lock(old)} → {_abbrev_lock(new)}"
+        )
     _print_in_tree_warnings(release)
     return 0

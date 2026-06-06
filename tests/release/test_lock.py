@@ -94,8 +94,12 @@ python = "3.11+"
     config_path = repo / "system_release.toml"
     config_path.write_text(toml_content)
 
-    # Ignore the nested git repo so it doesn't appear as an untracked entry
-    # in the main repo's `git status --porcelain` output.
+    # git treats a nested .git dir as an unregistered submodule and reports it
+    # as untracked unless excluded. Real registered submodules (post-Task 2.4)
+    # wouldn't need this, but the fake-repo scaffolding here uses raw `git init`
+    # for the external component, so the parent repo sees `external/` as a
+    # stray untracked path. Adding it to .gitignore keeps the working tree
+    # clean for the dirty-check pre-flight in cmd_lock.
     (repo / ".gitignore").write_text("external/\n")
 
     # Commit everything in the main repo so the working tree is clean.
@@ -200,10 +204,11 @@ def test_lock_skips_in_tree_component(tmp_path: Path, capsys: pytest.CaptureFixt
     updated_text = config_path.read_text()
     assert _IN_TREE_SHA in updated_text, "in-tree SHA must not be modified by lock"
 
-    # A warning about the in-tree component must appear.
+    # A warning about the in-tree component must appear on stderr (so it
+    # doesn't pollute structured stdout consumers).
     captured = capsys.readouterr()
-    assert "WARNING" in captured.out
-    assert "quality-scorer" in captured.out
+    assert "WARNING" in captured.err
+    assert "quality-scorer" in captured.err
 
 
 def test_lock_preserves_comments(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
@@ -231,3 +236,47 @@ def test_lock_preserves_comments(tmp_path: Path, capsys: pytest.CaptureFixture) 
         "tomlkit must preserve TOML comments during lock"
     )
     assert sub_head in after, "new SHA must still be written despite comment"
+
+
+def test_lock_treats_non_git_dir_as_dirty(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """A directory that is not a git repository must be treated as dirty.
+
+    ``git status --porcelain`` exits 128 with empty stdout outside a git repo.
+    The earlier implementation returned ``False`` (not dirty) in that case,
+    letting ``_write_lock`` proceed on an untracked directory.  This regression
+    test pins the fail-safe behaviour: a non-git directory → return 1, TOML
+    untouched.
+    """
+    repo = tmp_path / "not_a_git_repo"
+    repo.mkdir()
+    config_path = repo / "system_release.toml"
+    config_path.write_text(
+        f"""\
+[system]
+version = "0.1.0"
+released_at = "2026-06-06"
+released_by = "ci"
+notes = ""
+
+[components.mylib]
+repo = "in-tree:packages/mylib"
+path = "packages/mylib"
+commit = "{'a' * 40}"
+tag = "in-tree-0.1.0"
+"""
+    )
+    original_text = config_path.read_text()
+
+    args = argparse.Namespace(config=str(config_path))
+    rc = cmd_lock(args)
+
+    assert rc == 1, "non-git directory must be treated as dirty (fail-safe)"
+    assert config_path.read_text() == original_text, "TOML must not be modified"
+
+    captured = capsys.readouterr()
+    assert (
+        "uncommitted changes" in captured.err
+        or "dirty" in captured.err.lower()
+    )
