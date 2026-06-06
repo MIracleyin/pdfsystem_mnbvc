@@ -549,6 +549,91 @@ def _print_in_tree_warnings(release: SystemRelease) -> None:
             print(f"WARNING: components.{name} is still in-tree", file=sys.stderr)
 
 
+# ---------------------------------------------------------------------------
+# CLI verify command
+# ---------------------------------------------------------------------------
+
+
+def _classify_failures(
+    release: SystemRelease,
+    heads: dict[str, str | None],
+) -> list[tuple[str, str]]:
+    """Return components that are DRIFTED or MISSING.
+
+    Pure function — no I/O.
+
+    In-tree components are always treated as PASS and are skipped entirely.
+
+    Args:
+        release: Parsed :class:`SystemRelease`.
+        heads:   Map from component name to resolved HEAD SHA (or ``None``).
+
+    Returns:
+        List of ``(name, status_label)`` tuples for components whose status is
+        :data:`STATUS_DRIFTED` or :data:`STATUS_MISSING`.  Empty when all
+        non-in-tree components are up-to-date.
+    """
+    # TODO: tag verification (future)
+    failures: list[tuple[str, str]] = []
+    for name, comp in release.components.items():
+        if comp.is_in_tree:
+            continue
+        head_sha = heads.get(name)
+        if head_sha is None:
+            failures.append((name, STATUS_MISSING))
+        elif head_sha != comp.commit:
+            failures.append((name, STATUS_DRIFTED))
+    return failures
+
+
+def _print_verify_summary_fail(failures: list[tuple[str, str]]) -> None:
+    """Print the FAIL summary line to stderr.
+
+    Args:
+        failures: Non-empty list of ``(name, status_label)`` tuples as
+                  returned by :func:`_classify_failures`.
+    """
+    parts = ", ".join(f"{name}: {label}" for name, label in failures)
+    print(f"verify: FAIL — {parts}", file=sys.stderr)
+
+
+def cmd_verify(args: object) -> int:
+    """Verify pinned commits match resolved HEADs. CI gate.
+
+    Exits 0 if every non-in-tree component is up-to-date.
+    Exits 1 if any component is DRIFTED or MISSING.
+
+    Args:
+        args: argparse Namespace with a ``config`` attribute (path to
+              ``system_release.toml``).
+
+    Returns:
+        0 on PASS, 1 on FAIL.
+    """
+    config_path = Path(getattr(args, "config", "system_release.toml")).resolve()
+    base_dir = config_path.parent
+    release = load_release(config_path)
+    heads = _resolve_component_heads(release, base_dir)
+
+    failures = _classify_failures(release, heads)
+
+    if failures:
+        _print_verify_summary_fail(failures)
+        sys.stdout.write(render_status(release, heads))
+        return 1
+
+    n_pass = sum(1 for c in release.components.values() if not c.is_in_tree)
+    n_in_tree = sum(1 for c in release.components.values() if c.is_in_tree)
+    print(f"verify: PASS — {n_pass} component(s) up-to-date ({n_in_tree} in-tree)")
+    sys.stdout.write(render_status(release, heads))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# CLI lock command
+# ---------------------------------------------------------------------------
+
+
 def cmd_lock(args: object) -> int:
     """Update ``system_release.toml`` in place to reflect current submodule HEADs.
 
