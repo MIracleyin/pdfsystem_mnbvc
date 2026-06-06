@@ -15,6 +15,10 @@ from pathlib import Path
 import pytest
 
 from pdfsys_cli.release import (
+    STATUS_DRIFTED,
+    STATUS_IN_TREE,
+    STATUS_MISSING,
+    STATUS_UP_TO_DATE,
     _resolve_component_heads,
     cmd_status,
     load_release,
@@ -47,11 +51,11 @@ def test_render_status_pin_matches() -> None:
     # Non-in-tree component shows abbreviated SHA and up-to-date.
     assert "components.parsers" in output
     assert "abcdef1…" in output  # abbreviated pinned SHA (U+2026 ellipsis)
-    assert "up-to-date" in output
+    assert STATUS_UP_TO_DATE in output
 
     # In-tree component: shows in-tree label, no HEAD line.
     assert "components.quality-scorer" in output
-    assert "in-tree" in output
+    assert STATUS_IN_TREE in output
     # The HEAD line must NOT appear for the in-tree component.
     lines = output.splitlines()
     in_tree_section_started = False
@@ -71,15 +75,15 @@ def test_render_status_pin_drifted() -> None:
 
     output = render_status(sr, heads)
 
-    assert "DRIFTED" in output
+    assert STATUS_DRIFTED in output
     # up-to-date must not appear for the drifted component.
-    assert "up-to-date" not in output
+    assert STATUS_UP_TO_DATE not in output
     # The actual HEAD SHA (abbreviated) must appear.
     assert "deadbee…" in output  # abbreviated head SHA
 
 
 def test_render_status_missing_path() -> None:
-    """heads[name] = None (path not found or git error) → shows MISSING or ERROR."""
+    """heads[name] = None (path not found or git error) → shows MISSING."""
     sr = load_release(_FIXTURES / "two_components.toml")
 
     heads: dict[str, str | None] = {"parsers": None}
@@ -87,7 +91,7 @@ def test_render_status_missing_path() -> None:
     output = render_status(sr, heads)
 
     # Must show some indication of the problem.
-    assert "MISSING" in output or "ERROR" in output
+    assert STATUS_MISSING in output
 
 
 # ---------------------------------------------------------------------------
@@ -95,17 +99,20 @@ def test_render_status_missing_path() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_component_heads_skips_in_tree() -> None:
+def test_resolve_component_heads_skips_in_tree(tmp_path: Path) -> None:
     """In-tree components must NOT appear in the returned heads dict."""
     sr = load_release(_FIXTURES / "two_components.toml")
 
-    heads = _resolve_component_heads(sr)
+    # base_dir points at an empty tmp dir → parsers path won't exist → None.
+    heads = _resolve_component_heads(sr, base_dir=tmp_path)
 
     # quality-scorer is in-tree — must be absent from the result dict.
     assert "quality-scorer" not in heads
 
-    # parsers is NOT in-tree — must appear (value may be None if path missing).
+    # parsers is NOT in-tree — must appear (value will be None since the
+    # external/parsers directory does not exist under tmp_path).
     assert "parsers" in heads
+    assert heads["parsers"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -138,4 +145,4 @@ tag = "in-tree-0.1.0"
 
     captured = capsys.readouterr()
     assert "1.0.0" in captured.out
-    assert "in-tree" in captured.out
+    assert STATUS_IN_TREE in captured.out

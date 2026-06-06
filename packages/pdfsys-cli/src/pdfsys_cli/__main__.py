@@ -109,6 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
     # ---- release ----
     r = sub.add_parser("release", help="Manage system_release.toml component pins.")
     r_sub = r.add_subparsers(dest="release_command", help="Release subcommand")
+    # Stash the release sub-parser's print_help so main() can show the
+    # right help when 'pdfsys release' is invoked without a subcommand.
+    r.set_defaults(_release_help=r.print_help)
 
     r_status = r_sub.add_parser("status", help="Show pin vs HEAD for each component.")
     r_status.add_argument(
@@ -229,7 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         from . import release as release_mod
         if args.release_command == "status":
             return release_mod.cmd_status(args)
-        parser.print_help()
+        # No subcommand → show release help, NOT top-level help.
+        args._release_help()
         return 0
     else:
         parser.print_help()

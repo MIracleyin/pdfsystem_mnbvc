@@ -271,6 +271,13 @@ def load_release(toml_path: str | Path) -> SystemRelease:
 # Column width for left-aligned keys (the part before the colon).
 _KEY_WIDTH = 28
 
+# Status labels — kept as module-level constants so tests can import them
+# rather than hard-coding substrings.
+STATUS_UP_TO_DATE = "up-to-date"
+STATUS_DRIFTED = "DRIFTED (pinned ≠ HEAD)"
+STATUS_IN_TREE = "in-tree"
+STATUS_MISSING = "MISSING (HEAD unreadable)"
+
 
 def _fmt_row(prefix: str, key: str, value: str) -> str:
     """Return a formatted ``prefix key : value`` line with a trailing newline."""
@@ -313,41 +320,47 @@ def render_status(
         pinned_abbrev = _abbrev_sha(comp.commit)
         tag_note = f"  (tag {comp.tag})"
 
-        if comp.is_in_tree:
-            lines.append(
-                _fmt_row(" ", "pinned commit", f"{pinned_abbrev}{tag_note}")
-            )
-            lines.append(_fmt_row(" ", "status", "in-tree"))
-        else:
-            lines.append(
-                _fmt_row(" ", "pinned commit", f"{pinned_abbrev}{tag_note}")
-            )
+        lines.append(
+            _fmt_row(" ", "pinned commit", f"{pinned_abbrev}{tag_note}")
+        )
 
+        if comp.is_in_tree:
+            lines.append(_fmt_row(" ", "status", STATUS_IN_TREE))
+        else:
             head_sha: str | None = heads.get(name)
 
             if head_sha is None:
-                lines.append(_fmt_row(" ", "status", "MISSING (HEAD unreadable)"))
+                lines.append(_fmt_row(" ", "status", STATUS_MISSING))
             else:
                 head_abbrev = _abbrev_sha(head_sha)
                 external_key = f"external/{comp.path.split('/')[-1]} HEAD"
                 lines.append(_fmt_row(" ", external_key, head_abbrev))
                 if head_sha == comp.commit:
-                    lines.append(_fmt_row(" ", "status", "up-to-date"))
+                    lines.append(_fmt_row(" ", "status", STATUS_UP_TO_DATE))
                 else:
-                    lines.append(_fmt_row(" ", "status", "DRIFTED (pinned ≠ HEAD)"))
+                    lines.append(_fmt_row(" ", "status", STATUS_DRIFTED))
 
     return "".join(lines)
 
 
-def _resolve_component_heads(release: SystemRelease) -> dict[str, str | None]:
+def _resolve_component_heads(
+    release: SystemRelease,
+    base_dir: Path,
+) -> dict[str, str | None]:
     """Resolve the live HEAD SHA for each non-in-tree component.
 
     Shells out to ``git -C <path> rev-parse HEAD`` for every component
     whose ``is_in_tree`` property is ``False``.  In-tree components are
     omitted from the returned dict entirely.
 
+    Component paths are resolved relative to ``base_dir`` (typically the
+    directory containing ``system_release.toml``), not the current working
+    directory.  This lets ``pdfsys release status --config /abs/path/...``
+    work from anywhere.
+
     Args:
-        release: Parsed :class:`SystemRelease`.
+        release:  Parsed :class:`SystemRelease`.
+        base_dir: Directory that component paths are resolved against.
 
     Returns:
         Dict mapping component name to 40-char SHA string, or ``None`` when
@@ -359,7 +372,7 @@ def _resolve_component_heads(release: SystemRelease) -> dict[str, str | None]:
         if comp.is_in_tree:
             continue
 
-        path = Path(comp.path)
+        path = (base_dir / comp.path).resolve()
         if not path.exists():
             result[name] = None
             continue
@@ -372,7 +385,8 @@ def _resolve_component_heads(release: SystemRelease) -> dict[str, str | None]:
                 check=False,
                 timeout=5,
             )
-        except subprocess.TimeoutExpired:
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            # FileNotFoundError fires when git itself is not on PATH.
             result[name] = None
             continue
 
@@ -396,6 +410,7 @@ def cmd_status(args: object) -> int:
     """
     config_path: str = getattr(args, "config", "system_release.toml")
     release = load_release(config_path)
-    heads = _resolve_component_heads(release)
+    base_dir = Path(config_path).resolve().parent
+    heads = _resolve_component_heads(release, base_dir)
     sys.stdout.write(render_status(release, heads))
     return 0
