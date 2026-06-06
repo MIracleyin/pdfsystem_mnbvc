@@ -79,10 +79,10 @@ Visit [Hugging Face Spaces](https://huggingface.co/spaces/roger1024/DocPipe) and
 # 1. Install uv package manager
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Clone and setup
-git clone https://github.com/MIracleyin/pdfsystem_mnbvc.git
+# 2. Clone (with submodules) and bootstrap
+git clone --recurse-submodules https://github.com/MIracleyin/pdfsystem_mnbvc.git
 cd pdfsystem_mnbvc
-uv sync
+bash scripts/bootstrap.sh
 
 # 3. Download router weights (257 KB, one-time)
 python -m pdfsys_router.download_weights
@@ -100,6 +100,25 @@ python -m pdfsys_bench \
   --out results.jsonl \
   --markdown-dir ./extracted
 ```
+
+### Component versioning
+
+This project is a **system release**: a tuple of (main repo commit, pinned
+component commits). Each independently-versioned component lives in its own
+git repo, mounted as a submodule under `external/`. The current pins live
+in [`system_release.toml`](system_release.toml).
+
+| Command | Purpose |
+|---|---|
+| `bash scripts/bootstrap.sh` | Init submodules + uv sync + verify pins (idempotent) |
+| `uv run pdfsys release status` | Show current pins vs submodule HEADs |
+| `uv run pdfsys release verify` | CI guard — exit non-zero if any pin drifted |
+| `uv run pdfsys release lock` | Bump pins to match submodule HEADs (refuses if working tree dirty) |
+
+For the full architectural rationale (Goodhart prevention, why parsers and the
+quality scorer get independent release cadences), see
+[`docs/superpowers/specs/2026-05-30-parsers-submodule-design.md`](docs/superpowers/specs/2026-05-30-parsers-submodule-design.md)
+and [`docs/architecture/LAYERS.md`](docs/architecture/LAYERS.md#component-versioning).
 
 ---
 
