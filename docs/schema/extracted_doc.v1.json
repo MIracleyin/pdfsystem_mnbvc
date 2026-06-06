@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pdfsys-mnbvc.dev/schema/extracted_doc/v1.json",
+  "title": "ExtractedDoc",
+  "description": "Per-PDF extraction output. Written once per (sha256, backend) pair. Wire contract between pdfsys-core and pdfsys-parsers.",
+  "$ref": "#/$defs/ExtractedDoc",
+  "$defs": {
+    "Backend": {
+      "title": "Backend",
+      "description": "Which extraction backend produced a given document. Values are the enum .value strings.",
+      "type": "string",
+      "enum": ["mupdf", "pipeline", "vlm", "deferred"]
+    },
+    "RegionType": {
+      "title": "RegionType",
+      "description": "Block-level content classification for a Segment.",
+      "type": "string",
+      "enum": ["text", "image", "table", "formula"]
+    },
+    "BBox": {
+      "title": "BBox",
+      "description": "Normalized bounding box. All coordinates are in [0.0, 1.0]; origin is top-left, y points downward.",
+      "type": "object",
+      "properties": {
+        "x0": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Left edge (normalized)."
+        },
+        "y0": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Top edge (normalized)."
+        },
+        "x1": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Right edge (normalized). Must be >= x0."
+        },
+        "y1": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Bottom edge (normalized). Must be >= y0."
+        }
+      },
+      "required": ["x0", "y0", "x1", "y1"],
+      "additionalProperties": false
+    },
+    "Segment": {
+      "title": "Segment",
+      "description": "A block-level extracted unit. content semantics depend on type: TEXT=Markdown, TABLE=HTML, FORMULA=LaTeX, IMAGE=path or data URI.",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based reading-order index within the document."
+        },
+        "backend": {
+          "$ref": "#/$defs/Backend",
+          "description": "Which backend emitted this segment."
+        },
+        "page_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based page number this segment was extracted from."
+        },
+        "type": {
+          "$ref": "#/$defs/RegionType",
+          "description": "Content classification of this segment."
+        },
+        "content": {
+          "type": "string",
+          "description": "Extracted content; encoding depends on type."
+        },
+        "bbox": {
+          "oneOf": [
+            { "$ref": "#/$defs/BBox" },
+            { "type": "null" }
+          ],
+          "description": "Normalized bounding box on the page, or null for mupdf backend segments."
+        },
+        "source_region_id": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ],
+          "description": "region_id of the upstream LayoutRegion this segment derives from, or null for mupdf backend."
+        }
+      },
+      "required": [
+        "index",
+        "backend",
+        "page_index",
+        "type",
+        "content",
+        "bbox",
+        "source_region_id"
+      ],
+      "additionalProperties": false
+    },
+    "ExtractedDoc": {
+      "title": "ExtractedDoc",
+      "description": "Per-PDF extraction output produced by any backend. The segments tuple is the authoritative record; markdown is a convenience merge.",
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "description": "Hex-encoded SHA-256 of the source PDF bytes."
+        },
+        "backend": {
+          "$ref": "#/$defs/Backend",
+          "description": "Which backend produced this document."
+        },
+        "segments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Segment" },
+          "description": "Ordered list of block-level segments in reading order."
+        },
+        "markdown": {
+          "type": "string",
+          "description": "Convenience merge: segment contents joined by blank-line separators."
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Free-form per-run statistics (page_count, ocr_char_count, etc.). Schema is intentionally open."
+        }
+      },
+      "required": ["sha256", "backend", "segments", "markdown", "stats"],
+      "additionalProperties": false
+    }
+  }
+}
