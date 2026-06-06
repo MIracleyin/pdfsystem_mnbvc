@@ -82,14 +82,14 @@
             { "$ref": "#/$defs/BBox" },
             { "type": "null" }
           ],
-          "description": "Normalized bounding box on the page, or null for mupdf backend segments."
+          "description": "Normalized bounding box on the page. None when block coordinates are degenerate (e.g., zero-size or out-of-page-bounds)."
         },
         "source_region_id": {
           "oneOf": [
             { "type": "string" },
             { "type": "null" }
           ],
-          "description": "region_id of the upstream LayoutRegion this segment derives from, or null for mupdf backend."
+          "description": "region_id of the upstream LayoutRegion this segment derives from. None for the mupdf backend (which does not consume a LayoutDocument)."
         }
       },
       "required": [

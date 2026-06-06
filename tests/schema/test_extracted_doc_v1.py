@@ -7,14 +7,19 @@ Validates that:
 3. The JSON dict round-trips back to an equal ExtractedDoc via serde helpers.
 
 Fixtures cover two edge-case combinations:
-- A Segment with bbox set (BBox object present).
-- A Segment with bbox=None and source_region_id=None (mupdf-style).
+- A pipeline-style Segment with bbox set and source_region_id populated
+  (the pipeline/vlm backends copy bbox + region_id from the upstream
+  LayoutRegion they consumed).
+- A degenerate Segment with bbox=None: bbox is rare-but-legal-None when
+  block coordinates are degenerate. source_region_id=None marks the
+  mupdf backend (which does not consume a LayoutDocument).
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import jsonschema
 import pytest
@@ -36,9 +41,8 @@ _SCHEMA_PATH = _REPO_ROOT / "docs" / "schema" / "extracted_doc.v1.json"
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture()
-def sample_doc() -> ExtractedDoc:
-    """A minimal but representative ExtractedDoc with two segments."""
+def _make_valid_doc() -> ExtractedDoc:
+    """Construct a representative ExtractedDoc covering both bbox states."""
     seg_with_bbox = Segment(
         index=0,
         backend=Backend.PIPELINE,
@@ -48,6 +52,9 @@ def sample_doc() -> ExtractedDoc:
         bbox=BBox(x0=0.1, y0=0.1, x1=0.9, y1=0.2),
         source_region_id="p0_r0",
     )
+    # mupdf backend: source_region_id is always None (no LayoutDocument
+    # consumed). bbox is normally populated from PyMuPDF block coords; this
+    # fixture exercises the rare bbox=None edge case (degenerate block).
     seg_no_bbox = Segment(
         index=1,
         backend=Backend.MUPDF,
@@ -66,6 +73,16 @@ def sample_doc() -> ExtractedDoc:
     )
 
 
+def _make_valid_doc_blob() -> dict[str, Any]:
+    """Convenience: a JSON-compatible dict that validates against the schema."""
+    return to_dict(_make_valid_doc())
+
+
+@pytest.fixture()
+def sample_doc() -> ExtractedDoc:
+    return _make_valid_doc()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -78,8 +95,17 @@ def _load_schema() -> dict:
     return json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
+def _segment_subschema(schema: dict) -> dict:
+    """Build a standalone schema for the Segment $def, preserving $defs refs."""
+    return {
+        "$schema": schema.get("$schema", ""),
+        "$defs": schema.get("$defs", {}),
+        **schema["$defs"]["Segment"],
+    }
+
+
 # ---------------------------------------------------------------------------
-# Tests
+# Positive tests
 # ---------------------------------------------------------------------------
 
 def test_schema_file_exists() -> None:
@@ -103,27 +129,22 @@ def test_round_trip_preserves_equality(sample_doc: ExtractedDoc) -> None:
 
 
 def test_segment_with_bbox_validates(sample_doc: ExtractedDoc) -> None:
-    """The segment that carries a BBox must itself validate under Segment schema."""
+    """A segment carrying a BBox must validate under the Segment subschema."""
     schema = _load_schema()
     seg_blob = to_dict(sample_doc.segments[0])
-    segment_schema = {
-        "$schema": schema.get("$schema", ""),
-        "$defs": schema.get("$defs", {}),
-        **schema["$defs"]["Segment"],
-    }
-    jsonschema.validate(instance=seg_blob, schema=segment_schema)
+    jsonschema.validate(instance=seg_blob, schema=_segment_subschema(schema))
 
 
 def test_segment_without_bbox_validates(sample_doc: ExtractedDoc) -> None:
-    """The mupdf-style segment (bbox=None, source_region_id=None) must validate."""
+    """A degenerate-bbox mupdf segment (bbox=None, source_region_id=None) must validate.
+
+    bbox=None covers the rare case where PyMuPDF returns degenerate block
+    coords; source_region_id=None is the mupdf-backend marker (no upstream
+    LayoutDocument was consumed).
+    """
     schema = _load_schema()
     seg_blob = to_dict(sample_doc.segments[1])
-    segment_schema = {
-        "$schema": schema.get("$schema", ""),
-        "$defs": schema.get("$defs", {}),
-        **schema["$defs"]["Segment"],
-    }
-    jsonschema.validate(instance=seg_blob, schema=segment_schema)
+    jsonschema.validate(instance=seg_blob, schema=_segment_subschema(schema))
 
 
 def test_stats_accepts_arbitrary_keys(sample_doc: ExtractedDoc) -> None:
@@ -135,10 +156,39 @@ def test_stats_accepts_arbitrary_keys(sample_doc: ExtractedDoc) -> None:
     jsonschema.validate(instance=blob, schema=schema)
 
 
-def test_additional_properties_rejected_on_top_level(sample_doc: ExtractedDoc) -> None:
+# ---------------------------------------------------------------------------
+# Negative tests — schema must reject malformed instances
+# ---------------------------------------------------------------------------
+
+def test_additional_properties_rejected_on_top_level() -> None:
     """ExtractedDoc schema must reject extra top-level keys."""
     schema = _load_schema()
-    blob = to_dict(sample_doc)
+    blob = _make_valid_doc_blob()
     blob["unknown_field"] = "should_fail"
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=blob, schema=schema)
+
+
+def test_invalid_backend_rejected() -> None:
+    """Schema rejects an unknown Backend enum value at the doc level."""
+    blob = _make_valid_doc_blob()
+    blob["backend"] = "unknown"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=blob, schema=_load_schema())
+
+
+def test_invalid_region_type_rejected() -> None:
+    """Schema rejects an unknown RegionType enum value on a Segment."""
+    blob = _make_valid_doc_blob()
+    blob["segments"][0]["type"] = "header"  # not in RegionType
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=blob, schema=_load_schema())
+
+
+def test_bbox_out_of_range_rejected() -> None:
+    """Schema rejects BBox coordinates outside [0.0, 1.0]."""
+    blob = _make_valid_doc_blob()
+    # segments[0] is the one with a bbox set in _make_valid_doc().
+    blob["segments"][0]["bbox"]["x0"] = 1.5
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=blob, schema=_load_schema())
