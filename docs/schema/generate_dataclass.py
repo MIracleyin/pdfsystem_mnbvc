@@ -41,11 +41,6 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
-def _indent(text: str, n: int = 4) -> str:
-    prefix = " " * n
-    return "\n".join(prefix + line if line.strip() else line for line in text.splitlines())
-
-
 def _emit_str_enum(name: str, values: list[str]) -> str:
     """Emit a StrEnum class."""
     lines = [f"class {name}(StrEnum):"]
@@ -55,13 +50,13 @@ def _emit_str_enum(name: str, values: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _resolve_type(prop: dict, defs: dict, nullable: bool = False) -> str:
+def _resolve_type(prop: dict, defs: dict) -> str:
     """Map a JSON schema property definition to a Python type annotation string."""
     # Handle oneOf with null pattern (nullable field)
     if "oneOf" in prop:
         non_null = [s for s in prop["oneOf"] if s.get("type") != "null"]
         if len(non_null) == 1:
-            inner = _resolve_type(non_null[0], defs, nullable=False)
+            inner = _resolve_type(non_null[0], defs)
             return f"{inner} | None"
         return "Any"
 
@@ -88,7 +83,7 @@ def _resolve_type(prop: dict, defs: dict, nullable: bool = False) -> str:
     return "Any"
 
 
-def _emit_bbox(defn: dict) -> str:
+def _emit_bbox(defn: dict, defs: dict) -> str:
     """Emit BBox as a frozen+slots dataclass with __post_init__ validation."""
     props = defn["properties"]
 
@@ -100,7 +95,7 @@ def _emit_bbox(defn: dict) -> str:
     ]
 
     for field_name, field_schema in props.items():
-        py_type = _resolve_type(field_schema, {})
+        py_type = _resolve_type(field_schema, defs)
         lines.append(f"    {field_name}: {py_type}")
 
     lines += [
@@ -215,7 +210,7 @@ def generate() -> str:
         parts.append("")
 
     # Dataclasses in dependency order: BBox → Segment → ExtractedDoc
-    parts.append(_emit_bbox(defs["BBox"]))
+    parts.append(_emit_bbox(defs["BBox"], defs))
     parts.append("")
     parts.append(_emit_segment(defs["Segment"], defs))
     parts.append("")
@@ -233,14 +228,10 @@ def generate() -> str:
 
 
 def main() -> int:
-    try:
-        content = generate()
-        _OUTPUT_PATH.write_text(content, encoding="utf-8")
-        print(f"wrote {_OUTPUT_PATH} ({len(content.encode('utf-8'))} bytes)")
-        return 0
-    except Exception as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
+    content = generate()
+    _OUTPUT_PATH.write_text(content, encoding="utf-8")
+    print(f"wrote {_OUTPUT_PATH} ({len(content.encode('utf-8'))} bytes)")
+    return 0
 
 
 if __name__ == "__main__":

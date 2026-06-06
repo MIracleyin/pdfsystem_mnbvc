@@ -97,8 +97,6 @@ def test_mirror_module_is_importable_and_self_contained() -> None:
         "Mirror file must not import from pdfsys_core — it is meant to be standalone.\n"
         "Found 'pdfsys_core' in the file source."
     )
-    assert "from pdfsys_core" not in source
-    assert "import pdfsys_core" not in source
 
 
 # ---------------------------------------------------------------------------
