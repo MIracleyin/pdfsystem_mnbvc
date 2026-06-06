@@ -106,6 +106,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Import annotations from an exported JSON file into metadata.json.",
     )
 
+    # ---- release ----
+    r = sub.add_parser("release", help="Manage system_release.toml component pins.")
+    r_sub = r.add_subparsers(dest="release_command", help="Release subcommand")
+
+    r_status = r_sub.add_parser("status", help="Show pin vs HEAD for each component.")
+    r_status.add_argument(
+        "--config", "-c", type=str, default="system_release.toml",
+        help="Path to system_release.toml (default: ./system_release.toml).",
+    )
+
     return top
 
 
@@ -215,6 +225,12 @@ def main(argv: list[str] | None = None) -> int:
         ])
     elif args.command == "annotate":
         return cmd_annotate(args)
+    elif args.command == "release":
+        from . import release as release_mod
+        if args.release_command == "status":
+            return release_mod.cmd_status(args)
+        parser.print_help()
+        return 0
     else:
         parser.print_help()
         return 0

@@ -19,6 +19,8 @@ Usage::
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -260,3 +262,140 @@ def load_release(toml_path: str | Path) -> SystemRelease:
         FileNotFoundError: If the file does not exist.
     """
     return parse_release(Path(toml_path).read_bytes())
+
+
+# ---------------------------------------------------------------------------
+# CLI status command
+# ---------------------------------------------------------------------------
+
+# Column width for left-aligned keys (the part before the colon).
+_KEY_WIDTH = 28
+
+
+def _fmt_row(prefix: str, key: str, value: str) -> str:
+    """Return a formatted ``prefix key : value`` line with a trailing newline."""
+    return f"{prefix} {key:<{_KEY_WIDTH}}: {value}\n"
+
+
+def _abbrev_sha(sha: str) -> str:
+    """Abbreviate a 40-char SHA to 7 chars + U+2026 ellipsis."""
+    return f"{sha[:7]}…"
+
+
+def render_status(
+    release: SystemRelease,
+    heads: dict[str, str | None],
+) -> str:
+    """Render the ``pdfsys release status`` output as a string.
+
+    Pure function — no I/O, no subprocess calls.
+
+    Args:
+        release: Parsed :class:`SystemRelease`.
+        heads:   Map from component name to the live HEAD SHA (or ``None``
+                 when the path is missing/unreadable). In-tree components
+                 should be absent from this dict (they are skipped by
+                 :func:`_resolve_component_heads`).
+
+    Returns:
+        The full formatted status block (newline-terminated).
+    """
+    lines: list[str] = []
+
+    # System header.
+    lines.append(_fmt_row("✓", "system.version", release.version))
+    lines.append(_fmt_row("✓", "released_at", release.released_at))
+
+    for name, comp in release.components.items():
+        section_header = f"─ components.{name}\n"
+        lines.append(section_header)
+
+        pinned_abbrev = _abbrev_sha(comp.commit)
+        tag_note = f"  (tag {comp.tag})"
+
+        if comp.is_in_tree:
+            lines.append(
+                _fmt_row(" ", "pinned commit", f"{pinned_abbrev}{tag_note}")
+            )
+            lines.append(_fmt_row(" ", "status", "in-tree"))
+        else:
+            lines.append(
+                _fmt_row(" ", "pinned commit", f"{pinned_abbrev}{tag_note}")
+            )
+
+            head_sha: str | None = heads.get(name)
+
+            if head_sha is None:
+                lines.append(_fmt_row(" ", "status", "MISSING (HEAD unreadable)"))
+            else:
+                head_abbrev = _abbrev_sha(head_sha)
+                external_key = f"external/{comp.path.split('/')[-1]} HEAD"
+                lines.append(_fmt_row(" ", external_key, head_abbrev))
+                if head_sha == comp.commit:
+                    lines.append(_fmt_row(" ", "status", "up-to-date"))
+                else:
+                    lines.append(_fmt_row(" ", "status", "DRIFTED (pinned ≠ HEAD)"))
+
+    return "".join(lines)
+
+
+def _resolve_component_heads(release: SystemRelease) -> dict[str, str | None]:
+    """Resolve the live HEAD SHA for each non-in-tree component.
+
+    Shells out to ``git -C <path> rev-parse HEAD`` for every component
+    whose ``is_in_tree`` property is ``False``.  In-tree components are
+    omitted from the returned dict entirely.
+
+    Args:
+        release: Parsed :class:`SystemRelease`.
+
+    Returns:
+        Dict mapping component name to 40-char SHA string, or ``None`` when
+        the path does not exist or the git command fails.
+    """
+    result: dict[str, str | None] = {}
+
+    for name, comp in release.components.items():
+        if comp.is_in_tree:
+            continue
+
+        path = Path(comp.path)
+        if not path.exists():
+            result[name] = None
+            continue
+
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(path), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            result[name] = None
+            continue
+
+        if proc.returncode != 0:
+            result[name] = None
+        else:
+            result[name] = proc.stdout.strip()
+
+    return result
+
+
+def cmd_status(args: object) -> int:
+    """Print pin vs HEAD diff for each component.  Exit 0.
+
+    Args:
+        args: argparse Namespace with a ``config`` attribute (path to
+              ``system_release.toml``).
+
+    Returns:
+        Always 0.
+    """
+    config_path: str = getattr(args, "config", "system_release.toml")
+    release = load_release(config_path)
+    heads = _resolve_component_heads(release)
+    sys.stdout.write(render_status(release, heads))
+    return 0
