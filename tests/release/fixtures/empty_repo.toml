@@ -1,0 +1,14 @@
+[system]
+version = "0.4.0"
+released_at = "2026-05-30"
+released_by = "miracleyin"
+notes = ""
+
+[components.parsers]
+repo = ""
+path = "external/parsers"
+commit = "0000000000000000000000000000000000000000"
+tag = "v0.1.0"
+
+[runtime]
+mineru = "3.x"
