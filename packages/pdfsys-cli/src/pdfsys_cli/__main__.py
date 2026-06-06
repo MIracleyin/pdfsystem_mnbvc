@@ -119,6 +119,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to system_release.toml (default: ./system_release.toml).",
     )
 
+    r_lock = r_sub.add_parser("lock", help="Update system_release.toml from submodule HEADs.")
+    r_lock.add_argument(
+        "--config", "-c", type=str, default="system_release.toml",
+        help="Path to system_release.toml (default: ./system_release.toml).",
+    )
+
     return top
 
 
@@ -232,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         from . import release as release_mod
         if args.release_command == "status":
             return release_mod.cmd_status(args)
+        elif args.release_command == "lock":
+            return release_mod.cmd_lock(args)
         # No subcommand → show release help, NOT top-level help.
         args._release_help()
         return 0

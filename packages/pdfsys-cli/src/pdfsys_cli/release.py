@@ -25,6 +25,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import tomlkit
+
 # 40-char lowercase hex SHA — uppercase letters are rejected by design so CI
 # catches copy-paste errors from git log --abbrev or GitHub UI.
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -413,4 +415,167 @@ def cmd_status(args: object) -> int:
     base_dir = Path(config_path).resolve().parent
     heads = _resolve_component_heads(release, base_dir)
     sys.stdout.write(render_status(release, heads))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# CLI lock command
+# ---------------------------------------------------------------------------
+
+
+def _working_tree_dirty(base_dir: Path) -> bool:
+    """Return True if the git working tree at ``base_dir`` has uncommitted changes.
+
+    Uses ``git -C <base_dir> status --porcelain``.  Any non-empty output means
+    the tree is dirty.  Errors (no git binary, timeout) are treated as dirty so
+    we never overwrite the lock file from an unknown state.
+
+    Args:
+        base_dir: Directory passed to ``git -C``.  Typically the directory that
+                  contains ``system_release.toml``.
+
+    Returns:
+        ``True`` when the working tree is dirty *or* when git cannot be run.
+        ``False`` only when git exits 0 with empty stdout.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(base_dir), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # No git binary or timed out — treat as dirty (fail-safe).
+        return True
+    return bool(proc.stdout.strip())
+
+
+def _abbrev(sha: str | None) -> str:
+    """Return the first 7 chars of a SHA, or ``"(none)"`` for ``None``."""
+    if sha is None:
+        return "(none)"
+    return sha[:7]
+
+
+def _compute_lock_changes(
+    release: SystemRelease,
+    heads: dict[str, str | None],
+) -> list[tuple[str, str, str]]:
+    """Compute which components need their pinned commit updated.
+
+    Pure function — no I/O.
+
+    In-tree components are skipped entirely.  External components where the
+    resolved HEAD is ``None`` (path not found / git error) are also skipped
+    — we don't want to overwrite a known-good pin with ``None``.
+
+    Args:
+        release: Parsed :class:`SystemRelease`.
+        heads:   Map from component name to resolved HEAD SHA (or ``None``).
+
+    Returns:
+        List of ``(name, old_sha, new_sha)`` tuples for components whose HEAD
+        differs from the current pin.  Empty list when nothing has changed.
+    """
+    changes: list[tuple[str, str, str]] = []
+    for name, comp in release.components.items():
+        if comp.is_in_tree:
+            continue
+        new_sha = heads.get(name)
+        if new_sha is None:
+            continue
+        if new_sha != comp.commit:
+            changes.append((name, comp.commit, new_sha))
+    return changes
+
+
+def _write_lock(
+    config_path: Path,
+    changes: list[tuple[str, str, str]],
+) -> None:
+    """Apply ``changes`` to ``config_path`` in-place, preserving comments.
+
+    Uses :mod:`tomlkit` for a comment-preserving round-trip.
+
+    Args:
+        config_path: Absolute path to ``system_release.toml``.
+        changes:     List of ``(name, old_sha, new_sha)`` produced by
+                     :func:`_compute_lock_changes`.
+    """
+    doc = tomlkit.parse(config_path.read_text(encoding="utf-8"))
+    for name, _old, new_sha in changes:
+        doc["components"][name]["commit"] = new_sha  # type: ignore[index]
+    config_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+
+
+def _print_in_tree_warnings(release: SystemRelease) -> None:
+    """Print a WARNING line for every in-tree component.
+
+    This reminds the user that in-tree components are not automatically
+    updated by ``lock`` and must be pinned manually at release time.
+
+    Args:
+        release: Parsed :class:`SystemRelease`.
+    """
+    for name, comp in release.components.items():
+        if comp.is_in_tree:
+            print(f"WARNING: components.{name} is still in-tree")
+
+
+def cmd_lock(args: object) -> int:
+    """Update ``system_release.toml`` in place to reflect current submodule HEADs.
+
+    Steps:
+
+    1. Dirty-check the working tree.  Refuse to write if uncommitted changes
+       exist (prevents overwriting a known-good pin in an ambiguous state).
+    2. Read the current release pin.
+    3. Resolve live HEAD SHAs for all non-in-tree components.
+    4. Compute which components have drifted from their pin.
+    5. Write the updated TOML (comments preserved via ``tomlkit``).
+    6. Print a human-readable diff and in-tree warnings.
+
+    Args:
+        args: argparse Namespace with a ``config`` attribute (path to
+              ``system_release.toml``).
+
+    Returns:
+        0 on success (including no-op), 1 if the working tree is dirty.
+    """
+    config_path = Path(getattr(args, "config", "system_release.toml")).resolve()
+    base_dir = config_path.parent
+
+    # 1. dirty check
+    if _working_tree_dirty(base_dir):
+        print(
+            "error: refusing to write system_release.toml — working tree has "
+            "uncommitted changes; run `git status` to inspect",
+            file=sys.stderr,
+        )
+        return 1
+
+    # 2. read current release
+    release = load_release(config_path)
+
+    # 3. resolve HEADs
+    heads = _resolve_component_heads(release, base_dir)
+
+    # 4. compute diff
+    changes = _compute_lock_changes(release, heads)
+
+    if not changes:
+        print(f"{config_path.name} already up-to-date.")
+        _print_in_tree_warnings(release)
+        return 0
+
+    # 5. write
+    _write_lock(config_path, changes)
+
+    # 6. report
+    print(f"Wrote {config_path.name}. Diff:")
+    for name, old, new in changes:
+        print(f"  components.{name}.commit: {_abbrev(old)} → {_abbrev(new)}")
+    _print_in_tree_warnings(release)
     return 0
