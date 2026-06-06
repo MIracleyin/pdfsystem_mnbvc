@@ -115,6 +115,8 @@ def test_verify_pass_when_all_match(
     captured = capsys.readouterr()
     assert "PASS" in captured.out
     assert "up-to-date" in captured.out
+    # The summary line itself must report the correct non-in-tree count.
+    assert "1 component(s) up-to-date" in captured.out
     # in-tree component name appears in the full status block on stdout
     assert "quality-scorer" in captured.out
     # No failure summary on stderr
@@ -212,6 +214,8 @@ tag = "in-tree-0.1.0"
     assert "PASS" in captured.out
     # The summary mentions in-tree count
     assert "in-tree" in captured.out
+    # The summary line itself must report the correct in-tree count.
+    assert "(1 in-tree)" in captured.out
     assert captured.err == ""
 
 
