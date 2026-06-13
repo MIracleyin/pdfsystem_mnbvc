@@ -1,22 +1,45 @@
 # pdfsys microservice composition.
 #
-# Phase A (current): only the quality scorer is dockerized. Extract +
-# CLI services are added in follow-up commits.
-#
-# Phase B (planned): pdfsys-extract:cpu + pdfsys-extract:gpu
-# Phase C (planned): pdfsys-cli (orchestrator + bench client)
+# Phase A: quality scorer (HTTP).
+# Phase B (current): mineru-api extraction backend (pipeline/CPU).
+#         GPU variant lives in docker/mineru.gpu.Dockerfile (TBD).
+# Phase C (planned): pdfsys-cli (orchestrator + bench client; sets
+#         MINERU_PIPELINE_URL + QUALITY_URL to talk to the other two).
 #
 # Volume strategy:
-#   - hf-cache: ModernBERT weights live here. Default = bind-mount
-#     ~/.cache/huggingface so weights already downloaded by
-#     scripts/download_models.sh are reused. Override to a named
-#     volume in production by editing the `volumes:` block.
+#   Bind-mount the host's HF cache so weights downloaded via
+#   scripts/download_models.sh are reused inside the containers.
+#   Override to named volumes in production by replacing the
+#   `${HF_HOME:-...}` paths with `hf-cache:` (declared below).
 #
-# Run:
-#   docker compose up -d quality
-#   curl http://localhost:8765/health
+# Run all:
+#   docker compose up -d
+# Run one:
+#   docker compose up -d mineru
+#   curl http://localhost:8000/health
 
 services:
+  mineru:
+    build:
+      context: .
+      dockerfile: docker/mineru.Dockerfile
+    image: pdfsys-mineru:cpu
+    container_name: pdfsys-mineru
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${HF_HOME:-${HOME}/.cache/huggingface}:/cache/huggingface:ro
+    environment:
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
   quality:
     build:
       context: .
