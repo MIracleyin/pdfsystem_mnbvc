@@ -12,9 +12,10 @@ released_at = "2026-06-13"
 released_by = "miracleyin"
 notes = "Parsers extracted to external/parsers submodule (MIracleyin/pdfsys-parsers@v0.1.0). Quality-scorer still in-tree pending Spec #2."
 
-# `parsers` collectively refers to the four packages now living in the
+# `parsers` collectively refers to the four document-understanding packages
+# plus the vendored pdfsys-types canonical type layer, all living in the
 # external submodule at external/parsers/packages/:
-#   - pdfsys-types (canonical type layer)
+#   - pdfsys-types (canonical type layer; zero-dep)
 #   - pdfsys-parser-mupdf
 #   - pdfsys-parser-pipeline
 #   - pdfsys-parser-vlm
