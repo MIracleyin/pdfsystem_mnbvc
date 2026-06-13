@@ -1,0 +1,14 @@
+[system]
+# version is intentionally missing
+released_at = "2026-05-30"
+released_by = "miracleyin"
+notes = ""
+
+[components.parsers]
+repo = "git@github.com:MIracleyin/pdfsys-parsers.git"
+path = "external/parsers"
+commit = "0000000000000000000000000000000000000000"
+tag = "v0.1.0"
+
+[runtime]
+mineru = "3.x"

@@ -22,10 +22,11 @@ dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = ["packages/*", "external/parsers/packages/*"]
 
 [tool.uv.sources]
 pdfsys-core             = { workspace = true }
+pdfsys-types            = { workspace = true }
 pdfsys-router           = { workspace = true }
 pdfsys-layout-analyser  = { workspace = true }
 pdfsys-parser-mupdf     = { workspace = true }
@@ -42,6 +43,7 @@ build-backend = "hatchling.build"
 dev = [
     "ruff>=0.15.14",
     "pytest>=8.0",
+    "jsonschema>=4.26.0",
 ]
 
 [tool.hatch.build.targets.wheel]

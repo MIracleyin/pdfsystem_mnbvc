@@ -1,0 +1,22 @@
+[system]
+version = "0.4.0"
+released_at = "2026-05-30"
+released_by = "miracleyin"
+notes = "Initial parsers pin."
+
+[components.parsers]
+repo = "git@github.com:MIracleyin/pdfsys-parsers.git"
+path = "external/parsers"
+commit = "0000000000000000000000000000000000000000"
+tag = "v0.1.0"
+schema_version = "extracted_doc.v1"
+
+[components.quality-scorer]
+repo = "in-tree:packages/pdfsys-quality"
+path = "packages/pdfsys-quality"
+commit = "1a07a987a3f8b1c2e4d5f6a7b8c9d0e1f2a3b4c5"
+tag = "in-tree-0.1.0"
+
+[runtime]
+mineru = "3.x"
+python = "3.11+"

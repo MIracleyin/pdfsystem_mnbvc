@@ -173,7 +173,7 @@ def test_core_has_no_external_imports():
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     top = alias.name.split(".")[0]
-                    if top not in STDLIB and top != "pdfsys_core":
+                    if top not in STDLIB and top not in {"pdfsys_core", "pdfsys_types"}:
                         violations.append(
                             f"{py_file.relative_to(PROJECT_ROOT)}:{node.lineno} "
                             f"imports {alias.name} (not stdlib)"
@@ -181,14 +181,75 @@ def test_core_has_no_external_imports():
             elif isinstance(node, ast.ImportFrom) and node.module:
                 top = node.module.split(".")[0]
                 # Relative imports (node.level > 0) are intra-package.
-                if top not in STDLIB and top != "pdfsys_core" and node.level == 0:
+                if (
+                    top not in STDLIB
+                    and top not in {"pdfsys_core", "pdfsys_types"}
+                    and node.level == 0
+                ):
                     violations.append(
                             f"{py_file.relative_to(PROJECT_ROOT)}:{node.lineno} "
                             f"imports {node.module} (not stdlib)"
                         )
 
     assert not violations, (
-        "pdfsys-core must have zero external dependencies.\n"
+        "pdfsys-core must import only from stdlib or pdfsys-types.\n"
+        + "\n".join(violations)
+        + "\nSee docs/golden-principles/ZERO_DEP_CORE.md"
+    )
+
+
+def test_types_has_no_external_imports():
+    """pdfsys-types must only use stdlib imports — the canonical type layer
+    must stay zero-dep so pdfsys-core can safely re-export from it.
+    See docs/golden-principles/ZERO_DEP_CORE.md."""
+    # Same set as test_core_has_no_external_imports.
+    STDLIB = {
+        "__future__", "abc", "ast", "asyncio", "base64", "collections",
+        "contextlib", "copy", "csv", "dataclasses", "datetime", "decimal",
+        "enum", "functools", "hashlib", "importlib", "inspect", "io",
+        "itertools", "json", "logging", "math", "os", "pathlib",
+        "re", "shutil", "socket", "string", "struct", "sys", "tempfile",
+        "textwrap", "threading", "time", "traceback", "types", "typing",
+        "unittest", "urllib", "uuid", "warnings", "weakref",
+    }
+
+    types_src = (
+        PROJECT_ROOT / "external" / "parsers" / "packages" / "pdfsys-types" / "src"
+    )
+    if not types_src.exists():
+        # Submodule not initialized — skip rather than fail. CI initializes it.
+        import pytest
+        pytest.skip("pdfsys-types submodule not initialized")
+
+    violations: list[str] = []
+
+    for py_file in sorted(types_src.rglob("*.py")):
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    top = alias.name.split(".")[0]
+                    if top not in STDLIB and top != "pdfsys_types":
+                        violations.append(
+                            f"{py_file.relative_to(PROJECT_ROOT)}:{node.lineno} "
+                            f"imports {alias.name} (not stdlib)"
+                        )
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                top = node.module.split(".")[0]
+                # Relative imports (node.level > 0) are intra-package.
+                if top not in STDLIB and top != "pdfsys_types" and node.level == 0:
+                    violations.append(
+                            f"{py_file.relative_to(PROJECT_ROOT)}:{node.lineno} "
+                            f"imports {node.module} (not stdlib)"
+                        )
+
+    assert not violations, (
+        "pdfsys-types must have zero external dependencies.\n"
         + "\n".join(violations)
         + "\nSee docs/golden-principles/ZERO_DEP_CORE.md"
     )

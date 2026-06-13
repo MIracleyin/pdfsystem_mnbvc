@@ -106,6 +106,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Import annotations from an exported JSON file into metadata.json.",
     )
 
+    # ---- release ----
+    r = sub.add_parser("release", help="Manage system_release.toml component pins.")
+    r_sub = r.add_subparsers(dest="release_command", help="Release subcommand")
+    # Stash the release sub-parser's print_help so main() can show the
+    # right help when 'pdfsys release' is invoked without a subcommand.
+    r.set_defaults(_release_help=r.print_help)
+
+    r_status = r_sub.add_parser("status", help="Show pin vs HEAD for each component.")
+    r_status.add_argument(
+        "--config", "-c", type=str, default="system_release.toml",
+        help="Path to system_release.toml (default: ./system_release.toml).",
+    )
+
+    r_lock = r_sub.add_parser("lock", help="Update system_release.toml from submodule HEADs.")
+    r_lock.add_argument(
+        "--config", "-c", type=str, default="system_release.toml",
+        help="Path to system_release.toml (default: ./system_release.toml).",
+    )
+
+    r_verify = r_sub.add_parser("verify", help="Verify pinned commits match resolved HEADs (CI guard).")
+    r_verify.add_argument(
+        "--config", "-c", type=str, default="system_release.toml",
+        help="Path to system_release.toml (default: ./system_release.toml).",
+    )
+
     return top
 
 
@@ -215,6 +240,17 @@ def main(argv: list[str] | None = None) -> int:
         ])
     elif args.command == "annotate":
         return cmd_annotate(args)
+    elif args.command == "release":
+        from . import release as release_mod
+        if args.release_command == "status":
+            return release_mod.cmd_status(args)
+        elif args.release_command == "lock":
+            return release_mod.cmd_lock(args)
+        elif args.release_command == "verify":
+            return release_mod.cmd_verify(args)
+        # No subcommand → show release help, NOT top-level help.
+        args._release_help()
+        return 0
     else:
         parser.print_help()
         return 0

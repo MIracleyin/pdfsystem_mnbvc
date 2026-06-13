@@ -8,7 +8,6 @@ __pycache__/
 build/
 dist/
 .cursor/
-scripts/
 
 # uv / virtualenv
 .venv/

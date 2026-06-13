@@ -1,0 +1,44 @@
+# pdfsys system release manifest.
+# Owned by docs/superpowers/specs/2026-05-30-parsers-submodule-design.md (§5).
+# Update via `pdfsys release lock`. Diff via `pdfsys release status`.
+# CI runs `pdfsys release verify` and fails if any submodule HEAD != pinned commit.
+#
+# parsers is now an external submodule (Task 2.4 complete);
+# quality-scorer remains in-tree (`repo = "in-tree:..."`) pending Spec #2.
+
+[system]
+version = "0.4.0"
+released_at = "2026-06-13"
+released_by = "miracleyin"
+notes = "Parsers extracted to external/parsers submodule (MIracleyin/pdfsys-parsers@v0.1.0). Quality-scorer still in-tree pending Spec #2."
+
+# `parsers` collectively refers to the four document-understanding packages
+# plus the vendored pdfsys-types canonical type layer, all living in the
+# external submodule at external/parsers/packages/:
+#   - pdfsys-types (canonical type layer; zero-dep)
+#   - pdfsys-parser-mupdf
+#   - pdfsys-parser-pipeline
+#   - pdfsys-parser-vlm
+#   - pdfsys-layout-analyser
+# Source: https://github.com/MIracleyin/pdfsys-parsers (private)
+[components.parsers]
+repo = "MIracleyin/pdfsys-parsers"
+path = "external/parsers"
+commit = "818b76dab1fe7b71f085f70524cf04e092629a3f"
+tag = "v0.1.0"
+schema_version = "extracted_doc.v1"
+
+# quality-scorer component — currently in-tree at packages/pdfsys-bench.
+# OcrQualityScorer / QualityScore live in pdfsys_bench.quality (+ quality_llm,
+# quality_rules, _quality_server). Spec #2 will extract this to a dedicated repo
+# with sealed-holdout governance.
+[components.quality-scorer]
+repo = "in-tree:packages/pdfsys-bench"
+path = "packages/pdfsys-bench"
+commit = "b1c3b46c9d39e1d2c615e158ec4b9bd3acb792e6"
+tag = "in-tree-0.1.0"
+
+[runtime]
+# Informational pins — uv.lock is ground truth for Python deps.
+mineru = "3.x"
+python = "3.11+"
