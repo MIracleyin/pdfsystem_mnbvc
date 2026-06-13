@@ -1,0 +1,45 @@
+# pdfsys microservice composition.
+#
+# Phase A (current): only the quality scorer is dockerized. Extract +
+# CLI services are added in follow-up commits.
+#
+# Phase B (planned): pdfsys-extract:cpu + pdfsys-extract:gpu
+# Phase C (planned): pdfsys-cli (orchestrator + bench client)
+#
+# Volume strategy:
+#   - hf-cache: ModernBERT weights live here. Default = bind-mount
+#     ~/.cache/huggingface so weights already downloaded by
+#     scripts/download_models.sh are reused. Override to a named
+#     volume in production by editing the `volumes:` block.
+#
+# Run:
+#   docker compose up -d quality
+#   curl http://localhost:8765/health
+
+services:
+  quality:
+    build:
+      context: .
+      dockerfile: docker/quality.Dockerfile
+    image: pdfsys-quality:dev
+    container_name: pdfsys-quality
+    ports:
+      - "8765:8765"
+    volumes:
+      # Bind-mount the host's HF cache so pre-downloaded ModernBERT
+      # weights are reused. Switch to `hf-cache:` for a named volume.
+      - ${HF_HOME:-${HOME}/.cache/huggingface}:/cache/huggingface:ro
+    environment:
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+
+# Named volume left declared for the production switch-over.
+volumes:
+  hf-cache:
