@@ -657,17 +657,46 @@ def cmd_lock(args: object) -> int:
     config_path = Path(getattr(args, "config", "system_release.toml")).resolve()
     base_dir = config_path.parent
 
-    # 1. dirty check
-    if _working_tree_dirty(base_dir):
+    # Read the release first — it tells us which component paths exist and
+    # which are in-tree. Pure / read-only / fast, so safe to run before the
+    # dirty gate.
+    release = load_release(config_path)
+
+    # 1. dirty check — per non-in-tree component, not the whole main repo.
+    #
+    # The semantic intent is "don't pin a component's HEAD when its working
+    # tree has uncommitted changes that wouldn't be reflected in the pin."
+    # That maps to `git -C <component.path> status --porcelain`, not to a
+    # check on the main repo root.
+    #
+    # Checking the main repo root broke the in-tree → external migration
+    # workflow: editing `repo`/`path`/`tag` in system_release.toml has to
+    # happen *before* `lock` rewrites `commit` (otherwise the path resolves
+    # to the wrong git repo), but those edits made the main repo dirty and
+    # blocked lock from running at all.
+    #
+    # In-tree components are skipped — they're not auto-pinned anyway
+    # (`_resolve_component_heads` / `_compute_lock_changes` both gate on
+    # `is_in_tree`), so refusing on their tree state would be inconsistent.
+    # Dirtiness in `system_release.toml` itself or elsewhere outside
+    # component paths is by design irrelevant: lock owns the file and the
+    # user may have unrelated WIP.
+    dirty_components: list[str] = []
+    for name, comp in release.components.items():
+        if comp.is_in_tree:
+            continue
+        comp_path = (base_dir / comp.path).resolve()
+        if _working_tree_dirty(comp_path):
+            dirty_components.append(name)
+    if dirty_components:
+        names = ", ".join(dirty_components)
         print(
-            "error: refusing to write system_release.toml — working tree has "
-            "uncommitted changes; run `git status` to inspect",
+            "error: refusing to write system_release.toml — working tree "
+            f"has uncommitted changes in component(s): {names}; "
+            "commit or stash changes before locking",
             file=sys.stderr,
         )
         return 1
-
-    # 2. read current release
-    release = load_release(config_path)
 
     # 3. resolve HEADs
     heads = _resolve_component_heads(release, base_dir)

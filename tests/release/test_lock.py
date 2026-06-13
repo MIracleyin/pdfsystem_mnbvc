@@ -137,27 +137,101 @@ def test_lock_updates_changed_component(tmp_path: Path, capsys: pytest.CaptureFi
     assert _OLD_SHA[:7] in captured.out
 
 
-def test_lock_refuses_dirty_tree(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    """lock returns 1 and leaves TOML unchanged when working tree is dirty."""
+def test_lock_refuses_dirty_component_tree(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """lock returns 1 when a non-in-tree component's working tree is dirty.
+
+    The semantic intent of the dirty check is "don't pin a component's HEAD
+    when its working tree has uncommitted changes that wouldn't be reflected
+    in the pin." Dirtying the external component's own git tree must trip
+    the check; the error must name the offending component(s).
+    """
     repo, _sub_head = _make_fake_repo(tmp_path)
     config_path = repo / "system_release.toml"
 
-    # Make the working tree dirty by adding an untracked file.
-    (repo / "dirty.txt").write_text("I am dirty\n")
+    # Dirty the EXTERNAL component's working tree (not the main repo).
+    sub = repo / "external" / "parsers"
+    (sub / "wip.txt").write_text("uncommitted work in submodule\n")
 
     original_text = config_path.read_text()
 
     args = argparse.Namespace(config=str(config_path))
     rc = cmd_lock(args)
 
-    assert rc == 1, "cmd_lock must return 1 for dirty tree"
+    assert rc == 1, "cmd_lock must return 1 when a component tree is dirty"
 
     # TOML must be byte-for-byte identical.
     assert config_path.read_text() == original_text, "TOML must not be modified"
 
-    # Stderr must mention uncommitted changes.
+    # Stderr must mention the offending component by name.
     captured = capsys.readouterr()
-    assert "uncommitted changes" in captured.err or "dirty" in captured.err.lower()
+    assert "uncommitted changes" in captured.err
+    assert "parsers" in captured.err, (
+        "error must name the dirty component so the user knows where to look"
+    )
+
+
+def test_lock_allows_dirty_main_repo_outside_components(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """lock proceeds when the main repo is dirty *outside* component paths.
+
+    Pins concrete behavior: lock owns ``system_release.toml`` and must not
+    gatekeep unrelated WIP in the main repo. This is the Task 2.5 workflow —
+    the user edits ``repo``/``path``/``tag`` in ``system_release.toml`` and
+    then runs ``lock`` to auto-pin ``commit``; the edits make the main repo
+    dirty but the component trees are clean.
+    """
+    repo, sub_head = _make_fake_repo(tmp_path)
+    config_path = repo / "system_release.toml"
+
+    # Dirty the main repo with an unrelated untracked file outside any
+    # component path. (The fixture's only external component lives at
+    # external/parsers; dirty.txt is at the repo root.)
+    (repo / "dirty.txt").write_text("unrelated WIP at the repo root\n")
+
+    args = argparse.Namespace(config=str(config_path))
+    rc = cmd_lock(args)
+
+    assert rc == 0, (
+        "cmd_lock must succeed when only the main repo is dirty and all "
+        "component trees are clean"
+    )
+
+    # Pin must have been updated to the live submodule HEAD.
+    assert sub_head in config_path.read_text()
+
+
+def test_lock_succeeds_when_system_release_toml_is_dirty(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """lock proceeds when ``system_release.toml`` itself has unstaged edits.
+
+    This is THE Task 2.5 scenario: the user manually edits ``repo``/``path``/
+    ``tag`` on a component, then runs ``lock`` to auto-pin ``commit`` in the
+    same working state. The previous whole-repo dirty check made this
+    impossible; the per-component check must allow it.
+    """
+    repo, sub_head = _make_fake_repo(tmp_path)
+    config_path = repo / "system_release.toml"
+
+    # Edit system_release.toml without committing — simulate the Task 2.5
+    # manual edit step (here we just bump the human-readable tag).
+    content = config_path.read_text()
+    content = content.replace('tag = "v0.1.0"', 'tag = "v0.2.0"')
+    config_path.write_text(content)
+
+    args = argparse.Namespace(config=str(config_path))
+    rc = cmd_lock(args)
+
+    assert rc == 0, "lock must proceed when only system_release.toml is dirty"
+
+    # Both edits must be present: the manual `tag` bump AND the auto-pinned
+    # `commit` rewrite to the submodule HEAD.
+    after = config_path.read_text()
+    assert 'tag = "v0.2.0"' in after, "manual tag edit must be preserved"
+    assert sub_head in after, "lock must still write the new HEAD SHA"
 
 
 def test_lock_no_op_when_up_to_date(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
@@ -238,19 +312,33 @@ def test_lock_preserves_comments(tmp_path: Path, capsys: pytest.CaptureFixture) 
     assert sub_head in after, "new SHA must still be written despite comment"
 
 
-def test_lock_treats_non_git_dir_as_dirty(
+def test_lock_treats_non_git_component_path_as_dirty(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
-    """A directory that is not a git repository must be treated as dirty.
+    """A component path that is not a git repository must be treated as dirty.
 
     ``git status --porcelain`` exits 128 with empty stdout outside a git repo.
-    The earlier implementation returned ``False`` (not dirty) in that case,
-    letting ``_write_lock`` proceed on an untracked directory.  This regression
-    test pins the fail-safe behaviour: a non-git directory → return 1, TOML
-    untouched.
+    Earlier ``_working_tree_dirty`` implementations returned ``False`` (not
+    dirty) in that case, letting ``_write_lock`` proceed on an untracked
+    directory. This regression test pins the fail-safe behaviour: a non-git
+    component path → return 1, TOML untouched.
+
+    After the per-component dirty-check refactor this test exercises the
+    fail-safe per *component* path (not the main repo root). In-tree
+    components are skipped from the check, so this fixture must declare an
+    external component whose ``path`` exists but isn't a git repo.
     """
+    # Neither the main repo nor the component path is a git repository.
+    # If the main repo were git-init-ed, `git -C external/parsers status`
+    # would walk up to the parent repo and report clean — defeating the
+    # test. Both have to be raw directories for `git status` to exit 128.
     repo = tmp_path / "not_a_git_repo"
     repo.mkdir()
+
+    comp_path = repo / "external" / "parsers"
+    comp_path.mkdir(parents=True)
+    (comp_path / "README.md").write_text("not a git repo\n")
+
     config_path = repo / "system_release.toml"
     config_path.write_text(
         f"""\
@@ -260,23 +348,24 @@ released_at = "2026-06-06"
 released_by = "ci"
 notes = ""
 
-[components.mylib]
-repo = "in-tree:packages/mylib"
-path = "packages/mylib"
+[components.parsers]
+repo = "git@github.com:example/parsers.git"
+path = "external/parsers"
 commit = "{'a' * 40}"
-tag = "in-tree-0.1.0"
+tag = "v0.1.0"
 """
     )
+
     original_text = config_path.read_text()
 
     args = argparse.Namespace(config=str(config_path))
     rc = cmd_lock(args)
 
-    assert rc == 1, "non-git directory must be treated as dirty (fail-safe)"
+    assert rc == 1, "non-git component path must be treated as dirty (fail-safe)"
     assert config_path.read_text() == original_text, "TOML must not be modified"
 
     captured = capsys.readouterr()
-    assert (
-        "uncommitted changes" in captured.err
-        or "dirty" in captured.err.lower()
+    assert "uncommitted changes" in captured.err
+    assert "parsers" in captured.err, (
+        "error must name the offending component"
     )
