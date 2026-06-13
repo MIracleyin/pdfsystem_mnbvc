@@ -7,7 +7,12 @@ name = "pdfsys-core"
 version = "0.0.1"
 description = "Shared data contracts (PdfRecord, LayoutDocument, Manifest) for pdfsys."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pdfsys-types",
+]
+
+[tool.uv.sources]
+pdfsys-types = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdfsys_core"]
