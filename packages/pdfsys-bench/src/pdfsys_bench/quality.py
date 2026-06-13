@@ -90,6 +90,18 @@ class OcrQualityScorer:
         if self._base_url is not None:
             return self._base_url
 
+        # External server: when QUALITY_URL is set, the client connects
+        # to that URL directly and skips the subprocess lifecycle (used
+        # by container deployments where a sibling pdfsys-quality
+        # service hosts ModernBERT). `close()` becomes a no-op because
+        # `self._proc` stays None.
+        external = os.environ.get("QUALITY_URL")
+        if external:
+            base = external.rstrip("/")
+            _LOG.info("using external quality scorer at %s", base)
+            self._base_url = base
+            return base
+
         port = _pick_free_port()
         cmd = [
             sys.executable, "-m", "pdfsys_bench._quality_server",
