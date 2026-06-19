@@ -32,6 +32,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
+# Build-time mirror knobs (default = upstream). Override on CN hosts:
+#   docker compose build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu124
+
 # Python 3.12 from deadsnakes PPA — ships only 3.10 by default on 22.04
 # and we want consistency with the CPU image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -42,6 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3.12 python3.12-venv python3.12-dev \
       python3-pip \
       libgomp1 libglib2.0-0 libgl1 \
+      gcc g++ \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
@@ -53,10 +59,14 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
 # vllm is a separate top-level dep so the vlm-vllm-engine path resolves
 # (mineru's `vlm-engine` flag dispatches by import availability).
 RUN python -m pip install --no-cache-dir --upgrade pip \
+      --index-url "$PIP_INDEX_URL" \
  && python -m pip install --no-cache-dir \
-      --extra-index-url https://download.pytorch.org/whl/cu124 \
+      --index-url "$PIP_INDEX_URL" \
+      --extra-index-url "$PIP_EXTRA_INDEX_URL" \
       "torch>=2.5,<3.0" \
  && python -m pip install --no-cache-dir \
+      --index-url "$PIP_INDEX_URL" \
+      --extra-index-url "$PIP_EXTRA_INDEX_URL" \
       "mineru[pipeline,vlm]>=3.1,<4.0" \
       "vllm>=0.6,<1.0"
 
