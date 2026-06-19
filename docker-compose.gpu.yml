@@ -17,7 +17,10 @@ services:
     build:
       dockerfile: docker/mineru.gpu.Dockerfile
     image: pdfsys-mineru:gpu
-    runtime: nvidia
+    # No `runtime: nvidia` — modern docker installs (NVIDIA toolkit + CDI)
+    # use device reservations only. If your host has only the legacy
+    # nvidia runtime registered, uncomment the next line.
+    # runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
