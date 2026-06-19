@@ -26,7 +26,11 @@
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d mineru
 #   curl http://localhost:8000/health
 
-FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS base
+# devel (not runtime) — vllm + flashinfer JIT-compile CUDA kernels at first
+# inference and need nvcc + CUDA headers. The runtime base only ships
+# libcudart; flashinfer crashes with `nvcc: not found` and vllm engine
+# initialization fails. The size delta is ~1.5 GB.
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
