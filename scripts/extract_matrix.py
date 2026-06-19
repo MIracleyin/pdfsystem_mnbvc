@@ -131,7 +131,17 @@ def main(argv: list[str] | None = None) -> int:
     pipeline = None if args.skip_pipeline else PipelineParser(PipelineConfig())
     vlm = None
     if not args.skip_vlm:
-        vlm = VlmParser(VlmConfig(engine=args.vlm_engine))
+        # mineru 3.4+ accepts only the short backend names: pipeline,
+        # vlm-engine, hybrid-engine, vlm-http-client, hybrid-http-client.
+        # The VlmParser prepends "vlm-" to config.engine before posting
+        # to /file_parse, so we have to translate the user-facing
+        # "vllm-engine" / "transformers" choices to the short form
+        # "engine" → posted as "vlm-engine". The "mlx-engine" case is
+        # different on Apple Silicon: pre-3.4 mineru still uses
+        # "vlm-mlx-engine" there; we keep that path until that mineru
+        # version forces an update.
+        engine_for_config = "engine" if args.vlm_engine == "vllm-engine" else args.vlm_engine
+        vlm = VlmParser(VlmConfig(engine=engine_for_config))
 
     t_total = time.time()
     n_rows = 0
