@@ -48,10 +48,17 @@ if [ "$DEPLOY_MODE" = "cpu" ] && [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)"
 fi
 
 # ---- 3. NVIDIA Container Toolkit (docker runtime) ----
+# Modern installs configured via `nvidia-ctk runtime configure --cdi.enabled`
+# register GPUs through CDI instead of the legacy named runtime; docker info
+# prints `cdi: nvidia.com/gpu=<n>` for each GPU. Either path counts as ready.
 if command -v docker >/dev/null 2>&1; then
-  if docker info 2>/dev/null | grep -qiE "Runtimes:.*\bnvidia\b"; then
+  docker_info=$(docker info 2>/dev/null || echo "")
+  if echo "$docker_info" | grep -qiE "Runtimes:.*\bnvidia\b"; then
     NVIDIA_RUNTIME_OK=1
-    echo "[detect_gpu] docker has nvidia runtime registered ✓"
+    echo "[detect_gpu] docker has nvidia runtime (legacy) registered ✓"
+  elif echo "$docker_info" | grep -qE "cdi: nvidia\.com/gpu="; then
+    NVIDIA_RUNTIME_OK=1
+    echo "[detect_gpu] docker has nvidia GPU via CDI ✓"
   else
     if [ "$DEPLOY_MODE" = "gpu" ]; then
       echo "[detect_gpu] WARNING: nvidia runtime not registered with docker."
