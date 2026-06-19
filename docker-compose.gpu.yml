@@ -1,0 +1,36 @@
+# GPU override for docker-compose.yml.
+#
+# Use as:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# What changes from the base compose:
+#   - mineru service is rebuilt from docker/mineru.gpu.Dockerfile
+#   - mineru gets all GPUs (override count to `1` to scope down)
+#   - mineru's start_period bumped 60s -> 180s (vllm cold-start CUDA JIT)
+#   - quality + cli stay CPU; quality service is small and a GPU buys little
+#
+# Inspect what GPUs the container sees:
+#   docker compose exec mineru nvidia-smi
+
+services:
+  mineru:
+    build:
+      dockerfile: docker/mineru.gpu.Dockerfile
+    image: pdfsys-mineru:gpu
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
