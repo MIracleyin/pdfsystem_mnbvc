@@ -101,6 +101,49 @@ python -m pdfsys_bench \
   --markdown-dir ./extracted
 ```
 
+### Option 4: Docker deployment (recommended for GPU boxes)
+
+Three microservices behind HTTP: `mineru` (parsers), `quality`
+(ModernBERT scorer), `cli` (orchestrator). CPU and GPU images, HF
+weights mounted via volume. Full walk-through in
+[`docs/deployment/gpu-server.md`](docs/deployment/gpu-server.md).
+
+```bash
+git clone --recurse-submodules https://github.com/MIracleyin/pdfsystem_mnbvc.git
+cd pdfsystem_mnbvc
+
+# Detect CPU vs GPU, download weights, build + start services, smoke.
+bash scripts/detect_gpu.sh          # emits .deploy.env
+bash scripts/download_models.sh     # ~6 GB HF cache
+bash scripts/deploy.sh              # docker compose build + up + healthcheck
+```
+
+### Option 5: Parser-matrix annotation dataset
+
+Run every PDF through every parser (mupdf + pipeline + vlm) and
+produce one self-contained JSON of all candidate extractions —
+designed for the downstream quality-scoring / annotation loop.
+
+```bash
+# Against a live docker-compose stack (Option 4)
+bash scripts/batch_process.sh /data/pdfs out/annotation-set
+
+# Directly against local subprocesses (Option 2)
+uv run python scripts/extract_matrix.py \
+  --pdf-dir /data/pdfs \
+  --out out/annotation-set/results.jsonl \
+  --markdown-dir out/annotation-set/markdown \
+  --vlm-engine mlx-engine       # or vllm-engine on NVIDIA
+uv run python scripts/emit_quality_handoff_matrix.py \
+  out/annotation-set/results.jsonl
+```
+
+Produces `results.jsonl` (one row per PDF × parser),
+`markdown/<sha>__<parser>.md` per successful extraction, and a
+`quality_handoff_matrix.json` with all markdown inlined and grouped by
+`file_id`. Reference: 150 PDFs × 3 parsers on 8× RTX 4090 → 9.2 min
+(~14× vs Apple Silicon mlx-engine).
+
 ### Component versioning
 
 This project is a **system release**: a tuple of (main repo commit, pinned

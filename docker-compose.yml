@@ -1,0 +1,100 @@
+# pdfsys microservice composition.
+#
+# Services:
+#   mineru  — mineru-api (pipeline backend, CPU). Heavy weights, HF cache.
+#   quality — ModernBERT OCR quality classifier. Mid-size weights, HF cache.
+#   cli     — orchestrator + bench client. Talks to the other two via HTTP
+#             (MINERU_PIPELINE_URL, MINERU_VLM_URL, QUALITY_URL env vars).
+#
+# Volume strategy:
+#   Bind-mount the host's HF cache so weights downloaded via
+#   scripts/download_models.sh are reused inside the containers. Override
+#   to named volumes in production by replacing the `${HF_HOME:-...}`
+#   paths with `hf-cache:` (declared below).
+#
+# Run all (long-running services):
+#   docker compose up -d mineru quality
+# Run cli once against the stack:
+#   docker compose run --rm cli release verify
+#   docker compose run --rm cli release status
+#   docker compose run --rm -v "$(pwd)/data:/data" cli \
+#     -m pdfsys_bench --pdf-dir /data/in --out /data/out/results.jsonl
+#
+# Smoke checks:
+#   curl http://localhost:8000/health    # mineru
+#   curl http://localhost:8765/health    # quality
+
+services:
+  mineru:
+    build:
+      context: .
+      dockerfile: docker/mineru.Dockerfile
+    image: pdfsys-mineru:cpu
+    container_name: pdfsys-mineru
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${HF_HOME:-${HOME}/.cache/huggingface}:/cache/huggingface:ro
+    environment:
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  quality:
+    build:
+      context: .
+      dockerfile: docker/quality.Dockerfile
+    image: pdfsys-quality:dev
+    container_name: pdfsys-quality
+    ports:
+      - "8765:8765"
+    volumes:
+      # Bind-mount the host's HF cache so pre-downloaded ModernBERT
+      # weights are reused. Switch to `hf-cache:` for a named volume.
+      - ${HF_HOME:-${HOME}/.cache/huggingface}:/cache/huggingface:ro
+    environment:
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+
+  cli:
+    build:
+      context: .
+      dockerfile: docker/cli.Dockerfile
+    image: pdfsys-cli:dev
+    container_name: pdfsys-cli
+    depends_on:
+      mineru:
+        condition: service_healthy
+      quality:
+        condition: service_healthy
+    environment:
+      # Talk to the sibling containers over the compose network.
+      - MINERU_PIPELINE_URL=http://mineru:8000
+      - MINERU_VLM_URL=http://mineru:8000
+      - QUALITY_URL=http://quality:8765
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    volumes:
+      # Read-only HF cache so the router XGBoost weights bundled in the
+      # repo image stay alongside any locally cached HF fragments.
+      - ${HF_HOME:-${HOME}/.cache/huggingface}:/cache/huggingface:ro
+      # Mount input/output dirs at run time. Default left bind-mountable
+      # but unset here so docker compose run can supply them per-call.
+    # cli is one-shot by design; no restart policy.
+
+# Named volume left declared for the production switch-over.
+volumes:
+  hf-cache:

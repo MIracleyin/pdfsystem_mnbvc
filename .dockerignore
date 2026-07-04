@@ -1,0 +1,40 @@
+.git
+.gitignore
+.gitmodules
+.gitattributes
+
+# Worktrees + claude metadata
+.claude
+.worktrees
+
+# Local IDE state
+.idea
+.vscode
+
+# Build / venv / cache
+.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+# Runtime output / data
+out/
+output/
+data/
+bench_data/
+
+# Local HF cache (volume-mounted at runtime, not baked)
+.cache/
+
+# Notebooks
+*.ipynb
+
+# Temp / OS
+.DS_Store
+*.swp
+*.swo
+
+# Docker build context optimization — keep only what each Dockerfile copies
+# (we use targeted COPY paths in the Dockerfiles, so this is informational)

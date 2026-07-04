@@ -60,3 +60,4 @@ packages/pdfsys-bench/viz/labels.jsonl
 
 # one-time personal helper (hardcoded GH user)
 push_to_github.sh
+.deploy.env
