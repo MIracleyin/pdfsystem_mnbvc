@@ -62,6 +62,91 @@ bash scripts/deploy.sh
 `deploy.sh` runs ~10-30 min depending on bandwidth (vllm wheel is fat).
 On success it prints the URLs and next-step commands.
 
+### CN networking: pip mirror + docker.io throughput
+
+If the host lives behind a network where `docker.io` and PyPI throughput
+are limited (typical for CN clouds), the vanilla deploy stalls in the
+build step. Two mitigations:
+
+**1. Pre-configure a docker registry mirror in `/etc/docker/daemon.json`:**
+
+```json
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run",
+    "https://docker.m.daocloud.io"
+  ]
+}
+```
+Restart docker (`systemctl restart docker`). Manually `docker pull
+python:3.12-slim` and `docker pull nvidia/cuda:12.4.0-devel-ubuntu22.04`
+once to warm the layer cache — buildkit does NOT use daemon-level
+mirrors, but docker-cli does, and the images are then cached locally
+before the compose build starts.
+
+**2. Pass a PyPI mirror as a build arg:**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml build \
+  --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+  --build-arg PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu124 \
+  mineru
+```
+
+Both build args are honored by `docker/mineru.gpu.Dockerfile`. On
+mnbvcgpu3 this brought the `pip install torch+mineru+vllm` phase from
+timeout to ~90 min.
+
+### mineru.json bind-mount (fixes VLM path resolution)
+
+mineru 3.4 defaults `model-source: modelscope` and rewrites
+`~/mineru.json` on every container startup, pointing at
+`/root/.cache/modelscope/...` which does not exist inside the
+container. vllm then crashes trying to load MinerU2.5 from the wrong
+path.
+
+Fix: bind-mount the host's correctly-configured `/root/mineru.json`
+(populated by `scripts/download_models.sh` with HF paths) into the
+container:
+
+```bash
+docker rm -f pdfsys-mineru
+docker run -d --name pdfsys-mineru \
+  --gpus all --network pdfsys_default -p 8000:8000 \
+  -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 \
+  -e HF_HOME=/root/.cache/huggingface \
+  -v /root/.cache/huggingface:/root/.cache/huggingface:ro \
+  -v /root/mineru.json:/root/mineru.json:ro \
+  pdfsys-mineru:gpu --host 0.0.0.0 --port 8000
+```
+
+Both mounts use the exact host paths (`/root/.cache/huggingface` and
+`/root/mineru.json`) so mineru.json's model paths (which reference the
+host layout) resolve cleanly inside the container. This replaces the
+default `docker compose up mineru` for the GPU-with-vllm case until
+the underlying mineru default is fixed upstream.
+
+### Detached chain runner (`server_deploy_chain.sh`)
+
+For unstable SSH links, run everything as a self-tracking chain on the
+server side:
+
+```bash
+nohup bash scripts/server_deploy_chain.sh > deploy.log 2>&1 &
+disown
+```
+
+Progress is written to `.deploy.state/` as `01_build.OK` /
+`02_restart.OK` / `03_smoke.OK` / `DONE`. Poll from your laptop:
+
+```bash
+ssh <host> 'ls /root/pdfsys/.deploy.state/ ; tail -8 /root/pdfsys/deploy.log'
+```
+
+The chain rebuilds `mineru.gpu` (with the CN pip mirror), replaces the
+container with the correct mounts, and runs a 2-PDF VLM smoke test.
+Idempotent — re-run to iterate.
+
 ## Batch processing
 
 After deploy, point batch at any PDF directory:
