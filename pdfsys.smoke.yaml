@@ -1,5 +1,5 @@
 # Phase-1 smoke test: 5 PDFs, full pipeline, MPS where supported.
-# Goal: prove magic-pdf installs, MPS works, parquet writes.
+# Goal: prove mineru installs, MPS works, parquet writes.
 
 stages:
   - router
@@ -30,14 +30,16 @@ layout:
   render_dpi: 200
 
 pipeline:
-  ocr_engine: rapidocr
-  languages: [ch, en]
-  render_dpi: 200
+  formula_enable: true
+  table_enable: true
+  p_lang: ch
 
 vlm:
-  model: mineru-2.5
+  engine: mlx-engine       # Apple Silicon; use transformers on Linux/Intel, vllm-engine on NVIDIA
   enabled: true
-  device_mode: mps
+  formula_enable: true
+  table_enable: true
+  p_lang: ch
 
 quality:
   enabled: true
