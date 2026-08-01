@@ -62,6 +62,32 @@ bash scripts/deploy.sh
 `deploy.sh` runs ~10-30 min depending on bandwidth (vllm wheel is fat).
 On success it prints the URLs and next-step commands.
 
+### Final quality-scoring model
+
+The quality service serves the project's final scoring model — a
+ModernBERT fine-tune (frozen backbone, 8192-token context, balanced 4k
+training set) at:
+
+```
+/hdd_common/xiaoxin/modernbert_finetune/output_balanced_4k_frozen_8192/best
+```
+
+`docker-compose.gpu.yml` bind-mounts that directory read-only into the
+container at `/models/quality-final` and starts the server with
+`--model /models/quality-final --max-tokens 8192 --max-chars 40000`.
+The path must exist on the host (it lives on the mnbvcgpu shared disk);
+override with `QUALITY_MODEL_DIR=/other/path` if the model was copied
+elsewhere. Verify what the service is actually serving:
+
+```bash
+curl -s http://localhost:8765/health   # -> {"ok": true, "model": "/models/quality-final"}
+```
+
+The HF model `HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn`
+(512-token budget) remains the portable fallback for machines without
+access to the shared disk — the base `docker-compose.yml` and the code
+defaults still point at it.
+
 ### CN networking: pip mirror + docker.io throughput
 
 If the host lives behind a network where `docker.io` and PyPI throughput

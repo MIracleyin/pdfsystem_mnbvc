@@ -69,8 +69,16 @@ class VlmCfg:
 @dataclass(slots=True)
 class QualityCfg:
     enabled: bool = True
+    # Portable fallback. The project's final scoring model is the ModernBERT
+    # fine-tune at /hdd_common/xiaoxin/modernbert_finetune/
+    # output_balanced_4k_frozen_8192/best (mnbvcgpu shared disk) — set it via
+    # yaml `quality.model` on those hosts, or via the deployed quality
+    # service (QUALITY_URL); see docker-compose.gpu.yml.
     model: str = "HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn"
     max_tokens: int = 512
+    # Char-level pre-truncation before tokenization. Must scale with
+    # max_tokens: 10k chars saturates ~2.5k English tokens.
+    max_chars: int = 10_000
     device: str | None = None
 
 

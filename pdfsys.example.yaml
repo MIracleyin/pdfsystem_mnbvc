@@ -40,8 +40,15 @@ vlm:
 
 quality:
   enabled: true
-  model: HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn
-  max_tokens: 512
+  # Final scoring model: ModernBERT fine-tune on the GPU servers' shared
+  # disk (frozen backbone, 8192-token context). Use this path when the
+  # run happens on a mnbvcgpu host (or set QUALITY_URL to the deployed
+  # quality service, which already serves it).
+  model: /hdd_common/xiaoxin/modernbert_finetune/output_balanced_4k_frozen_8192/best
+  # Portable fallback for machines without /hdd_common:
+  # model: HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn  (with max_tokens: 512)
+  max_tokens: 8192
+  max_chars: 40000              # char pre-truncation; must scale with max_tokens
   device: null                  # null = auto (cuda if available, else cpu)
 
 runtime:

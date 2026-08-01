@@ -7,7 +7,9 @@
 #   - mineru service is rebuilt from docker/mineru.gpu.Dockerfile
 #   - mineru gets all GPUs (override count to `1` to scope down)
 #   - mineru's start_period bumped 60s -> 180s (vllm cold-start CUDA JIT)
-#   - quality + cli stay CPU; quality service is small and a GPU buys little
+#   - quality serves the project's final fine-tuned scorer from /hdd_common
+#     (still CPU; override QUALITY_MODEL_DIR to point elsewhere)
+#   - cli stays CPU
 #
 # Inspect what GPUs the container sees:
 #   docker compose exec mineru nvidia-smi
@@ -37,3 +39,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 180s
+
+  quality:
+    # Final scoring model: ModernBERT fine-tune (frozen backbone, 8192-token
+    # context, balanced 4k training set) living on the GPU servers' shared
+    # disk. Mounted read-only into the container; --model points at the
+    # mount, so the base image's HF-cache path is bypassed entirely.
+    volumes:
+      - ${QUALITY_MODEL_DIR:-/hdd_common/xiaoxin/modernbert_finetune/output_balanced_4k_frozen_8192/best}:/models/quality-final:ro
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8765"
+      - "--model"
+      - "/models/quality-final"
+      - "--max-tokens"
+      - "8192"
+      # 8192 tokens needs a bigger char budget than the 10k default
+      # (10k chars truncates English at roughly 2.5k tokens).
+      - "--max-chars"
+      - "40000"

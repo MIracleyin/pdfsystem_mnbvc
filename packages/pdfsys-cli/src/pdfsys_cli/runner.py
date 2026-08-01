@@ -141,6 +141,7 @@ class Components:
             self._scorer = OcrQualityScorer(
                 model_name=self.cfg.quality.model,
                 max_tokens=self.cfg.quality.max_tokens,
+                max_chars=self.cfg.quality.max_chars,
                 device=self.cfg.quality.device,
             )
         return self._scorer

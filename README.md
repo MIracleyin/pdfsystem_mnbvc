@@ -45,7 +45,7 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 
 - **🧠 ML-Powered Routing**: XGBoost classifier (124 features) routes PDFs to optimal backend
 - **⚡ Fast Path**: PyMuPDF extraction for text-ok documents (~10ms/page)
-- **📊 Quality Scoring**: ModernBERT-large OCR quality assessment [0-3 scale]
+- **📊 Quality Scoring**: fine-tuned ModernBERT OCR quality assessment [0-3 scale], 8192-token context
 - **🔍 Visual Debug**: Page preview with extracted bbox overlays
 - **📦 Modular Design**: Stateless, backend-agnostic pipeline components
 
@@ -57,7 +57,7 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 |-----------|--------|-------------|
 | **Stage-A Router** | ✅ Ready | XGBoost binary classifier with 124 PyMuPDF features |
 | **MuPDF Parser** | ✅ Ready | Fast extraction for clean-text PDFs |
-| **OCR Quality Scorer** | ✅ Ready | ModernBERT-large regression model |
+| **OCR Quality Scorer** | ✅ Ready | Fine-tuned ModernBERT regression (see docs/deployment/gpu-server.md) |
 | **Stage-B Router** | ✅ Ready | LayoutDocument → PIPELINE / VLM / DEFERRED |
 | **Layout Analyser** | ✅ Ready | DocLayout-YOLO + PP-DocLayoutV3 (dual backend) |
 | **Pipeline Parser** | ✅ Ready | mineru pipeline mode via out-of-process `mineru-api` HTTP client |
