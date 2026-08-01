@@ -79,6 +79,22 @@ def _init(model_name: str, device_pref: str | None, dtype_name: str) -> None:
     _MODEL = model
 
 
+def _logits_to_score(logits: Any) -> float:
+    """Map a classification-head output to a scalar quality score in [0, 3].
+
+    Regression head (1 logit): the raw value, clamped. Ordinal multi-class
+    head (N logits for classes 0..N-1): softmax expectation over class
+    indices — continuous, so threshold-based consumers keep working.
+    Tensor-method-only on purpose: module top imports stay stdlib.
+    """
+    flat = logits.reshape(-1).float()
+    if flat.numel() == 1:
+        return max(0.0, min(3.0, float(flat.item())))
+    probs = flat.softmax(-1)
+    expectation = sum(i * float(p) for i, p in enumerate(probs))
+    return max(0.0, min(3.0, expectation))
+
+
 def _score(text: str) -> dict[str, Any]:
     if not text or not text.strip():
         return {
@@ -100,9 +116,7 @@ def _score(text: str) -> dict[str, Any]:
 
     with _TORCH.inference_mode():
         out = _MODEL(**enc)
-        raw = float(out.logits.squeeze().item())
-
-    score = max(0.0, min(3.0, raw))
+        score = _logits_to_score(out.logits)
     return {
         "score": score,
         "num_chars": len(clipped),
