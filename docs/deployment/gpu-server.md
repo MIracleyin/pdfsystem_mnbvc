@@ -64,29 +64,30 @@ On success it prints the URLs and next-step commands.
 
 ### Final quality-scoring model
 
-The quality service serves the project's final scoring model — a
-ModernBERT fine-tune (frozen backbone, 8192-token context, balanced 4k
-training set) at:
+The quality service serves the project's final scoring model:
 
 ```
-/hdd_common/xiaoxin/modernbert_finetune/output_balanced_4k_frozen_8192/best
+https://huggingface.co/miracleyin/mnbvc-pdf-quality-scorer-modernbert
 ```
 
-`docker-compose.gpu.yml` bind-mounts that directory read-only into the
-container at `/models/quality-final` and starts the server with
-`--model /models/quality-final --max-tokens 8192 --max-chars 40000`.
-The path must exist on the host (it lives on the mnbvcgpu shared disk);
-override with `QUALITY_MODEL_DIR=/other/path` if the model was copied
-elsewhere. Verify what the service is actually serving:
+A ModernBERT-base fine-tune with 4 ordinal quality classes (0..3),
+8192-token context, scored as the softmax expectation over class
+indices → continuous [0, 3] (so `parquet.quality_threshold: 2.0`
+semantics are unchanged). It is the code default everywhere
+(`--max-tokens 8192 --max-chars 40000`); `download_models.sh` step 2
+pre-fetches it into the HF cache the container mounts, picking
+hf-mirror.com automatically when huggingface.co is unreachable from
+the host. Verify what the service is actually serving:
 
 ```bash
-curl -s http://localhost:8765/health   # -> {"ok": true, "model": "/models/quality-final"}
+curl -s http://localhost:8765/health
+# -> {"ok": true, "model": "miracleyin/mnbvc-pdf-quality-scorer-modernbert"}
 ```
 
-The HF model `HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn`
-(512-token budget) remains the portable fallback for machines without
-access to the shared disk — the base `docker-compose.yml` and the code
-defaults still point at it.
+The legacy FinePDFs regression model
+`HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn` (512-token
+budget, `max_chars 10000`) is still downloaded for comparison runs and
+can be selected via `quality.model` in yaml.
 
 ### CN networking: pip mirror + docker.io throughput
 

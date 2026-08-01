@@ -4,7 +4,8 @@
 # Covers:
 #   - mineru pipeline backend (PDF-Extract-Kit-1.0 + layoutreader + MFR/MFD)
 #   - mineru VLM-mlx backend (MinerU2.5-2509-1.2B)
-#   - pdfsys quality scorer (HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn)
+#   - pdfsys quality scorer (miracleyin/mnbvc-pdf-quality-scorer-modernbert,
+#     plus the legacy FinePDFs classifier for comparison runs)
 #   - pdfsys router XGBoost classifier (~250 KB, in-repo download)
 #
 # Picks the fastest HF endpoint by running a quick 30 MB benchmark against
@@ -75,13 +76,19 @@ uv run mineru-models-download -s huggingface -m all
 
 # Step 2 — quality scorer (ModernBERT, ~600 MB).
 echo
-echo "[download_models] === step 2/3: ModernBERT OCR quality classifier ==="
+echo "[download_models] === step 2/3: ModernBERT OCR quality scorer ==="
 uv run python - <<'PY'
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-m = "HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn"
-print(f"  prefetching tokenizer + model: {m}")
-AutoTokenizer.from_pretrained(m)
-AutoModelForSequenceClassification.from_pretrained(m)
+
+# Final scoring model first; FinePDFs legacy model kept for comparison
+# runs (bench A/B, old bundles).
+for m in (
+    "miracleyin/mnbvc-pdf-quality-scorer-modernbert",
+    "HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn",
+):
+    print(f"  prefetching tokenizer + model: {m}")
+    AutoTokenizer.from_pretrained(m)
+    AutoModelForSequenceClassification.from_pretrained(m)
 print("  done")
 PY
 

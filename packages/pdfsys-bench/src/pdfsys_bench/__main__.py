@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--quality-model",
-        default="HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn",
+        default="miracleyin/mnbvc-pdf-quality-scorer-modernbert",
         help="HuggingFace repo id for the quality scorer.",
     )
     p.add_argument(

@@ -40,8 +40,8 @@ python -m pdfsys_router.download_weights
 python app.py
 ```
 
-First run of the quality scorer pulls `HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn`
-(~800 MB) from the HF Hub. Set `HF_HOME=/path/to/cache` to control where it lands.
+First run of the quality scorer pulls `miracleyin/mnbvc-pdf-quality-scorer-modernbert`
+(~600 MB) from the HF Hub. Set `HF_HOME=/path/to/cache` to control where it lands.
 
 ## Deploy to Hugging Face Spaces
 

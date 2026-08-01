@@ -84,7 +84,7 @@ def run_loop(
     limit: int | None = None,
     score_quality: bool = True,
     router_weights: str | Path | None = None,
-    quality_model: str = "HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn",
+    quality_model: str = "miracleyin/mnbvc-pdf-quality-scorer-modernbert",
     markdown_dir: str | Path | None = None,
     ocr_threshold: float = 0.5,
     full_pipeline: bool = False,

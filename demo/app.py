@@ -356,7 +356,7 @@ def build_demo() -> gr.Blocks:
             "Repo: [pdfsystem_mnbvc](https://github.com/) · "
             "Architecture: [FinePDFs](https://huggingface.co/datasets/HuggingFaceFW/finepdfs) · "
             "Router weights: FinePDFs upstream (Apache-2.0) · "
-            "Quality model: `HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn`"
+            "Quality model: `miracleyin/mnbvc-pdf-quality-scorer-modernbert`"
         )
 
     return demo

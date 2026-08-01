@@ -43,8 +43,9 @@ vlm:
 
 quality:
   enabled: true
-  model: HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn
-  max_tokens: 512
+  model: miracleyin/mnbvc-pdf-quality-scorer-modernbert
+  max_tokens: 8192
+  max_chars: 40000
   device: mps
 
 parquet:

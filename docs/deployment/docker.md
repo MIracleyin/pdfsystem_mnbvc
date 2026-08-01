@@ -75,7 +75,8 @@ dep — see [Follow-up: slim cli image](#follow-up-slim-cli-image).
    This downloads:
    - `opendatalab/PDF-Extract-Kit-1.0` (~2.3 GB, mineru pipeline)
    - `opendatalab/MinerU2.5-Pro-2605-1.2B` (~2.4 GB, mineru VLM-mlx)
-   - `HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn` (~1.5 GB)
+   - `miracleyin/mnbvc-pdf-quality-scorer-modernbert` (~600 MB, final scorer)
+   - `HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn` (~1.5 GB, legacy comparison)
    - router XGBoost weights (~250 KB)
 
 4. **Build images:**

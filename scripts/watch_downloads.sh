@@ -18,7 +18,7 @@ HF_HUB="$HOME/.cache/huggingface/hub"
 # Parallel arrays — works on macOS bash 3.2 (no associative arrays).
 NAMES=(  "PDF-Extract-Kit-1.0"   "MinerU2.5-Pro (VLM)"                    "ModernBERT quality" )
 TGT_MB=( 2400                    2400                                     1600                  )
-DIRS=(   "models--opendatalab--PDF-Extract-Kit-1.0"  "models--opendatalab--MinerU2.5-Pro-2605-1.2B"  "models--HuggingFaceFW--finepdfs_ocr_quality_classifier_eng_Latn" )
+DIRS=(   "models--opendatalab--PDF-Extract-Kit-1.0"  "models--opendatalab--MinerU2.5-Pro-2605-1.2B"  "models--miracleyin--mnbvc-pdf-quality-scorer-modernbert"  "models--HuggingFaceFW--finepdfs_ocr_quality_classifier_eng_Latn" )
 PREV_MB=( 0 0 0 )
 
 dir_mb() {

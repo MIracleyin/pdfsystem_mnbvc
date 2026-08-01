@@ -217,7 +217,7 @@
       render: r => badge(r.extract?.backend) },
     { key: 'ocr_prob', label: 'ocr_prob', tip: 'P(needs OCR) from XGBoost. ≥ 0.5 triggers needs-OCR lane.', render: r => fmt(r.ocr_prob, 3) },
     { key: 'num_pages', label: 'pages', tip: 'Page count reported by PyMuPDF.' },
-    { key: 'quality_score', label: 'quality', tip: 'ModernBERT-large regression on extracted markdown, range [0, 3].', render: r => fmt(r.quality?.score, 2) },
+    { key: 'quality_score', label: 'quality', tip: 'Fine-tuned ModernBERT scorer on extracted markdown, range [0, 3].', render: r => fmt(r.quality?.score, 2) },
     { key: 'kept', label: 'kept', tip: `kept = (no error) AND (quality_score ≥ ${2.0}).`, render: r => r.quality?.kept
         ? '<span class="kept-yes">✓</span>' : '<span class="kept-no">—</span>' },
     { key: 'markdown_chars', label: 'md_chars', tip: 'Length of extracted markdown (UTF-8 chars).', render: r => r.extract?.markdown_chars ?? 0 },

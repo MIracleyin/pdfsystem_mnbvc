@@ -34,9 +34,13 @@ import httpx
 
 _LOG = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn"
-DEFAULT_MAX_CHARS = 10_000
-DEFAULT_MAX_TOKENS = 512
+# Final scoring model: ModernBERT-base fine-tune (4 ordinal classes,
+# 8192-token context). Legacy fallback: the FinePDFs regression model
+# HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn (512 tokens,
+# max_chars 10_000).
+DEFAULT_MODEL = "miracleyin/mnbvc-pdf-quality-scorer-modernbert"
+DEFAULT_MAX_CHARS = 40_000
+DEFAULT_MAX_TOKENS = 8192
 
 _READY_TIMEOUT_S = 180.0  # cold-start incl. model load
 _READY_POLL_S = 1.0

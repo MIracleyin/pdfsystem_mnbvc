@@ -45,7 +45,7 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 
 - **🧠 ML-Powered Routing**: XGBoost classifier (124 features) routes PDFs to optimal backend
 - **⚡ Fast Path**: PyMuPDF extraction for text-ok documents (~10ms/page)
-- **📊 Quality Scoring**: fine-tuned ModernBERT OCR quality assessment [0-3 scale], 8192-token context
+- **📊 Quality Scoring**: fine-tuned ModernBERT OCR quality assessment [0-3 scale], 8192-token context ([model on HF](https://huggingface.co/miracleyin/mnbvc-pdf-quality-scorer-modernbert))
 - **🔍 Visual Debug**: Page preview with extracted bbox overlays
 - **📦 Modular Design**: Stateless, backend-agnostic pipeline components
 

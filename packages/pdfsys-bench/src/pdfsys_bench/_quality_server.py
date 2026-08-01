@@ -1,8 +1,8 @@
 """Quality scorer subprocess — runs ModernBERT in an isolated process.
 
 Started by :class:`pdfsys_bench.quality.OcrQualityScorer`. Loads
-``HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn`` (or any
-HuggingFace regression head) once, then serves
+``miracleyin/mnbvc-pdf-quality-scorer-modernbert`` (or any HF
+regression / ordinal-classification head) once, then serves
 ``POST /score {text}`` over HTTP.
 
 Why a subprocess?
@@ -29,9 +29,15 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-DEFAULT_MODEL = "HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn"
-DEFAULT_MAX_TOKENS = 512
-DEFAULT_MAX_CHARS = 10_000
+# Final scoring model: ModernBERT-base fine-tune, 4 ordinal quality
+# classes (0..3), 8192-token context. Scored as softmax expectation —
+# see _logits_to_score. Legacy fallback: the FinePDFs regression model
+# HuggingFaceFW/finepdfs_ocr_quality_classifier_eng_Latn (512 tokens).
+DEFAULT_MODEL = "miracleyin/mnbvc-pdf-quality-scorer-modernbert"
+DEFAULT_MAX_TOKENS = 8192
+# Char pre-truncation must scale with the token budget: 8192 tokens is
+# roughly 30-40k chars of English markdown.
+DEFAULT_MAX_CHARS = 40_000
 
 _LOG = logging.getLogger("pdfsys_bench._quality_server")
 
