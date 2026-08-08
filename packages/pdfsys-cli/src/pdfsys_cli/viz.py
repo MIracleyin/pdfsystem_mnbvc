@@ -318,7 +318,7 @@ def _build_meta(run_dir: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
         "kept": kept,
         "wall_seconds": summary.get("wall_seconds"),
         "avg_quality": avg_q,
-        "ocr_threshold": 0.5,
+        "ocr_threshold": 0.05,
         "kept_threshold": 2.0,
     }
 

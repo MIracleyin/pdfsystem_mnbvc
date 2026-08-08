@@ -62,7 +62,13 @@ class Router:
         config: RouterConfig | None = None,
         model_path: str | Path | None = None,
         num_pages_to_sample: int = 8,
-        ocr_threshold: float = 0.5,
+        # 0.05 (not 0.5): on bench-150 the classifier's ocr_prob is bimodal —
+        # ~90 born-digital PDFs sit below 0.05, the rest at >=0.60 with nothing
+        # between. 0.05 lands in that gap, so only high-confidence text-ok PDFs
+        # take the free mupdf lane (60% fewer GPU calls, +3pt quality pass rate
+        # vs 0.5). Never raise above 0.60 — that dumps the 0.60 cluster into
+        # mupdf and the quality pass rate falls off a cliff.
+        ocr_threshold: float = 0.05,
         seed: int = 42,
     ) -> None:
         self.config = config or RouterConfig()

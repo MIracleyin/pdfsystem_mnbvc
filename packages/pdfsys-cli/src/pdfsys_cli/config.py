@@ -37,7 +37,7 @@ class OutputConfig:
 
 @dataclass(slots=True)
 class RouterCfg:
-    ocr_threshold: float = 0.5
+    ocr_threshold: float = 0.05
     weights: str | None = None
 
 
@@ -268,7 +268,7 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
       cache_dir: .cache             # LayoutCache directory (relative to dir)
 
     router:
-      ocr_threshold: 0.5            # P(ocr) above this → needs-ocr path
+      ocr_threshold: 0.05           # P(ocr) above this → needs-ocr path (bench-tuned; keep <0.60)
       weights: null                 # XGBoost weights path; null = bundled default
 
     layout:

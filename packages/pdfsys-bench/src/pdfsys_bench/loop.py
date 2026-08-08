@@ -86,7 +86,7 @@ def run_loop(
     router_weights: str | Path | None = None,
     quality_model: str = "miracleyin/mnbvc-pdf-quality-scorer-modernbert",
     markdown_dir: str | Path | None = None,
-    ocr_threshold: float = 0.5,
+    ocr_threshold: float = 0.05,
     full_pipeline: bool = False,
     cache_dir: str | Path | None = None,
     vlm_enabled: bool = False,

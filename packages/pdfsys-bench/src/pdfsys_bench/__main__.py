@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--ocr-threshold",
         type=float,
-        default=0.5,
+        default=0.05,
         help="P(ocr) threshold above which a PDF is routed off the text-ok path.",
     )
     # --- Full pipeline flags ---
