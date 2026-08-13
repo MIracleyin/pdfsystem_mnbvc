@@ -134,6 +134,20 @@ class Router:
 
     # --------------------------------------------------------------- internal
 
+    @staticmethod
+    def _page_count(doc: pymupdf.Document) -> int:
+        """Page count that never raises.
+
+        A malformed trailer makes MuPDF raise ``code=7: Invalid number of
+        pages`` from ``len(doc)`` — including inside the except handler
+        below, where it would escape ``classify()`` and break the
+        never-raises contract.
+        """
+        try:
+            return len(doc)
+        except Exception:  # noqa: BLE001 — a page count is never worth raising for
+            return 0
+
     def _classify_doc(self, doc: pymupdf.Document) -> RouterDecision:
         # Seed the sampling RNGs so the same PDF always produces the same
         # feature vector — critical for reproducibility and debugging.
@@ -145,7 +159,7 @@ class Router:
                 return RouterDecision(
                     backend=Backend.DEFERRED,
                     ocr_prob=float("nan"),
-                    num_pages=len(doc),
+                    num_pages=self._page_count(doc),
                     is_form=False,
                     garbled_text_ratio=0.0,
                     is_encrypted=bool(doc.is_encrypted),
@@ -158,7 +172,7 @@ class Router:
                 return RouterDecision(
                     backend=Backend.DEFERRED,
                     ocr_prob=float("nan"),
-                    num_pages=len(doc),
+                    num_pages=self._page_count(doc),
                     is_form=False,
                     garbled_text_ratio=0.0,
                     is_encrypted=False,
@@ -175,7 +189,7 @@ class Router:
             return RouterDecision(
                 backend=backend,
                 ocr_prob=ocr_prob,
-                num_pages=len(doc),
+                num_pages=self._page_count(doc),
                 is_form=bool(flat.get("is_form", False)),
                 garbled_text_ratio=float(flat.get("garbled_text_ratio", 0.0)),
                 is_encrypted=bool(doc.is_encrypted),
@@ -186,7 +200,7 @@ class Router:
             return RouterDecision(
                 backend=Backend.DEFERRED,
                 ocr_prob=float("nan"),
-                num_pages=len(doc) if doc else 0,
+                num_pages=self._page_count(doc),
                 is_form=False,
                 garbled_text_ratio=0.0,
                 is_encrypted=False,
