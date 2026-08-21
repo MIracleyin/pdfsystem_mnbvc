@@ -53,5 +53,5 @@ See `docs/architecture/LAYERS.md` for the full dependency matrix and enforcement
 ## Storage Layers (Production)
 
 - **L0 (cold):** Raw PDFs, S3/OSS/MinIO, PB-scale, immutable
-- **L1 (warm):** Intermediate Parquet/JSONL, disposable and rebuildable
-- **L2 (hot):** Final Parquet dataset, partitioned by lang/source/quality
+- **L1 (warm):** Intermediate Parquet/JSONL, disposable and rebuildable. `dataset.parquet` (`pdfsys_cli.parquet_writer`) is run telemetry — one flat row per PDF with routing probabilities, stage timings, error class.
+- **L2 (hot):** Final Parquet dataset, partitioned by lang/source/quality. Format is `pdfsys.doc/v1` (`pdfsys_cli.dataset_writer`): one row per document carrying an ordered `blocks` list — reading order *is* the image/text interleaving — plus a content-addressed `images` side table. Plain-text, interleaved (OBELICS-shaped) and image-text-pair views are all projections of the same rows. See `docs/superpowers/specs/2026-08-22-interleaved-parquet-dataset-design.md` and `docs/schema/doc_dataset.v1.json`.

@@ -12,6 +12,9 @@ Public surface:
                   :class:`LayoutDocument`, :func:`make_region_id`
 * Parser output — :class:`Segment`, :class:`ExtractedDoc`,
                   :func:`merge_segments_to_markdown`
+* Dataset (L2)  — :class:`Block`, :class:`ImageBlob`, :class:`DocRecord`,
+                  :class:`ImageTextPair` and the projections in
+                  :mod:`pdfsys_core.dataset`
 * Cache         — :class:`LayoutCache`
 * Config        — :class:`PdfsysConfig` and its sub-configs
 * Serde         — :func:`to_dict`, :func:`from_dict`
@@ -29,6 +32,22 @@ from .config import (
     RouterConfig,
     RuntimeConfig,
     VlmConfig,
+)
+from .dataset import (
+    DATASET_SCHEMA_VERSION,
+    Block,
+    BlockType,
+    DocRecord,
+    ImageBlob,
+    ImageTextPair,
+    blocks_from_content_list,
+    blocks_from_segments,
+    image_id_for,
+    iter_pairs,
+    link_mentions,
+    probe_image,
+    render_markdown,
+    to_interleaved,
 )
 from .extract import ExtractedDoc, Segment, merge_segments_to_markdown
 from .layout import BBox, LayoutDocument, LayoutPage, LayoutRegion, make_region_id
@@ -55,6 +74,21 @@ __all__ = [
     "Segment",
     "ExtractedDoc",
     "merge_segments_to_markdown",
+    # dataset (L2 publish format)
+    "DATASET_SCHEMA_VERSION",
+    "BlockType",
+    "Block",
+    "ImageBlob",
+    "DocRecord",
+    "ImageTextPair",
+    "image_id_for",
+    "probe_image",
+    "blocks_from_content_list",
+    "blocks_from_segments",
+    "link_mentions",
+    "render_markdown",
+    "to_interleaved",
+    "iter_pairs",
     # cache
     "LayoutCache",
     # config

@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pdfsys-mnbvc.dev/schema/doc_dataset/v1.json",
+  "title": "pdfsys.doc/1",
+  "description": "L2 publish format. Two Parquet tables joined on image_id: `documents` (one row per PDF, carrying the reading-order block list) and `images` (one row per unique image blob). The interleaved and image-text-pair views are projections over `documents.blocks`, not separate storage. Canonical implementation: pdfsys_core.dataset + pdfsys_cli.dataset_writer.",
+  "type": "object",
+  "properties": {
+    "documents": { "$ref": "#/$defs/Document" },
+    "images": { "$ref": "#/$defs/Image" },
+    "pairs": { "$ref": "#/$defs/Pair" }
+  },
+  "$defs": {
+    "BlockType": {
+      "title": "BlockType",
+      "description": "Block-level classification. The four furniture types (page_header, page_footer, page_number, aside) are page decoration and are excluded from the rendered `text` by default.",
+      "type": "string",
+      "enum": [
+        "text",
+        "title",
+        "list",
+        "code",
+        "table",
+        "formula",
+        "image",
+        "chart",
+        "page_header",
+        "page_footer",
+        "page_number",
+        "aside"
+      ]
+    },
+    "BBox": {
+      "title": "BBox",
+      "description": "Normalized bounding box, [0, 1], top-left origin, y down. Null when the source coordinates could not be normalized — an absent bbox is honest, an unnormalized one silently corrupts every downstream crop.",
+      "type": ["object", "null"],
+      "properties": {
+        "x0": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "y0": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "x1": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "y1": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+      },
+      "required": ["x0", "y0", "x1", "y1"],
+      "additionalProperties": false
+    },
+    "Block": {
+      "title": "Block",
+      "description": "One block-level unit in document reading order. Position in the array IS the interleaving — there is no separate image/text alignment structure.",
+      "type": "object",
+      "properties": {
+        "idx": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based reading-order index within the document. Dense; equals the array position."
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based page this block was extracted from."
+        },
+        "type": { "$ref": "#/$defs/BlockType" },
+        "text": {
+          "type": ["string", "null"],
+          "description": "Content. Encoding follows the Segment contract: text/title/list = Markdown, table = HTML, formula = LaTeX, code = source text. Null for image/chart, whose pixels live in `image_id`."
+        },
+        "level": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 6,
+          "description": "Heading level for `title` blocks; null otherwise."
+        },
+        "caption": {
+          "type": ["string", "null"],
+          "description": "Human-authored caption attached to an image / chart / table. Multiple caption lines are newline-joined."
+        },
+        "footnote": {
+          "type": ["string", "null"],
+          "description": "Footnote attached to an image / chart / table."
+        },
+        "alt": {
+          "type": ["string", "null"],
+          "description": "Model-generated description of the image (MinerU VLM output). Kept separate from `caption` so a consumer can choose ground truth over synthetic text."
+        },
+        "bbox": { "$ref": "#/$defs/BBox" },
+        "image_id": {
+          "type": ["string", "null"],
+          "description": "SHA-256 of the image bytes; join key into the images table. Non-null for image/chart blocks and for table blocks whose crop was kept."
+        },
+        "mentions": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "description": "Indices of blocks in the same document whose text references this figure/table by label (\"as shown in Fig. 3\"). Empty when unknown or unlinked."
+        }
+      },
+      "required": ["idx", "page", "type"],
+      "additionalProperties": false
+    },
+    "Document": {
+      "title": "Document",
+      "description": "One row of the documents table — one published PDF.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Hex SHA-256 of the source PDF bytes. Same identity as ExtractedDoc.sha256."
+        },
+        "source_uri": { "type": ["string", "null"], "description": "Where the PDF came from." },
+        "provenance": {
+          "type": ["string", "null"],
+          "description": "Opaque upstream JSON (license, crawl batch, policy tier). Not parsed by pdfsys."
+        },
+        "text": {
+          "type": ["string", "null"],
+          "description": "Markdown rendering of `blocks`: furniture dropped, images as `![caption](img://<image_id>)`. Redundant with `blocks` by design — see the spec for the measured cost. Null when the shard was written with include_text=false."
+        },
+        "page_ends": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "description": "Character offset in `text` at which each page ends; length equals n_pages. Recovers page granularity without a second copy of the text (same encoding as FinePDFs)."
+        },
+        "blocks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Block" },
+          "description": "The authoritative record. Ordered by reading order."
+        },
+        "image_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Distinct image ids referenced by this document, in first-use order. Denormalized so a join can be planned without reading the nested column."
+        },
+        "n_pages": { "type": "integer", "minimum": 0 },
+        "n_blocks": { "type": "integer", "minimum": 0 },
+        "n_chars": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Length of the rendered text. Populated even when `text` is null."
+        },
+        "n_images": { "type": "integer", "minimum": 0, "description": "Count of image + chart blocks." },
+        "n_tables": { "type": "integer", "minimum": 0 },
+        "n_formulas": { "type": "integer", "minimum": 0 },
+        "backend": {
+          "type": ["string", "null"],
+          "description": "Extraction backend: mupdf | pipeline | vlm.",
+          "enum": ["mupdf", "pipeline", "vlm", null]
+        },
+        "router_ocr_prob": {
+          "type": ["number", "null"],
+          "description": "Stage-A router P(needs OCR)."
+        },
+        "quality_score": {
+          "type": ["number", "null"],
+          "description": "ModernBERT OCR-quality regression, [0, 3]."
+        },
+        "quality_model": { "type": ["string", "null"] },
+        "lang": { "type": ["string", "null"], "description": "Language code, e.g. zho_Hans." },
+        "lang_score": { "type": ["number", "null"] },
+        "images": {
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/ImageBytes" },
+          "description": "Only present when the shard was written with embed_images=true, which inlines the blobs instead of using the images table."
+        }
+      },
+      "required": ["id", "blocks", "page_ends", "n_pages", "n_blocks", "n_chars"],
+      "additionalProperties": false
+    },
+    "ImageBytes": {
+      "title": "ImageBytes",
+      "description": "HuggingFace `datasets.Image` wire struct. Decodes via cast_column(\"image\", Image()) with no conversion.",
+      "type": "object",
+      "properties": {
+        "bytes": { "type": "string", "contentEncoding": "base64", "description": "Encoded image bytes (Arrow large_binary)." },
+        "path": { "type": ["string", "null"], "description": "`<image_id>.<format>`; informational only — images are addressed by content." }
+      },
+      "required": ["bytes"],
+      "additionalProperties": false
+    },
+    "Image": {
+      "title": "Image",
+      "description": "One row of the images table — one unique image blob per shard. Content addressing dedupes the letterheads and stamps that repeat across a scanned corpus.",
+      "type": "object",
+      "properties": {
+        "image_id": { "type": "string", "description": "Hex SHA-256 of `image.bytes`. Primary key." },
+        "image": { "$ref": "#/$defs/ImageBytes" },
+        "format": { "type": "string", "enum": ["jpeg", "png", "webp", "gif", "unknown"] },
+        "width": { "type": "integer", "minimum": 0, "description": "0 when the header could not be parsed." },
+        "height": { "type": "integer", "minimum": 0 },
+        "n_bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["image_id", "image", "format", "width", "height", "n_bytes"],
+      "additionalProperties": false
+    },
+    "Pair": {
+      "title": "Pair",
+      "description": "One row of the optional materialized image-text pair view. Derived from documents.blocks; never a source of truth.",
+      "type": "object",
+      "properties": {
+        "doc_id": { "type": "string" },
+        "image_id": { "type": "string" },
+        "block_idx": { "type": "integer", "minimum": 0 },
+        "page": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "source": {
+          "type": "string",
+          "enum": ["content", "caption", "alt", "mention", "context"],
+          "description": "Which tier supplied the text, best first: content (caption + own transcription, e.g. a table crop with its HTML), caption (human ground truth), alt (model-generated), mention (body text referencing the figure by label), context (adjacent text blocks)."
+        }
+      },
+      "required": ["doc_id", "image_id", "block_idx", "page", "text", "source"],
+      "additionalProperties": false
+    }
+  }
+}

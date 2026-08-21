@@ -22,6 +22,9 @@ Usage::
     pdfsys annotate
     pdfsys annotate --port 9000
     pdfsys annotate --import annotations_2026-04-18.json
+
+    # Pack a run's MinerU output into a pdfsys.doc/v1 Parquet shard
+    pdfsys dataset --from-mineru ./out --to ./dataset/v1 --meta ./out/results.jsonl
 """
 
 from __future__ import annotations
@@ -105,6 +108,29 @@ def build_parser() -> argparse.ArgumentParser:
         "--import", type=str, default=None, dest="import_file",
         help="Import annotations from an exported JSON file into metadata.json.",
     )
+
+    # ---- dataset ----
+    d = sub.add_parser(
+        "dataset",
+        help="Pack pipeline output into a pdfsys.doc/v1 Parquet shard.",
+    )
+    d.add_argument("--from-mineru", required=True, dest="from_mineru",
+                   help="Run directory containing MinerU *_content_list.json outputs.")
+    d.add_argument("--to", required=True, dest="to_dir",
+                   help="Output dataset directory (documents/ + images/ are created inside).")
+    d.add_argument("--shard", default="shard-00000", help="Shard name (default: shard-00000).")
+    d.add_argument("--meta", default=None,
+                   help="results.jsonl from the same run; joins quality/router columns by sha256.")
+    d.add_argument("--compression", default="zstd", choices=("zstd", "snappy", "none"))
+    d.add_argument("--embed-images", action="store_true", default=False,
+                   help="Inline image bytes into documents/ as well (self-contained but larger).")
+    d.add_argument("--pairs", action="store_true", default=False,
+                   help="Also write the materialized image-text pair view to pairs/.")
+    d.add_argument("--no-mentions", action="store_true", default=False,
+                   help="Skip figure-mention linking (faster; leaves blocks.mentions empty).")
+    d.add_argument("--no-text", action="store_true", default=False,
+                   help="Leave the rendered `text` column null; derive it from blocks instead. "
+                        "Saves ~40%% of the documents file on image-free corpora.")
 
     # ---- release ----
     r = sub.add_parser("release", help="Manage system_release.toml component pins.")
@@ -192,6 +218,124 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dataset(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+
+    import pyarrow.parquet as pq
+
+    from .dataset_build import build_from_mineru_dir, iter_mineru_dirs
+    from .dataset_writer import DatasetWriter, pairs_table
+
+    src = Path(args.from_mineru)
+    if not src.is_dir():
+        print(f"Error: not a directory: {src}", file=sys.stderr)
+        return 1
+
+    meta = _load_run_meta(Path(args.meta)) if args.meta else {}
+    doc_dirs = list(iter_mineru_dirs(src))
+    if not doc_dirs:
+        print(f"Error: no *_content_list.json found under {src}", file=sys.stderr)
+        return 1
+
+    out_dir = Path(args.to_dir)
+    print(f"[pdfsys dataset] {len(doc_dirs)} documents → {out_dir}")
+
+    docs = []
+    failures = 0
+    with DatasetWriter(
+        out_dir,
+        shard=args.shard,
+        compression=args.compression,
+        embed_images=args.embed_images,
+        include_text=not args.no_text,
+    ) as writer:
+        for doc_dir in doc_dirs:
+            try:
+                doc, blobs = build_from_mineru_dir(
+                    doc_dir,
+                    link_figure_mentions=not args.no_mentions,
+                )
+            except Exception as e:  # one bad document must not kill the shard
+                failures += 1
+                print(f"  ! {doc_dir}: {type(e).__name__}: {e}", file=sys.stderr)
+                continue
+            doc = _apply_run_meta(doc, meta.get(doc.id))
+            writer.write(doc, blobs)
+            if args.pairs:
+                docs.append(doc)
+        n_docs, n_images = writer.docs_written, writer.images_written
+
+    print(f"[pdfsys dataset] documents={n_docs} images={n_images} failed={failures}")
+
+    if args.pairs:
+        table = pairs_table(docs)
+        (out_dir / "pairs").mkdir(parents=True, exist_ok=True)
+        pq.write_table(
+            table,
+            out_dir / "pairs" / f"{args.shard}.parquet",
+            compression=args.compression,
+        )
+        print(f"[pdfsys dataset] pairs={table.num_rows}")
+
+    # Machine-readable shard descriptor, mirroring what a manifest would carry.
+    (out_dir / f"{args.shard}.meta.json").write_text(
+        json.dumps(
+            {
+                "schema": "pdfsys.doc/1",
+                "shard": args.shard,
+                "documents": n_docs,
+                "images": n_images,
+                "failed": failures,
+                "source": str(src),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return 0
+
+
+def _load_run_meta(path) -> dict:
+    """Index a run's results.jsonl by sha256 so dataset rows inherit its columns."""
+    import json
+
+    out: dict = {}
+    if not path.exists():
+        print(f"Warning: --meta file not found: {path}", file=sys.stderr)
+        return out
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            sha = row.get("sha256")
+            if sha:
+                out[sha] = row
+    return out
+
+
+def _apply_run_meta(doc, row):
+    import dataclasses
+
+    if not row:
+        return doc
+    return dataclasses.replace(
+        doc,
+        source_uri=doc.source_uri or (row.get("pdf_path") or ""),
+        backend=row.get("extract_backend") or doc.backend,
+        n_pages=doc.n_pages or int(row.get("num_pages") or 0),
+        quality_score=row.get("quality_score"),
+        quality_model=row.get("quality_model") or "",
+        router_ocr_prob=row.get("ocr_prob"),
+    )
+
+
 def cmd_annotate(args: argparse.Namespace) -> int:
     from pathlib import Path
 
@@ -238,6 +382,8 @@ def main(argv: list[str] | None = None) -> int:
             *(("-o", args.out_dir) if args.out_dir else ()),
             *(("--preview-source", args.preview_source) if args.preview_source else ()),
         ])
+    elif args.command == "dataset":
+        return cmd_dataset(args)
     elif args.command == "annotate":
         return cmd_annotate(args)
     elif args.command == "release":
