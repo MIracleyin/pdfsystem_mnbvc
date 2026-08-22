@@ -141,6 +141,47 @@ def test_rows_come_out_sorted_by_doc_then_page(shard):
     assert keys == sorted(keys), "written out of order — reassembly must stay a scan"
 
 
+def test_mupdf_lane_gets_page_geometry_from_the_pdf(tmp_path):
+    """Page size comes from the PDF, so every lane should carry it — the
+    mupdf path used to leave width_pt/height_pt null."""
+    from pdfsys_cli.dataset_build import build_from_extracted
+    from pdfsys_core import Backend, RegionType, Segment
+
+    class _Doc:
+        sha256 = "a" * 64
+        backend = Backend.MUPDF
+        markdown = "x"
+        segments = (
+            Segment(index=0, backend=Backend.MUPDF, page_index=0,
+                    type=RegionType.TEXT, content="p0"),
+            Segment(index=1, backend=Backend.MUPDF, page_index=1,
+                    type=RegionType.TEXT, content="p1"),
+        )
+
+    pages, _ = build_from_extracted(
+        _Doc(), n_pages=2, page_sizes=[(612.0, 792.0, 0), (595.0, 842.0, 90)]
+    )
+    assert [(p.width_pt, p.height_pt, p.rotation) for p in pages] == [
+        (612.0, 792.0, 0),
+        (595.0, 842.0, 90),
+    ]
+
+
+def test_geometry_is_optional_and_absent_rather_than_wrong(tmp_path):
+    from pdfsys_cli.dataset_build import build_from_extracted
+    from pdfsys_core import Backend, RegionType, Segment
+
+    class _Doc:
+        sha256 = "a" * 64
+        backend = Backend.MUPDF
+        markdown = "x"
+        segments = (Segment(index=0, backend=Backend.MUPDF, page_index=0,
+                            type=RegionType.TEXT, content="p0"),)
+
+    (page,), _ = build_from_extracted(_Doc(), n_pages=1)
+    assert (page.width_pt, page.height_pt) == (0.0, 0.0)
+
+
 def test_page_geometry_survives(shard):
     root, _ = shard
     row = pq.read_table(root / "pages").to_pylist()[0]

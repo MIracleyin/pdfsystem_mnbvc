@@ -49,6 +49,7 @@ __all__ = [
     "build_from_mineru_dir",
     "build_from_extracted",
     "iter_mineru_dirs",
+    "page_geometry_from_pdf",
     "render_page_images",
 ]
 
@@ -135,9 +136,15 @@ def build_from_extracted(
     extracted: Any,
     *,
     n_pages: int = 0,
+    page_sizes: Sequence[tuple[float, float, int]] | None = None,
     **page_fields: Any,
 ) -> tuple[tuple[PageRecord, ...], list[ImageBlob]]:
     """Encode an in-memory :class:`pdfsys_core.ExtractedDoc` (mupdf lane).
+
+    ``page_sizes`` is ``(width_pt, height_pt, rotation)`` per page, normally
+    from :func:`page_geometry_from_pdf`. Without it the geometry columns stay
+    null — and they should not, because page size comes from the PDF itself
+    and is the most model-independent thing in the whole row.
 
     Falls back to a single page holding the pre-merged ``markdown`` when a
     backend emitted no segments, so a document is never silently dropped.
@@ -145,16 +152,15 @@ def build_from_extracted(
     extractor = str(getattr(extracted.backend, "value", extracted.backend))
     blocks = blocks_from_segments(extracted.segments)
     if not blocks:
-        return (
-            PageRecord(
-                doc_id=extracted.sha256,
-                page_index=0,
-                text=extracted.markdown or "",
-                extractor=extractor,
-                doc_n_pages=max(n_pages, 1),
-                **page_fields,
-            ),
-        ), []
+        page = PageRecord(
+            doc_id=extracted.sha256,
+            page_index=0,
+            text=extracted.markdown or "",
+            extractor=extractor,
+            doc_n_pages=max(n_pages, 1),
+            **page_fields,
+        )
+        return (_with_geometry(page, page_sizes),), []
 
     pages = split_pages(
         blocks,
@@ -163,7 +169,18 @@ def build_from_extracted(
         extractor=extractor,
         **page_fields,
     )
-    return pages, []
+    return tuple(_with_geometry(p, page_sizes) for p in pages), []
+
+
+def page_geometry_from_pdf(pdf_path: Path) -> list[tuple[float, float, int]]:
+    """``(width_pt, height_pt, rotation)`` per page, straight from the PDF."""
+    import pymupdf  # lazy: heavy, and only this path needs it
+
+    with pymupdf.open(pdf_path) as doc:
+        return [
+            (float(page.rect.width), float(page.rect.height), int(page.rotation))
+            for page in doc
+        ]
 
 
 def render_page_images(
@@ -258,12 +275,17 @@ def _page_geometry(middle_path: Path) -> tuple[list[tuple[float, float]], str]:
 
 
 def _with_geometry(
-    page: PageRecord, page_sizes: Sequence[tuple[float, float]]
+    page: PageRecord, page_sizes: Sequence[Sequence[float]] | None
 ) -> PageRecord:
-    if not (0 <= page.page_index < len(page_sizes)):
+    """Stamp page geometry. Accepts ``(w, h)`` or ``(w, h, rotation)``."""
+    if not page_sizes or not (0 <= page.page_index < len(page_sizes)):
         return page
-    width, height = page_sizes[page.page_index]
-    return dataclasses.replace(page, width_pt=width, height_pt=height)
+    size = page_sizes[page.page_index]
+    width, height = float(size[0]), float(size[1])
+    rotation = int(size[2]) if len(size) > 2 else page.rotation
+    return dataclasses.replace(
+        page, width_pt=width, height_pt=height, rotation=rotation
+    )
 
 
 def _load_images(doc_dir: Path) -> tuple[list[ImageBlob], dict[str, str]]:
