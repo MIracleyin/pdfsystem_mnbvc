@@ -110,7 +110,7 @@
         },
         "text": {
           "type": ["string", "null"],
-          "description": "Markdown rendering of `blocks`: furniture dropped, images as `![caption](img://<image_id>)`. Redundant with `blocks` by design — see the spec for the measured cost. Null when the shard was written with include_text=false."
+          "description": "Markdown rendering of `blocks`: furniture dropped, images as `![](img://<image_id>)` with the caption following as its own paragraph. Redundant with `blocks` by design — see the spec for the measured cost. Null when the shard was written with include_text=false."
         },
         "page_ends": {
           "type": "array",

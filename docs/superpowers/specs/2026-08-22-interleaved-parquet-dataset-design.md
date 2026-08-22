@@ -42,7 +42,16 @@
 
    也就是说 caption、表格 HTML、VLM 生成的图像描述（`content`）**MinerU 都已经给了**，只是现在全部被丢在 sidecar 里没人消费——`ExtractedDoc.segments` 对 pipeline/vlm 两条链路目前恒为空元组。
 
-2. **`content_list` 的 bbox 是像素坐标**，相对 `middle.json` 的 `page_size`（实测 `bbox=[96,252,874,404]` vs `page_size=[960,671]`）。仓库约定 bbox 恒为 `[0,1]` 归一化，所以必须拿 `page_size` 归一，拿不到就写 null。
+2. **`content_list` 的 bbox 在 0–1000 网格上，与页面尺寸无关** —— 每个轴独立映射到 0–1000。这一点容易踩坑：`middle.json` 里同时有 `page_size`，看上去像是 bbox 的坐标空间，但不是。19 份样本的实测反证：
+
+   | doc | `page_size` | bbox maxX | bbox maxY |
+   |---|---|---|---|
+   | b8b2757a | `[558, 773]` | 874 | 940 |
+   | a24e8b3f | `[480, 350]` | 943 | 997 |
+   | 6ffc0b0a | `[4000, 2853]` | 942 | 999 |
+   | 444b59c2 | `[1500, 2121]` | 944 | 998 |
+
+   `page_size` 跨度 8 倍，bbox 上界却恒定贴着 1000。按 `page_size` 归一会把大量框 clamp 成 1.0（`[558,773]` 那份的正文块直接塌成零宽），MinerU [官方文档](https://opendatalab.github.io/MinerU/reference/output_files/)也写明 bbox "mapped to a range of 0-1000"。所以除以 1000，`middle.json` 只用来取页数。
 
 ### 2.2 一个必须先解决的前置条件
 
@@ -113,9 +122,13 @@
 `page_header` / `page_footer` / `page_number` / `aside` 四类保留在 blocks 里，但渲染时跳过。
 *代价*：`page_ends` 需要处理"整页只有页眉页脚"的情况——已覆盖测试。
 
-**D8 · bbox 要么归一化，要么为空，绝不写像素**
-拿不到 `page_size` 就写 null。
-*理由*：缺失的 bbox 是诚实的，未归一化的 bbox 会静默毁掉下游每一次裁剪。
+**D8 · bbox 要么归一化到 [0,1]，要么为空；越界是拒绝而不是 clamp**
+源坐标除以 `bbox_scale`（MinerU 默认 1000）；任何一个分量落在 [0,1] 之外就整个写 null。
+*理由*：缺失的 bbox 是诚实的，错误的 bbox 会静默毁掉下游每一次裁剪。**不 clamp** 是关键——框超出声明的 scale 意味着 scale 判断错了，clamp 会把这个错误藏起来（第一版就是这么踩的，见 §2.1）。
+
+**D8b · 图块渲染进 `text` 时 alt 留空，题注单独成段**
+`![](img://<id>)` + 题注段落，而不是 `![题注](img://<id>)` + 题注段落。
+*理由*：后者每条题注计两遍 token；前者用 `![]\(img://…\)` 一条正则剥掉图引用后，题注仍留在正文里。模型生成的 `alt` **永不进 `text`** —— `text` 只承载人写 / OCR 出来的内容，合成描述留在 `blocks[].alt` 里由消费者显式选用。
 
 **D9 · 固定强类型列，不用 JSON 字符串装元数据**
 MINT-1T-PDF 和 PMC-InterCPT 都把元数据塞进 JSON 字符串，前者的后果是 schema 漂移 + viewer 永久损坏。唯一的 JSON 逃生舱是 `provenance`（上游 license / 批次），且明确声明 pdfsys 不解析它。
@@ -149,7 +162,7 @@ dataset/v1/lang=zho_Hans/source=arxiv/qb=high/
 | `id` | string | 源 PDF 的 SHA-256，与 `ExtractedDoc.sha256` 同一身份 |
 | `source_uri` | string | 来源 |
 | `provenance` | string | 上游不透明 JSON（license / 批次 / 策略层级） |
-| `text` | large_string | blocks 的 Markdown 渲染；furniture 已剔除，图为 `![caption](img://<image_id>)` |
+| `text` | large_string | blocks 的 Markdown 渲染；furniture 已剔除，图为 `![](img://<image_id>)`，题注紧跟其后单独成段 |
 | `page_ends` | list\<int32\> | 每页在 `text` 中结束的字符偏移，长度 = `n_pages` |
 | `blocks` | list\<struct\> | **权威记录**，见 5.2 |
 | `image_ids` | list\<string\> | 本文档引用的去重 image_id，首次出现序 |

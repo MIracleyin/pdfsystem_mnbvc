@@ -33,32 +33,32 @@ from pdfsys_core import (
 # fixtures
 # ---------------------------------------------------------------------------
 
-PAGE_SIZES = [(1000.0, 2000.0), (1000.0, 2000.0)]
-
+# MinerU maps content_list bboxes onto a 0-1000 grid per axis, independent of
+# page size — see test_bbox_scale_is_independent_of_page_size.
 CONTENT_LIST = [
-    {"type": "text", "text": "章节标题", "text_level": 1, "bbox": [100, 200, 900, 260], "page_idx": 0},
-    {"type": "text", "text": "正文第一段，见图 1 的说明。", "bbox": [100, 300, 900, 360], "page_idx": 0},
+    {"type": "text", "text": "章节标题", "text_level": 1, "bbox": [100, 100, 900, 130], "page_idx": 0},
+    {"type": "text", "text": "正文第一段，见图 1 的说明。", "bbox": [100, 150, 900, 180], "page_idx": 0},
     {
         "type": "image",
         "img_path": "images/a.jpg",
         "image_caption": ["图 1 系统架构"],
         "image_footnote": ["数据来源：内部"],
         "content": "A block diagram with three boxes",
-        "bbox": [100, 400, 500, 800],
+        "bbox": [100, 200, 500, 400],
         "page_idx": 0,
     },
-    {"type": "page_number", "text": "- 1 -", "bbox": [480, 1950, 520, 1980], "page_idx": 0},
+    {"type": "page_number", "text": "- 1 -", "bbox": [480, 975, 520, 990], "page_idx": 0},
     {
         "type": "table",
         "img_path": "images/b.jpg",
         "table_caption": ["表 2 结果"],
         "table_footnote": [],
         "table_body": "<table><tr><td>1</td></tr></table>",
-        "bbox": [100, 100, 900, 700],
+        "bbox": [100, 50, 900, 350],
         "page_idx": 1,
     },
-    {"type": "equation", "text": "E = mc^2", "bbox": [300, 800, 700, 900], "page_idx": 1},
-    {"type": "footer", "text": "confidential", "bbox": [100, 1900, 900, 1950], "page_idx": 1},
+    {"type": "equation", "text": "E = mc^2", "bbox": [300, 400, 700, 450], "page_idx": 1},
+    {"type": "footer", "text": "confidential", "bbox": [100, 950, 900, 975], "page_idx": 1},
 ]
 
 IMAGE_IDS = {"images/a.jpg": "a" * 64, "images/b.jpg": "b" * 64}
@@ -66,9 +66,7 @@ IMAGE_IDS = {"images/a.jpg": "a" * 64, "images/b.jpg": "b" * 64}
 
 @pytest.fixture
 def blocks() -> tuple[Block, ...]:
-    return blocks_from_content_list(
-        CONTENT_LIST, page_sizes=PAGE_SIZES, image_ids=IMAGE_IDS
-    )
+    return blocks_from_content_list(CONTENT_LIST, image_ids=IMAGE_IDS)
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +121,7 @@ def test_unknown_mineru_type_falls_back_to_text_without_losing_content():
 # ---------------------------------------------------------------------------
 
 
-def test_bbox_is_normalized_against_page_size(blocks):
+def test_bbox_is_rescaled_from_the_0_1000_grid(blocks):
     assert blocks[0].bbox == pytest.approx((0.1, 0.1, 0.9, 0.13))
 
 
@@ -133,17 +131,41 @@ def test_all_bboxes_are_within_unit_square(blocks):
             assert all(0.0 <= v <= 1.0 for v in b.bbox), b
 
 
-def test_bbox_dropped_when_page_size_unknown():
-    (block,) = blocks_from_content_list(
-        [{"type": "text", "text": "x", "bbox": [1, 2, 3, 4], "page_idx": 0}]
+def test_bbox_scale_is_independent_of_page_size():
+    """Regression: MinerU bboxes are NOT pixels relative to middle.json's
+    page_size. Observed in real output: page_size=[558, 773] with bboxes
+    reaching 940 — normalizing against page_size clamps everything to 1.0.
+    """
+    landscape = blocks_from_content_list(
+        [{"type": "text", "text": "x", "bbox": [155, 567, 460, 767], "page_idx": 0}]
     )
-    assert block.bbox is None
+    portrait = blocks_from_content_list(
+        [{"type": "text", "text": "x", "bbox": [155, 567, 460, 767], "page_idx": 0}]
+    )
+    assert landscape[0].bbox == portrait[0].bbox == pytest.approx(
+        (0.155, 0.567, 0.460, 0.767)
+    )
 
 
-def test_bbox_dropped_when_page_index_out_of_range():
+def test_bbox_rejected_rather_than_clamped_when_out_of_scale():
     (block,) = blocks_from_content_list(
-        [{"type": "text", "text": "x", "bbox": [1, 2, 3, 4], "page_idx": 9}],
-        page_sizes=PAGE_SIZES,
+        [{"type": "text", "text": "x", "bbox": [100, 200, 300, 1400], "page_idx": 0}]
+    )
+    assert block.bbox is None, "a box past the declared scale means the scale is wrong"
+
+
+def test_bbox_scale_is_configurable():
+    items = [{"type": "text", "text": "x", "bbox": [50, 100, 150, 200], "page_idx": 0}]
+    (block,) = blocks_from_content_list(items, bbox_scale=200.0)
+    assert block.bbox == pytest.approx((0.25, 0.5, 0.75, 1.0))
+
+
+@pytest.mark.parametrize(
+    "bad", [None, [1, 2, 3], "nope", [1, 2, "x", 4], [500, 100, 100, 200]]
+)
+def test_malformed_bbox_becomes_null(bad):
+    (block,) = blocks_from_content_list(
+        [{"type": "text", "text": "x", "bbox": bad, "page_idx": 0}]
     )
     assert block.bbox is None
 
@@ -202,8 +224,19 @@ def test_render_keeps_furniture_when_asked(blocks):
 def test_render_uses_markdown_conventions(blocks):
     text, _ = render_markdown(blocks)
     assert text.startswith("# 章节标题")
-    assert f"![图 1 系统架构](img://{'a' * 64})" in text
+    assert f"![](img://{'a' * 64})" in text
     assert "$$\nE = mc^2\n$$" in text
+
+
+def test_render_emits_each_caption_exactly_once(blocks):
+    text, _ = render_markdown(blocks)
+    assert text.count("图 1 系统架构") == 1
+    assert text.count("表 2 结果") == 1
+
+
+def test_render_never_leaks_model_generated_descriptions_into_text(blocks):
+    text, _ = render_markdown(blocks)
+    assert "A block diagram with three boxes" not in text
 
 
 def test_page_ends_slices_text_back_into_pages(blocks):

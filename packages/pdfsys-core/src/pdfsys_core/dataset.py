@@ -177,7 +177,8 @@ class DocRecord:
     id: str
     blocks: tuple[Block, ...]
     #: Markdown rendering of ``blocks`` (furniture dropped, images as
-    #: ``![caption](img://<image_id>)``). Redundant with ``blocks`` by design.
+    #: ``![](img://<image_id>)``, caption following as its own paragraph).
+    #: Redundant with ``blocks`` by design.
     text: str = ""
     #: Character offset in ``text`` at which each page ends. Same trick as
     #: FinePDFs' ``page_ends`` — recovers page granularity without a second
@@ -323,16 +324,18 @@ _MINERU_TYPE_MAP: dict[str, BlockType] = {
 def blocks_from_content_list(
     items: Sequence[Mapping[str, object]],
     *,
-    page_sizes: Sequence[tuple[float, float]] | None = None,
+    bbox_scale: float = 1000.0,
     image_ids: Mapping[str, str] | None = None,
 ) -> tuple[Block, ...]:
     """Convert MinerU's ``content_list.json`` into blocks.
 
-    ``page_sizes`` comes from ``middle.json``'s ``pdf_info[i].page_size`` and is
-    what MinerU's pixel bboxes are relative to; without it bboxes are dropped
-    rather than emitted unnormalized (repo convention: bbox is always in
-    [0, 1]). ``image_ids`` maps MinerU's ``img_path`` to the content address of
-    the corresponding blob.
+    ``bbox_scale`` is the coordinate space MinerU's bboxes live in. MinerU maps
+    them onto a 0–1000 grid per axis, *independent of page size* — do not try
+    to normalize against ``middle.json``'s ``page_size``, which is a different
+    space entirely (observed: ``page_size=[558, 773]`` with bboxes up to 940).
+
+    ``image_ids`` maps MinerU's ``img_path`` to the content address of the
+    corresponding blob.
     """
     blocks: list[Block] = []
     for idx, item in enumerate(items):
@@ -379,7 +382,7 @@ def blocks_from_content_list(
                 alt=_clean(item.get("content"))
                 if btype in (BlockType.IMAGE, BlockType.CHART)
                 else None,
-                bbox=_norm_bbox(item.get("bbox"), page, page_sizes),
+                bbox=_norm_bbox(item.get("bbox"), bbox_scale),
                 image_id=image_id,
             )
         )
@@ -558,9 +561,13 @@ def _render_block(b: Block) -> str:
     if b.type is BlockType.FORMULA:
         return f"$$\n{b.text}\n$$" if b.text else ""
     if b.type in (BlockType.IMAGE, BlockType.CHART):
-        alt = (b.caption or b.alt or "").replace("]", "\\]").replace("\n", " ")
+        # Empty alt on purpose. The caption follows as its own paragraph so
+        # that stripping `![](img://…)` leaves the caption in the text — put
+        # it in the alt slot too and every caption is counted twice.
+        # `b.alt` is model-generated and deliberately never rendered here:
+        # `text` carries human/OCR-derived content only.
         ref = f"img://{b.image_id}" if b.image_id else ""
-        lines = [f"![{alt}]({ref})"]
+        lines = [f"![]({ref})"]
         if b.caption:
             lines.append(b.caption)
         if b.footnote:
@@ -723,33 +730,26 @@ def _as_int(value: object, *, default: int) -> int:
 
 
 def _norm_bbox(
-    value: object,
-    page: int,
-    page_sizes: Sequence[tuple[float, float]] | None,
+    value: object, scale: float
 ) -> tuple[float, float, float, float] | None:
-    """Normalize MinerU's pixel bbox against the page it came from.
+    """Rescale a bbox from its source grid onto [0, 1].
 
-    Returns ``None`` when the page size is unknown or the box is degenerate —
-    a missing bbox is honest, an unnormalized one silently corrupts every
-    downstream crop.
+    Returns ``None`` when the input is malformed, out of range, or degenerate —
+    a missing bbox is honest, a wrong one silently corrupts every downstream
+    crop. Note the out-of-range check is a rejection, not a clamp: a box that
+    does not fit the declared ``scale`` means the scale is wrong, and clamping
+    would hide that.
     """
+    if scale <= 0:
+        return None
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         return None
-    if not page_sizes or not (0 <= page < len(page_sizes)):
-        return None
-    width, height = page_sizes[page]
-    if width <= 0 or height <= 0:
-        return None
     try:
-        x0, y0, x1, y1 = (float(v) for v in value)
+        box = tuple(float(v) / scale for v in value)
     except (TypeError, ValueError):
         return None
-    box = (
-        min(max(x0 / width, 0.0), 1.0),
-        min(max(y0 / height, 0.0), 1.0),
-        min(max(x1 / width, 0.0), 1.0),
-        min(max(y1 / height, 0.0), 1.0),
-    )
+    if any(v < 0.0 or v > 1.0 for v in box):
+        return None
     if box[2] < box[0] or box[3] < box[1]:
         return None
-    return box
+    return box  # type: ignore[return-value]

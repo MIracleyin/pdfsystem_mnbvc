@@ -77,18 +77,16 @@ def build_from_mineru_dir(
         raise ValueError(f"{content_path} is not a content list")
 
     middle_path = doc_dir / f"{stem}_middle.json"
-    page_sizes = _page_sizes(middle_path)
+    n_pages_from_middle = _page_count(middle_path)
 
     blobs, path_to_id = _load_images(doc_dir)
 
-    blocks = blocks_from_content_list(
-        items, page_sizes=page_sizes, image_ids=path_to_id
-    )
+    blocks = blocks_from_content_list(items, image_ids=path_to_id)
     if link_figure_mentions:
         blocks = link_mentions(blocks)
     text, page_ends = render_markdown(blocks)
 
-    n_pages = len(page_sizes) if page_sizes else len(page_ends)
+    n_pages = n_pages_from_middle or len(page_ends)
     doc = DocRecord(
         id=doc_id or stem,
         blocks=blocks,
@@ -151,23 +149,21 @@ def _one(directory: Path, pattern: str, *, exclude: str | None = None) -> Path |
     return None
 
 
-def _page_sizes(middle_path: Path) -> list[tuple[float, float]]:
-    """Read ``pdf_info[i].page_size`` — the space MinerU's bboxes live in."""
+def _page_count(middle_path: Path) -> int:
+    """Page count from ``middle.json``, which sees pages that produced no text.
+
+    Note this is the *only* thing we take from ``middle.json``: its
+    ``page_size`` is NOT the space ``content_list`` bboxes live in — those are
+    on MinerU's 0–1000 grid, independent of page size.
+    """
     if not middle_path.exists():
-        return []
+        return 0
     try:
         middle = json.loads(middle_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as e:
         _LOG.warning("unreadable middle json %s: %s", middle_path, e)
-        return []
-    sizes: list[tuple[float, float]] = []
-    for page in middle.get("pdf_info") or ():
-        size = page.get("page_size") or (0, 0)
-        try:
-            sizes.append((float(size[0]), float(size[1])))
-        except (TypeError, ValueError, IndexError):
-            sizes.append((0.0, 0.0))
-    return sizes
+        return 0
+    return len(middle.get("pdf_info") or ())
 
 
 def _backend_from_middle(middle_path: Path) -> str:
