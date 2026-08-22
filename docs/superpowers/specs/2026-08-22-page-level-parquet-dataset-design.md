@@ -199,6 +199,7 @@ MINT-1T-PDF 和 PMC-InterCPT 都把元数据塞进 JSON 字符串，前者的后
 
 规范定义：[`docs/schema/doc_dataset.v2.json`](../../schema/doc_dataset.v2.json)（有测试守着它和 Arrow schema 不漂移）。
 一份真实文档的完整样例：[`docs/schema/doc_dataset.v2.sample.md`](../../schema/doc_dataset.v2.sample.md)。
+与 MNBVC 既有多模态格式的映射：[`docs/schema/mnbvc-mm-compat.md`](../../schema/mnbvc-mm-compat.md)。
 
 ```
 dataset/v2/lang=zho_Hans/source=arxiv/qb=high/

@@ -26,6 +26,9 @@ Usage::
     # Pack a run's MinerU output into a pdfsys.page/v2 Parquet shard
     pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl
     pdfsys dataset --from-mineru ./out --to ./dataset/v2 --images pages --pdf-dir ./data/pdfs
+
+    # Re-emit it in the MNBVC multimodal block format
+    pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/chinaxiv_0.parquet
 """
 
 from __future__ import annotations
@@ -143,6 +146,27 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--render-dpi", type=int, default=200,
                    help="DPI for page rasters (default: 200, matching the resolution MinerU "
                         "crops at, so a derived crop is pixel-equivalent to a stored one).")
+
+    # ---- mnbvc-export ----
+    m = sub.add_parser(
+        "mnbvc-export",
+        help="Export a pdfsys.page/v2 shard to the MNBVC multimodal block format.",
+    )
+    m.add_argument("--from-shard", required=True, dest="from_shard",
+                   help="A pdfsys.page/v2 dataset directory (contains pages/).")
+    m.add_argument("--to", required=True, dest="out_path",
+                   help="Output .parquet path.")
+    m.add_argument("--dialect", default="legacy", choices=("legacy", "v2"),
+                   help="`legacy`: the column names and types mm_template_mnbvc writes "
+                        "today (images base64-encoded into a string column). `v2`: same "
+                        "rows with images as binary so HuggingFace can decode them "
+                        "directly, plus a content-based md5 and an integer 页ID — see "
+                        "docs/schema/mnbvc-mm-compat.md.")
+    m.add_argument("--block-type", default="image-text-pair",
+                   help="Value for the 块类型 column (default: image-text-pair).")
+    m.add_argument("--date", default=None,
+                   help="Value for the 时间 column, YYYYMMDD (default: today).")
+    m.add_argument("--compression", default="zstd", choices=("zstd", "snappy", "none"))
 
     # ---- release ----
     r = sub.add_parser("release", help="Manage system_release.toml component pins.")
@@ -428,6 +452,36 @@ def _apply_run_meta(page, row):
     )
 
 
+def cmd_mnbvc_export(args: argparse.Namespace) -> int:
+    from datetime import date
+    from pathlib import Path
+
+    from .mnbvc_export import export_shard
+
+    shard = Path(args.from_shard)
+    if not (shard / "pages").is_dir():
+        print(f"Error: {shard} is not a pdfsys.page/v2 shard (no pages/).", file=sys.stderr)
+        return 1
+
+    stats = export_shard(
+        shard,
+        Path(args.out_path),
+        dialect=args.dialect,
+        timestamp=args.date or date.today().strftime("%Y%m%d"),
+        block_type=args.block_type,
+        compression=args.compression,
+    )
+    print(f"[pdfsys mnbvc-export] dialect={args.dialect} blocks={stats['blocks']} -> {args.out_path}")
+    if stats["pages_without_image"]:
+        print(
+            f"[pdfsys mnbvc-export] warning: {stats['pages_without_image']} pages had no "
+            f"raster, so their 图片 is null. The MNBVC image-text-pair block is "
+            f"(page image, page text) — build the shard with `--images pages` to fill it.",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def cmd_annotate(args: argparse.Namespace) -> int:
     from pathlib import Path
 
@@ -476,6 +530,8 @@ def main(argv: list[str] | None = None) -> int:
         ])
     elif args.command == "dataset":
         return cmd_dataset(args)
+    elif args.command == "mnbvc-export":
+        return cmd_mnbvc_export(args)
     elif args.command == "annotate":
         return cmd_annotate(args)
     elif args.command == "release":

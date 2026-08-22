@@ -78,6 +78,7 @@ docs/
 | Add a new parser backend     | `CONTRIBUTING.md` § Adding Backends    |
 | Data contracts (types/enums) | `packages/pdfsys-core/src/pdfsys_core/`|
 | L2 dataset format (page rows) | `docs/schema/doc_dataset.v2.sample.md` (worked example), then `pdfsys_core/dataset.py` + `docs/schema/doc_dataset.v2.json` |
+| Emitting the MNBVC multimodal format | `docs/schema/mnbvc-mm-compat.md` |
 | Router feature parity        | `packages/pdfsys-router/src/pdfsys_router/feature_extractor.py` |
 | Run the pipeline             | `pdfsys run -c pdfsys.yaml`            |
 | Product requirements         | `docs/PRD.md`                          |
