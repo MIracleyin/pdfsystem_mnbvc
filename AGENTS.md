@@ -77,7 +77,7 @@ docs/
 | Layer rules                  | `docs/architecture/LAYERS.md`          |
 | Add a new parser backend     | `CONTRIBUTING.md` § Adding Backends    |
 | Data contracts (types/enums) | `packages/pdfsys-core/src/pdfsys_core/`|
-| L2 dataset format (interleaved) | `packages/pdfsys-core/src/pdfsys_core/dataset.py` + `docs/schema/doc_dataset.v1.json` |
+| L2 dataset format (interleaved) | `docs/schema/doc_dataset.v1.sample.md` (worked example), then `pdfsys_core/dataset.py` + `docs/schema/doc_dataset.v1.json` |
 | Router feature parity        | `packages/pdfsys-router/src/pdfsys_router/feature_extractor.py` |
 | Run the pipeline             | `pdfsys run -c pdfsys.yaml`            |
 | Product requirements         | `docs/PRD.md`                          |

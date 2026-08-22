@@ -146,6 +146,7 @@ MINT-1T-PDF 和 PMC-InterCPT 都把元数据塞进 JSON 字符串，前者的后
 三张表。`documents` 是唯一的事实来源；`images` 是它的字节侧表；`pairs` 是可选的物化视图。
 
 规范定义：[`docs/schema/doc_dataset.v1.json`](../../schema/doc_dataset.v1.json)（有测试守着它和 Arrow schema 不漂移）。
+一份真实文档的完整样例：[`docs/schema/doc_dataset.v1.sample.md`](../../schema/doc_dataset.v1.sample.md)。
 
 ```
 dataset/v1/lang=zho_Hans/source=arxiv/qb=high/
