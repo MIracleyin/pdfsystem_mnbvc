@@ -143,9 +143,23 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--pdf-dir", default=None,
                    help="Directory of source PDFs, required by --images pages. Matched to "
                         "documents by sha256.")
+    d.add_argument("--on-duplicate", default="best", choices=("best", "error"),
+                   help="同一份 PDF 有多个 backend 产物时怎么办。`best`（默认）按 "
+                        "vlm > pipeline > mupdf 择一并打印丢弃了哪些；`error` 直接报错。"
+                        "不能都留 —— (doc_id, page_index) 是主键。")
     d.add_argument("--render-dpi", type=int, default=200,
                    help="DPI for page rasters (default: 200, matching the resolution MinerU "
                         "crops at, so a derived crop is pixel-equivalent to a stored one).")
+
+    # ---- dataset-validate ----
+    dv = sub.add_parser(
+        "dataset-validate",
+        help="Check a pdfsys.page/v2 shard against the format contract.",
+    )
+    dv.add_argument("--shard", required=True, help="Dataset directory (contains pages/).")
+    dv.add_argument("--no-hash", action="store_true", default=False,
+                    help="Skip re-hashing every blob (faster, but content addressing "
+                         "goes unverified).")
 
     # ---- mnbvc-export ----
     m = sub.add_parser(
@@ -260,7 +274,12 @@ def cmd_dataset(args: argparse.Namespace) -> int:
 
     import pyarrow.parquet as pq
 
-    from .dataset_build import build_from_mineru_dir, iter_mineru_dirs, render_page_images
+    from .dataset_build import (
+        build_from_mineru_dir,
+        iter_mineru_dirs,
+        render_page_images,
+        select_documents,
+    )
     from .dataset_writer import DatasetWriter, pairs_table
 
     src = Path(args.from_mineru)
@@ -287,8 +306,23 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         print(f"Error: no *_content_list.json found under {src}", file=sys.stderr)
         return 1
 
+    doc_dirs, dropped = select_documents(doc_dirs)
+    if dropped:
+        if args.on_duplicate == "error":
+            for path, doc_id, why in dropped:
+                print(f"Error: {doc_id[:12]}… 有多份产物: {path} — {why}", file=sys.stderr)
+            print(
+                "Error: (doc_id, page_index) 是主键，重复会写出违约的 shard。"
+                "用 --on-duplicate best 择优，或先清理输入。",
+                file=sys.stderr,
+            )
+            return 1
+        for path, doc_id, why in dropped:
+            print(f"  - 跳过 {path}: {why}", file=sys.stderr)
+
     out_dir = Path(args.to_dir)
-    print(f"[pdfsys dataset] {len(doc_dirs)} documents → {out_dir}")
+    print(f"[pdfsys dataset] {len(doc_dirs)} documents → {out_dir}"
+          + (f"（去重丢弃 {len(dropped)} 份）" if dropped else ""))
 
     docs: list = []
     failures = 0
@@ -452,6 +486,25 @@ def _apply_run_meta(page, row):
     )
 
 
+def cmd_dataset_validate(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+
+    from .dataset_validate import validate_shard
+
+    report = validate_shard(Path(args.shard), verify_hashes=not args.no_hash)
+
+    print(f"[pdfsys dataset-validate] {args.shard}")
+    for line in report.findings:
+        print(str(line), file=sys.stderr if line.severity == "error" else sys.stdout)
+    print("  统计: " + json.dumps(report.stats, ensure_ascii=False))
+    if report.ok:
+        print(f"  ✓ 通过（{report.n_warnings} 条提示）")
+        return 0
+    print(f"  ✗ {report.n_errors} 个错误 / {report.n_warnings} 条提示", file=sys.stderr)
+    return 1
+
+
 def cmd_mnbvc_export(args: argparse.Namespace) -> int:
     from datetime import date
     from pathlib import Path
@@ -530,6 +583,8 @@ def main(argv: list[str] | None = None) -> int:
         ])
     elif args.command == "dataset":
         return cmd_dataset(args)
+    elif args.command == "dataset-validate":
+        return cmd_dataset_validate(args)
     elif args.command == "mnbvc-export":
         return cmd_mnbvc_export(args)
     elif args.command == "annotate":

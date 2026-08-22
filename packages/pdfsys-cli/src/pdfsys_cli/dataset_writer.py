@@ -323,6 +323,7 @@ class DatasetWriter:
         self._page_images: pq.ParquetWriter | None = None
         self._seen_images: set[str] = set()
         self._seen_page_images: set[str] = set()
+        self._last_doc_id: str | None = None
         self._buffer: list[dict[str, Any]] = []
         self.pages_written = 0
         self.docs_written = 0
@@ -337,7 +338,26 @@ class DatasetWriter:
         blobs: Sequence[ImageBlob] = (),
         page_rasters: Sequence[tuple[PageRecord, ImageBlob]] = (),
     ) -> None:
-        """Append one document: all its pages, its crops, and any page rasters."""
+        """Append one document: all its pages, its crops, and any page rasters.
+
+        Documents must arrive in ascending ``doc_id`` order — the shard
+        promises to be sorted by ``(doc_id, page_index)`` so that reassembling
+        a document is a sequential scan, and sorting the whole shard at close
+        time would mean buffering it. Out-of-order calls raise instead of
+        quietly producing a shard that violates its own contract.
+        """
+        doc_ids = {p.doc_id for p in pages}
+        if len(doc_ids) > 1:
+            raise ValueError(f"write() 一次只接受一个文档的页，收到 {len(doc_ids)} 个 doc_id")
+        if doc_ids:
+            doc_id = doc_ids.pop()
+            if self._last_doc_id is not None and doc_id <= self._last_doc_id:
+                raise ValueError(
+                    f"doc_id 必须递增：收到 {doc_id[:12]}… 但上一个是 "
+                    f"{self._last_doc_id[:12]}…。写入前请按 doc_id 排序。"
+                )
+            self._last_doc_id = doc_id
+
         self._write_images(blobs)
         self._write_page_images(page_rasters)
 

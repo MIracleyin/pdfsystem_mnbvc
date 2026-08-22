@@ -49,6 +49,7 @@ __all__ = [
     "build_from_mineru_dir",
     "build_from_extracted",
     "iter_mineru_dirs",
+    "select_documents",
     "page_geometry_from_pdf",
     "render_page_images",
 ]
@@ -62,6 +63,53 @@ def iter_mineru_dirs(root: Path) -> Iterator[Path]:
         if path.name.endswith("_content_list_v2.json"):
             continue
         yield path.parent
+
+
+#: 同一份 PDF 被多个 backend 跑过时，谁的产物进 shard。越靠前越优先——
+#: VLM 走的是版面模型，块结构最全；pipeline 次之；mupdf 只有原生文本块。
+#: 这只是没有质量分时的兜底启发式，有 --meta 的话应该按质量分选。
+_EXTRACTOR_RANK = {"vlm": 0, "pipeline": 1, "mupdf": 2}
+
+
+def select_documents(
+    doc_dirs: Sequence[Path],
+) -> tuple[list[Path], list[tuple[Path, str, str]]]:
+    """一个 doc_id 只留一份产物。
+
+    返回 ``(选中的目录, 丢弃的 (目录, doc_id, 原因))``。丢弃的必须被调用方
+    打出来——静默截断会让人以为覆盖全了。
+
+    不去重的后果是实打实的：``(doc_id, page_index)`` 是主键，同一份 PDF 被
+    pipeline 和 vlm 各跑一遍就会产生两行同主键的记录，shard 直接违约。
+    """
+    candidates: dict[str, list[tuple[tuple, Path, str]]] = {}
+    for doc_dir in doc_dirs:
+        content = _one(doc_dir, "*_content_list.json", exclude="_content_list_v2.json")
+        if content is None:
+            continue
+        doc_id = content.name[: -len("_content_list.json")]
+        _, backend = _page_geometry(doc_dir / f"{doc_id}_middle.json")
+        try:
+            n_items = len(json.loads(content.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            n_items = 0
+        rank = (_EXTRACTOR_RANK.get(backend, 99), -n_items, str(doc_dir))
+        candidates.setdefault(doc_id, []).append((rank, doc_dir, backend))
+
+    kept_by_id: list[tuple[str, Path]] = []
+    dropped: list[tuple[Path, str, str]] = []
+    for doc_id, options in candidates.items():
+        options.sort(key=lambda o: o[0])
+        kept_by_id.append((doc_id, options[0][1]))
+        winner = options[0][2]
+        for _, doc_dir, backend in options[1:]:
+            dropped.append(
+                (doc_dir, doc_id, f"同 doc_id 已选用 {winner} 的产物，这份是 {backend}")
+            )
+    # 按 doc_id 排序，而不是路径 —— shard 承诺按 (doc_id, page_index) 有序，
+    # 目录名和 doc_id 没有关系。
+    kept_by_id.sort()
+    return [path for _, path in kept_by_id], dropped
 
 
 def build_from_mineru_dir(
