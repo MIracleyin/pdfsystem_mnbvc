@@ -249,7 +249,7 @@ def test_wrong_n_bytes_is_caught(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_both_image_tables_populated_is_a_warning_not_an_error(tmp_path):
+def test_one_document_storing_both_crops_and_a_raster_is_a_warning(tmp_path):
     root = tmp_path / "shard"
     page = _page("1" * 64, 0, doc_n_pages=1, page_image_id=RASTER.image_id, render_dpi=200)
     with DatasetWriter(root) as w:
@@ -257,6 +257,19 @@ def test_both_image_tables_populated_is_a_warning_not_an_error(tmp_path):
     report = validate_shard(root)
     assert report.ok, "同时存两张表是浪费，不是违约"
     assert any(f.check == "images-mode" for f in report.findings)
+
+
+def test_different_documents_using_different_image_modes_is_fine(tmp_path):
+    """一个 shard 里混了 crops 链路和 pages 链路的产物，没有任何像素存两遍。"""
+    root = tmp_path / "shard"
+    raster_page = _page("2" * 64, 0, with_image=False, doc_n_pages=1,
+                        page_image_id=RASTER.image_id, render_dpi=200)
+    with DatasetWriter(root) as w:
+        w.write([_page("1" * 64, 0, doc_n_pages=1)], [IMG])
+        w.write([raster_page], [], [(raster_page, RASTER)])
+    report = validate_shard(root)
+    assert report.ok
+    assert not any(f.check == "images-mode" for f in report.findings)
 
 
 def test_orphan_image_is_a_warning(tmp_path):

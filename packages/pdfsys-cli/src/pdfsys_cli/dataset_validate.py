@@ -325,10 +325,16 @@ def _check_media_tables(
     report: Report,
     verify_hashes: bool,
 ) -> None:
-    if images and rasters:
+    # 只有当同一份文档既存了裁剪图又存了整页光栅时才是浪费。一个 shard 里
+    # 有的文档走 crops、有的走 pages 是合法的（比如混了不同链路的产物），
+    # 那种情况下没有任何像素被存两遍。
+    docs_with_crops = {p["doc_id"] for p in pages if p["image_ids"]}
+    docs_with_raster = {p["doc_id"] for p in pages if p["page_image_id"]}
+    both = docs_with_crops & docs_with_raster
+    if both:
         report.warn(
             "images-mode",
-            f"images/ 和 page_images/ 同时有数据（{len(images)} / {len(rasters)}）。"
+            f"{len(both)} 份文档同时存了裁剪图和整页光栅（如 {sorted(both)[0][:12]}…）。"
             f"MinerU 的裁剪图本就是整页光栅的子矩形，两个都存等于同一批像素存两遍",
         )
 
