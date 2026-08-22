@@ -48,6 +48,13 @@ uv sync                                    # install all workspace packages
 pdfsys init-config > pdfsys.yaml           # generate example config
 pdfsys run -c pdfsys.yaml --stages router  # run specific stage
 pdfsys run -c pdfsys.yaml                  # run full pipeline
+
+# L2 packaging
+pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl
+pdfsys dataset --from-mineru ./out --to ./dataset/v2 --images pages --pdf-dir ./data/pdfs
+pdfsys dataset-validate --shard ./dataset/v2   # format contract; run before publishing
+pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet
+
 python -m pdfsys_bench --pdf-dir ... --out ... # legacy bench CLI
 uv run ruff check .                        # lint
 uv run pytest tests/                       # test

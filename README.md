@@ -64,6 +64,9 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 | **VLM Parser** | ✅ Ready | mineru VLM mode (`mineru-api` HTTP, engine: transformers / mlx / vllm) for complex pages |
 | **Unified CLI** | ✅ Ready | `pdfsys run -c config.yaml --stages ...` |
 | **Annotation UI** | ✅ Ready | `pdfsys annotate` — PDF labeling + layout overlay |
+| **L2 Dataset Format** | ✅ Ready | `pdfsys.page/v2` — one row per page, interleaved image-text ([spec](docs/superpowers/specs/2026-08-22-page-level-parquet-dataset-design.md), [sample](docs/schema/doc_dataset.v2.sample.md)) |
+| **Format Validator** | ✅ Ready | `pdfsys dataset-validate` — contract check before publishing |
+| **MNBVC Export** | ✅ Ready | `pdfsys mnbvc-export` — → MNBVC multimodal block format ([mapping](docs/schema/mnbvc-mm-compat.md)) |
 
 ---
 
@@ -101,7 +104,33 @@ python -m pdfsys_bench \
   --markdown-dir ./extracted
 ```
 
-### Option 4: Docker deployment (recommended for GPU boxes)
+### Option 4: Package a run into the L2 dataset
+
+The pipeline's own output (`results.jsonl` + MinerU sidecars) is L1 telemetry.
+Turning it into the publishable dataset is a separate, explicit step:
+
+```bash
+# One row per PAGE, keyed (doc_id, page_index). Figure crops in images/.
+pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl --pairs
+
+# …or full-page rasters instead, with figures cut out by bbox on read.
+# The two image modes are mutually exclusive — MinerU's crops are already
+# sub-rectangles of a 200-dpi page render, so keeping both stores the same
+# pixels twice.
+pdfsys dataset --from-mineru ./out --to ./dataset/v2 \
+               --images pages --pdf-dir ./data/pdfs --render-dpi 200
+
+# Contract check. Run this before anything leaves the machine.
+pdfsys dataset-validate --shard ./dataset/v2
+
+# Re-emit in the MNBVC multimodal block format.
+pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet --dialect v2
+```
+
+Worked example of one real page:
+[`docs/schema/doc_dataset.v2.sample.md`](docs/schema/doc_dataset.v2.sample.md).
+
+### Option 5: Docker deployment (recommended for GPU boxes)
 
 Three microservices behind HTTP: `mineru` (parsers), `quality`
 (ModernBERT scorer), `cli` (orchestrator). CPU and GPU images, HF

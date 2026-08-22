@@ -21,8 +21,25 @@ PDF ──► Stage-A Router (XGBoost, CPU, ≤10ms)
                                  │
                           Quality Scorer (ModernBERT)
                                  │
-                          JSONL + Markdown output
+                 ┌───────────────┴───────────────┐
+                 ▼                               ▼
+   L1  results.jsonl + dataset.parquet    L2  pdfsys dataset
+       (run telemetry: routing probs,         (pdfsys.page/v2 — one row per
+        stage timings, error class)            PAGE, keyed (doc_id, page_index))
+                                                        │
+                                              pdfsys dataset-validate
+                                              (format contract; must pass
+                                               before anything is published)
+                                                        │
+                                              pdfsys mnbvc-export
+                                              (→ MNBVC mmDataBlock parquet)
 ```
+
+The split at the bottom is the one that matters: **L1 is telemetry, L2 is the
+product**. L1 answers "did the run behave?" — one flat row per PDF. L2 answers
+"what do I train on?" — one row per page, with the image/text interleaving
+encoded inline in the page text so the model-derived block structure stays a
+droppable column.
 
 ## Packages
 
