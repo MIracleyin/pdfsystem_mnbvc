@@ -63,8 +63,8 @@ image_ids = [
 - **`width_pt` / `height_pt` 来自 PDF**，不是渲染尺寸。
 - **`quality_score` 是 null，`doc_quality_score` 有值**：现在的打分器是文档级的。
   把一本书的分抄到每一页，是把「这本书平均还行」谎报成「这一页还行」，所以留空。
-- **`page_image_id` 是 null**：整页渲染图默认不建，`--page-images` 打开。它可以从
-  L0 的不可变 PDF 按任意 DPI 随时重建，而 OCR 文本重算要烧 GPU。
+- **`page_image_id` 是 null**：这份 shard 用的是默认的 `--images crops`。整页光栅
+  可以从 L0 的不可变 PDF 按任意 DPI 随时重建，而 OCR 文本重算要烧 GPU——见 §5。
 
 ---
 
@@ -149,8 +149,7 @@ ds[0]["image"]        # -> <PIL.JpegImagePlugin.JpegImageFile 1148x318>
 ```
 
 `image_id` 是图像字节的 SHA-256。内容寻址意味着扫描件里反复出现的抬头、公章、
-logo 在整个 shard 里只存一份。整页渲染图走另一张表 `page_images/`——
-200 dpi 的整页比裁剪图大一到两个数量级，混在一起会毁掉 row group 尺寸。
+logo 在整个 shard 里只存一份。这张表和 `page_images/` **互斥**——见 §5。
 
 ---
 
@@ -198,7 +197,7 @@ images, texts = to_interleaved(page["text"])   # 只吃字符串，不碰 blocks
 | i | `images[i]` | `texts[i]` |
 |---|---|---|
 | 0 | `null` | "54.3%；长度在 1000m 及以上的侵蚀沟道数量 14.70 万条，占总数的 22.0%，面积 8.5…" |
-| 1 | `7cf54628ac955693c93e…` | `null` |
+| 1 | `img://7cf54628ac9556…` | `null` |
 | 2 | `null` | "图 6-3-1 西北黄土高原区 各省（自治区）侵蚀沟道面积占全区沟道面积比例  按西北黄土高原区侵蚀类型统…" |
 
 等长、同一位置恰好一侧非空——与 OBELICS 逐字段兼容。**注意它接受的是 `text`**：
@@ -235,7 +234,7 @@ WHERE  p.source IN ('caption', 'content')
 
 ### 视图 4 —（页图, 页文本）对
 
-olmOCR-mix / DocLayNet 的形态。需要先用 `--page-images --pdf-dir ...` 构建：
+olmOCR-mix / DocLayNet 的形态。需要 `--images pages --pdf-dir ...`：
 
 ```sql
 SELECT pi.image, p.text
@@ -243,6 +242,56 @@ FROM   'pages/*.parquet'       p
 JOIN   'page_images/*.parquet' pi USING (doc_id, page_index)
 ```
 
-实测代价（612×792 学术论文页）：72 dpi ≈ 59 KiB、150 dpi ≈ 204 KiB、
-300 dpi ≈ 553 KiB，约是页文本的 40–60 倍，会占到 shard 的 ~92%。
-所以默认不建——整页图可以从 L0 的不可变 PDF 随时重建，OCR 文本不行。
+---
+
+## 5 · 同一页在 `--images pages` 下的样子
+
+MinerU 的裁剪图本身就是 200 dpi 整页光栅的子矩形（19 份文档 172 张裁剪图反推，
+中位 201.0 dpi，97% 落在 200±10）。所以裁剪图和整页图**只能二选一**——
+两个都存就是把同一批像素存两遍。`--images pages` 丢掉裁剪图，图块改由 bbox 寻址：
+
+```jsonc
+{ "idx": 1, "type": "table",
+  "image_id": null,   // crops 模式下是 sha256
+  "bbox": [0.134, 0.222, 0.874, 0.369]
+}
+{ "idx": 3, "type": "chart",
+  "image_id": null,   // crops 模式下是 sha256
+  "bbox": [0.155, 0.567, 0.460, 0.767]
+}
+```
+
+`text` 里的标记也跟着变：
+
+```markdown
+![](bbox://0.1550,0.5670,0.4600,0.7670)
+```
+
+```
+image_ids = []      # 空：没有裁剪图可引用
+page_image_id = "<200dpi 整页光栅的 sha256>"     # 由 --pdf-dir 渲出
+```
+
+读的时候把图块裁出来：
+
+```python
+from pdfsys_core import IMAGE_REF_RE, crop_region, parse_image_ref
+ref = parse_image_ref(IMAGE_REF_RE.search(page["text"]).group(1))
+im  = Image.open(io.BytesIO(raster["image"]["bytes"]))
+crop = im.crop(crop_region(ref.bbox, im.width, im.height))
+```
+
+保真度：这一页 `page_size=[558, 773] pt`，表格 bbox `[0.134, 0.222, 0.874, 0.369]`，
+MinerU 存的裁剪图是 `1148×318`；按 200 dpi 渲成 `1550×2147` 再裁得到 `1147×315`。
+差的 1–3 px 是 bbox 量化（0–1000 整数网格，每边约 ±1 px），不是信息损失。
+
+三种模式实测（同一份 4 页文档的 shard 总字节）：
+
+| `--images` | shard | 每页 | 
+|---|---|---|
+| `none` | 21.0 KiB | ~5 KiB |
+| `crops`（默认） | 87.7 KiB | ~22 KiB |
+| `pages` | 1601.7 KiB | ~400 KiB |
+
+默认是 `crops`：纯文本语料没必要为整页像素付 3.4×。要 (页图, 页文本) 对、
+或者想让图像存储彻底不依赖版面模型，就用 `pages`。

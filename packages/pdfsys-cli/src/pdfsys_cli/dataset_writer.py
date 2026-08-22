@@ -164,7 +164,10 @@ PAIR_SCHEMA = pa.schema(
     [
         ("doc_id", pa.string()),
         ("page_index", pa.int32()),
+        # Exactly one of these addresses the pixels: a stored crop, or a
+        # rectangle of the page raster. Mirrors the two inline marker kinds.
         ("image_id", pa.string()),
+        ("bbox", BBOX_TYPE),
         ("block_idx", pa.int32()),
         ("text", pa.large_string()),
         ("source", pa.dictionary(pa.int8(), pa.string())),
@@ -261,6 +264,11 @@ def pairs_table(docs: Iterable[Sequence[PageRecord]], **kwargs: Any) -> pa.Table
             "doc_id": p.doc_id,
             "page_index": p.page_index,
             "image_id": p.image_id,
+            "bbox": (
+                None
+                if p.bbox is None
+                else {"x0": p.bbox[0], "y0": p.bbox[1], "x1": p.bbox[2], "y1": p.bbox[3]}
+            ),
             "block_idx": p.block_idx,
             "text": p.text,
             "source": p.source,

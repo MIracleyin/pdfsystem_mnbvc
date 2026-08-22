@@ -9,7 +9,7 @@
 
 ## 1 · 一句话设计
 
-> **一行一页，主键 `(doc_id, page_index)` ——这个身份来自 PDF 本身，不是模型造出来的；页文本里内联 `![](img://<sha256>)` 标记来承载图文交错；模型派生的结构是旁边一列可丢弃的增强；图像字节走内容寻址侧表。**
+> **一行一页，主键 `(doc_id, page_index)` ——这个身份来自 PDF 本身，不是模型造出来的；页文本里内联图标记来承载图文交错；模型派生的结构是旁边一列可丢弃的增强；图像像素要么是裁剪图、要么是整页光栅，二选一，绝不两存。**
 
 交错视图、图文对视图都是投影，不是第二份存储。
 
@@ -111,7 +111,7 @@ v1 是一行一文档 + 嵌套 `blocks`。改成页的三个理由：
 *理由*：**悄悄消失的页，是你事后无法发现丢了的页。** 实测里那条空行照样拿到了整页渲染图——正好能看出抽取器漏了什么。
 
 **D3 · 图文交错编码进 `text`，而不是 `blocks`**
-页文本里内联 `![](img://<sha256>)`。`IMAGE_REF_RE` 是格式契约的一部分。
+页文本里内联图标记（两种形态见 D6c）。`IMAGE_REF_RE` 是格式契约的一部分。
 *理由*：这是"降低对解析模型依赖"的**实际着力点**。改成页级行本身并不能减轻依赖——如果图的位置只存在于 `blocks` 里，那只是把问题挪了个地方。交错关系放进字符串后，`blocks` 才真正变成可以整列丢掉的东西。
 *代价*：纯文本消费者要么容忍这一行标记，要么用 `strip_image_refs()` 剥掉（题注不会跟着丢，因为它单独成段）。
 
@@ -131,12 +131,41 @@ v1 是一行一文档 + 嵌套 `blocks`。改成页的三个理由：
 丢掉 ③ 损失的是 bbox 和题注，**不包括交错关系**。
 
 **D5 · 图像字节走内容寻址侧表**
-实测 19 份文档：`pages` 22 KiB、crops 66 KiB、整页图 1059 KiB——**整页图占 92% 的字节**。文本扫描不该被 JPEG 拖着走 row group。内容寻址（SHA-256）顺带把扫描件里反复出现的抬头、公章、logo 去了重（实测：一张图被三页引用，只存一份）。
+文本扫描不该被 JPEG 拖着走 row group。内容寻址（SHA-256）顺带把扫描件里反复出现的抬头、公章、logo 去了重（实测：一张图被三页引用，只存一份）。
 
-**D6 · 整页渲染图单独一张表，默认不生成**
-`page_images/` 与 `images/` 分开。
+**D6 · 裁剪图与整页图互斥，不能都存**
+这是全套设计里最省字节的一条，值得先摆证据。
+
+**MinerU 的裁剪图，本身就是 200 dpi 整页光栅的子矩形。** 反推 19 份文档、172 张裁剪图的隐含 DPI：
+
+```
+中位 201.0 dpi · p90 204.2 · 落在 200±10 的占 97.1%
+```
+
+拿真实数字对一次：`page_size=[558, 773] pt` 的页，某表格 bbox `[0.134, 0.222, 0.874, 0.369]`，MinerU 存的裁剪图是 `1148×318`；把同一页按 200 dpi 渲成 `1550×2147` 再按 bbox 裁，得到 `1147×315`。差的 1–3 px 是 bbox 量化——它存在 0–1000 整数网格上，每条边约 ±1 px。
+
+**所以同时保有 `images/` 和 `page_images/`，是把同一批像素存两遍。** 于是 `--images` 三选一：
+
+| 模式 | 存什么 | 实测每页 | 相对 |
+|---|---|---|---|
+| `crops`（默认） | 只有裁剪图 | ~90 KiB | 1.0× |
+| `pages` | 只有整页图，图块用 bbox 现裁 | ~311 KiB | 3.4× |
+| `none` | 不存像素 | ~5 KiB | — |
+| ~~both~~ | ~~两个都存~~ | ~~~401 KiB~~ | ~~4.4×~~ 已禁止 |
+
+（依据：200 dpi 整页 JPEG 311 KiB；裁剪图中位覆盖 7.3% 页面积、均值 11.4%；覆盖 10% 页面积的裁剪图约占页字节的 29%——JPEG 不随面积线性缩放。）
+
+`pages` 模式**在模型无关性上更强**：裁剪图是版面模型决定裁哪儿的产物，换个模型就变；整页光栅不变。它把图像存储压到了 D4 那张表的第 ① 级。换更好的版面模型后重裁即可，不必重渲、不必回 L0。
+
+默认仍是 `crops`，因为纯文本语料没必要为整页像素付 3.4×。
+
+**D6b · 整页图单独一张表，默认不生成**
 *理由一*：200 dpi 的整页比裁剪图大一到两个数量级，混在一起会毁掉 row group 尺寸。
-*理由二，更重要*：**整页图可以从 L0 的不可变 PDF 按任意 DPI 随时重建，而 OCR 文本和版面重算要烧 GPU。** 用途未定时，先把贵的存死、把便宜的留成可重建的槽位，比现在锁死一个 DPI 付 TB 级存储更划算。schema 里 `page_image_id` / `render_dpi` 一直在，`--page-images --pdf-dir ... --render-dpi N` 随时补建，整张表可以单独删掉而不动其他任何东西。
+*理由二*：**整页图可以从 L0 的不可变 PDF 按任意 DPI 随时重建，而 OCR 文本和版面重算要烧 GPU。** 用途未定时，先把贵的存死、把便宜的留成可重建的槽位。渲染默认 200 dpi——对齐 MinerU 的裁剪分辨率，现裁出来的图和它本来会存的那张在量化误差内一致。
+
+**D6c · 图标记有两种，都是自足的**
+`![](img://<sha256>)` 指向 `images/` 里的裁剪图；`![](bbox://x0,y0,x1,y1)` 指向本页光栅的一块矩形。后者只放几何——`doc_id` / `page_index` / `page_image_id` 行上已经有了，每个标记再抄一遍是冗余。两种都能脱离 `blocks` 解析（D3 的性质保住了），`parse_image_ref()` 负责分派。
+*边界情况*：`pages` 模式下 bbox 归一化失败的块**保留裁剪图**——否则那张图彻底不可达，比一点冗余糟糕得多。
 
 **D7 · 文档级字段反规范化到每页**
 `source_uri` / `provenance` / `doc_lang` / `doc_quality_score` / `router_ocr_prob` / `doc_n_pages` 每页各存一份。
@@ -174,8 +203,8 @@ MINT-1T-PDF 和 PMC-InterCPT 都把元数据塞进 JSON 字符串，前者的后
 ```
 dataset/v2/lang=zho_Hans/source=arxiv/qb=high/
 ├── pages/shard-00000.parquet          # 必需，按 (doc_id, page_index) 有序
-├── images/shard-00000.parquet         # 裁剪图，内容寻址
-├── page_images/shard-00000.parquet    # 整页渲染图，可选、可重建
+├── images/shard-00000.parquet         # 裁剪图        ┐ 互斥：二选一
+├── page_images/shard-00000.parquet    # 整页渲染图     ┘ 见 D6
 ├── pairs/shard-00000.parquet          # 可选物化视图
 └── shard-00000.meta.json
 ```
@@ -190,8 +219,8 @@ dataset/v2/lang=zho_Hans/source=arxiv/qb=high/
 | `width_pt` `height_pt` | float32 | 页面尺寸，PDF 点 |
 | `rotation` | int16 | 页面旋转角 |
 | **内容** | | |
-| `text` | large_string | 页的 Markdown 渲染；图为 `![](img://<sha256>)`，**这一列承载交错关系** |
-| `image_ids` | list\<string\> | 本页引用的裁剪图，首次出现序 |
+| `text` | large_string | 页的 Markdown 渲染；图为 `![](img://<sha256>)` 或 `![](bbox://x0,y0,x1,y1)`，**这一列承载交错关系** |
+| `image_ids` | list\<string\> | 本页引用的裁剪图，首次出现序；`pages` 模式下为空 |
 | `page_image_id` `render_dpi` | string / int16 | 整页渲染图，join `page_images`；默认 null |
 | `blocks` | list\<struct\> | 模型派生结构，可为 null，见 5.2 |
 | **出处** | | |
@@ -218,7 +247,7 @@ dataset/v2/lang=zho_Hans/source=arxiv/qb=high/
 | `caption` `footnote` | string | 人写的图/表题注与脚注 |
 | `alt` | string | 模型生成的图像描述（MinerU VLM `content`），永不进 `text` |
 | `bbox` | struct\<x0,y0,x1,y1: float32\> | 归一化 [0,1]，左上原点；不可归一化时为 null |
-| `image_id` | string | 图像字节的 SHA-256，join 键 |
+| `image_id` | string | 裁剪图的 SHA-256，join 键；`pages` 模式下为 null，改由 `bbox` 寻址 |
 | `mentions` | list\<int32\> | 正文中按图号引用本图的块 `idx`，**可能在别的页上** |
 
 `page` 字段刻意不进 Arrow struct——它在一行里是常量，等于 `page_index`。
@@ -278,23 +307,30 @@ FROM   'pages/*.parquet'       p
 JOIN   'page_images/*.parquet' pi USING (doc_id, page_index)
 ```
 
-olmOCR-mix / DocLayNet 的形态，需要先用 `--page-images` 构建。
+olmOCR-mix / DocLayNet 的形态，需要 `--images pages`。同一张光栅还负责按 `bbox` 现裁图块：
+
+```python
+from pdfsys_core import IMAGE_REF_RE, crop_region, parse_image_ref
+ref = parse_image_ref(IMAGE_REF_RE.search(page["text"]).group(1))
+crop = Image.open(io.BytesIO(raster["image"]["bytes"])).crop(
+    crop_region(ref.bbox, raster["width"], raster["height"]))
+```
 
 ---
 
 ## 7 · 规模
 
-19 份单页真实文档 + 一份 4 页拼接文档，zstd：
+同一份 4 页文档跑三种模式，实测 shard 总字节：
 
-| 表 | 每页字节 | 占比 |
-|---|---|---|
-| `pages` | ≈ 5.6 KiB | 2% |
-| `images`（裁剪图） | ≈ 16 KiB | 6% |
-| `page_images`（150 dpi） | 204–348 KiB | **92%** |
+| `--images` | shard | 每页 | 说明 |
+|---|---|---|---|
+| `none` | 21.0 KiB | ~5 KiB | 只有文本和结构 |
+| `crops`（默认） | 87.7 KiB | ~22 KiB | 加裁剪图 |
+| `pages` | 1601.7 KiB | ~400 KiB | 加 200 dpi 整页图，无裁剪图 |
 
-整页渲染图实测：72 dpi ≈ 59 KiB、150 dpi ≈ 204 KiB、300 dpi ≈ 553 KiB（612×792 的学术论文页）。
+整页渲染图实测（612×792 的学术论文页）：72 dpi ≈ 59 KiB、150 dpi ≈ 204 KiB、200 dpi ≈ 311 KiB、300 dpi ≈ 553 KiB。
 
-也就是说整页图大约是页文本的 **40–60 倍**。按 xsy-01 那 21.8 万份估算——假设平均 20 页/份，共约 436 万页——文本约 24 GB，150 dpi 整页图约 1.1 TB。**平均页数是假设，本地 bench 全是单页 PDF（150/150），量不出真实分布**，跑一次全量统计再定。
+按 xsy-01 那 21.8 万份估算——假设平均 20 页/份、约 436 万页——`none` 约 22 GB，`crops` 约 96 GB，`pages` 约 1.7 TB。**平均页数是假设，本地 bench 全是单页 PDF（150/150），量不出真实分布**，跑一次全量统计再定。
 
 分片仍按 PRD §4.7：~1 GB/shard，路径 `v2/lang=/source=/qb=/shard-NNNNN`。
 
@@ -326,9 +362,9 @@ olmOCR-mix / DocLayNet 的形态，需要先用 `--page-images` 构建。
 # 常规
 pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl --pairs
 
-# 加整页渲染图（需要源 PDF，按 sha256 匹配）
+# 改存整页渲染图，图块用 bbox 现裁（需要源 PDF，按 sha256 匹配）
 pdfsys dataset --from-mineru ./out --to ./dataset/v2 \
-               --page-images --pdf-dir ./data/pdfs --render-dpi 150
+               --images pages --pdf-dir ./data/pdfs --render-dpi 200
 
 # 只要稳定脊柱，丢掉模型派生的 blocks
 pdfsys dataset --from-mineru ./out --to ./dataset/v2 --no-blocks

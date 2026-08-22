@@ -25,6 +25,7 @@ Usage::
 
     # Pack a run's MinerU output into a pdfsys.page/v2 Parquet shard
     pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl
+    pdfsys dataset --from-mineru ./out --to ./dataset/v2 --images pages --pdf-dir ./data/pdfs
 """
 
 from __future__ import annotations
@@ -129,15 +130,19 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--no-blocks", action="store_true", default=False,
                    help="Write the model-derived `blocks` column null. `text` still carries "
                         "the image interleaving; you lose bboxes, captions and block types.")
-    d.add_argument("--page-images", action="store_true", default=False,
-                   help="Also render a full-page raster per page into page_images/. "
-                        "Needs --pdf-dir. Off by default: rasters are rebuildable from the "
-                        "source PDF at any DPI, so freezing one now costs TB for nothing.")
+    d.add_argument("--images", default="crops", choices=("crops", "pages", "none"),
+                   help="How image pixels are stored. `crops` (default): only the cropped "
+                        "figures, ~90 KiB/page. `pages`: only full-page rasters, with figures "
+                        "addressed by bbox and cut out on read, ~311 KiB/page — needs "
+                        "--pdf-dir. `none`: no pixels at all. They are mutually exclusive "
+                        "because MinerU's crops are already sub-rectangles of a 200-dpi page "
+                        "render, so keeping both stores the same pixels twice.")
     d.add_argument("--pdf-dir", default=None,
-                   help="Directory of source PDFs, required by --page-images. Matched to "
+                   help="Directory of source PDFs, required by --images pages. Matched to "
                         "documents by sha256.")
-    d.add_argument("--render-dpi", type=int, default=150,
-                   help="DPI for --page-images (default: 150).")
+    d.add_argument("--render-dpi", type=int, default=200,
+                   help="DPI for page rasters (default: 200, matching the resolution MinerU "
+                        "crops at, so a derived crop is pixel-equivalent to a stored one).")
 
     # ---- release ----
     r = sub.add_parser("release", help="Manage system_release.toml component pins.")
@@ -239,10 +244,15 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         print(f"Error: not a directory: {src}", file=sys.stderr)
         return 1
 
+    want_rasters = args.images == "pages"
     pdf_index: dict[str, Path] = {}
-    if args.page_images:
+    if want_rasters:
         if not args.pdf_dir:
-            print("Error: --page-images requires --pdf-dir.", file=sys.stderr)
+            print(
+                "Error: --images pages requires --pdf-dir (figures are cut out of the "
+                "page raster, so the raster has to exist).",
+                file=sys.stderr,
+            )
             return 1
         pdf_index = _index_pdfs_by_sha256(Path(args.pdf_dir))
         print(f"[pdfsys dataset] indexed {len(pdf_index)} source PDFs for rasterisation")
@@ -270,6 +280,7 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 pages, blobs = build_from_mineru_dir(
                     doc_dir,
                     link_figure_mentions=not args.no_mentions,
+                    images=args.images,
                 )
             except Exception as e:  # one bad document must not kill the shard
                 failures += 1
@@ -281,7 +292,7 @@ def cmd_dataset(args: argparse.Namespace) -> int:
             )
 
             rasters: list = []
-            if args.page_images:
+            if want_rasters:
                 pdf_path = pdf_index.get(pages[0].doc_id) if pages else None
                 if pdf_path is None:
                     missing_pdfs += 1
@@ -334,9 +345,10 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 "shard": args.shard,
                 "documents": n_docs,
                 "pages": n_pages,
-                "images": n_images,
-                "page_images": n_page_images,
-                "render_dpi": args.render_dpi if args.page_images else None,
+                "n_images": n_images,
+                "n_page_images": n_page_images,
+                "images_mode": args.images,
+                "render_dpi": args.render_dpi if want_rasters else None,
                 "has_blocks": not args.no_blocks,
                 "failed": failures,
                 "source": str(src),

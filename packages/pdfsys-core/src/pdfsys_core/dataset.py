@@ -78,9 +78,13 @@ __all__ = [
     "IMAGE_REF_RE",
     "Block",
     "ImageBlob",
+    "ImageRef",
     "PageRecord",
     "ImageTextPair",
     "image_ref",
+    "bbox_ref",
+    "parse_image_ref",
+    "crop_region",
     "strip_image_refs",
     "image_id_for",
     "probe_image",
@@ -123,6 +127,12 @@ class BlockType(StrEnum):
     ASIDE = "aside"
 
 
+#: Block types that can carry pixels — a figure, a chart, or a table (whose
+#: crop is worth pairing with its HTML transcription).
+_PIXEL_BEARING_TYPES = frozenset(
+    {BlockType.IMAGE, BlockType.CHART, BlockType.TABLE}
+)
+
 #: Blocks that are page decoration rather than document content. Docling calls
 #: this "furniture"; keeping the distinction lets us drop running headers and
 #: page numbers from the training text without losing them from the record.
@@ -137,13 +147,77 @@ FURNITURE_TYPES = frozenset(
 
 #: The inline marker that carries the image/text interleaving inside ``text``.
 #: This regex is part of the format contract: splitting a page's text on it
-#: yields the interleaved sequence without touching ``blocks``.
-IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(img://([0-9a-f]{64})\)")
+#: yields the interleaved sequence without touching ``blocks``. Group 1 is the
+#: *reference*, of which there are two kinds — see :func:`parse_image_ref`.
+IMAGE_REF_RE = re.compile(
+    r"!\[[^\]]*\]\((img://[0-9a-f]{64}|bbox://[\d.]+,[\d.]+,[\d.]+,[\d.]+)\)"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ImageRef:
+    """A resolved inline image reference.
+
+    ``kind="blob"``
+        Addresses a stored crop in the ``images`` table by content hash.
+    ``kind="region"``
+        Addresses a rectangle of this page's raster. No crop is stored; the
+        pixels are obtained by cropping ``page_images`` at ``bbox``. This
+        loses almost nothing because MinerU's crops are *already*
+        sub-rectangles of a 200-dpi page render — storing both is storing the
+        same pixels twice. "Almost": bboxes live on a 0-1000 integer grid, so
+        a derived crop can differ from MinerU's by roughly a pixel per edge.
+    """
+
+    kind: str  # "blob" | "region"
+    image_id: str | None = None
+    bbox: tuple[float, float, float, float] | None = None
 
 
 def image_ref(image_id: str) -> str:
-    """Render the inline marker for an image. Inverse of :data:`IMAGE_REF_RE`."""
+    """Marker addressing a stored crop by content hash."""
     return f"![](img://{image_id})"
+
+
+def bbox_ref(bbox: tuple[float, float, float, float]) -> str:
+    """Marker addressing a rectangle of this page's raster.
+
+    Only the geometry goes in: the row already carries ``doc_id``,
+    ``page_index`` and ``page_image_id``, so repeating them per marker would
+    be redundant. The marker still resolves without reading ``blocks``, which
+    is the property that matters.
+    """
+    return "![](bbox://" + ",".join(f"{v:.4f}" for v in bbox) + ")"
+
+
+def parse_image_ref(ref: str) -> ImageRef | None:
+    """Resolve a reference captured by :data:`IMAGE_REF_RE` (group 1)."""
+    if ref.startswith("img://"):
+        return ImageRef(kind="blob", image_id=ref[len("img://") :])
+    if ref.startswith("bbox://"):
+        try:
+            x0, y0, x1, y1 = (float(v) for v in ref[len("bbox://") :].split(","))
+        except ValueError:
+            return None
+        return ImageRef(kind="region", bbox=(x0, y0, x1, y1))
+    return None
+
+
+def crop_region(
+    bbox: tuple[float, float, float, float], width_px: int, height_px: int
+) -> tuple[int, int, int, int]:
+    """Normalized bbox → integer pixel box for cropping a page raster.
+
+    The one operation every consumer of a region reference needs. Matches
+    PIL's ``Image.crop`` argument order.
+    """
+    x0, y0, x1, y1 = bbox
+    return (
+        round(x0 * width_px),
+        round(y0 * height_px),
+        round(x1 * width_px),
+        round(y1 * height_px),
+    )
 
 
 def strip_image_refs(text: str) -> str:
@@ -284,15 +358,21 @@ class PageRecord:
 
 @dataclass(frozen=True, slots=True)
 class ImageTextPair:
-    """One image–text pair extracted from a page."""
+    """One image–text pair extracted from a page.
+
+    The image is addressed one of two ways, mirroring the inline markers:
+    ``image_id`` names a stored crop, or ``bbox`` names a rectangle of the
+    page raster. Exactly one is set.
+    """
 
     doc_id: str
     page_index: int
-    image_id: str
     block_idx: int
     text: str
     #: Which tier supplied the text — see :func:`iter_pairs`.
     source: str
+    image_id: str | None = None
+    bbox: tuple[float, float, float, float] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +698,16 @@ def _render_block(b: Block) -> str:
     if b.type is BlockType.FORMULA:
         return f"$$\n{b.text}\n$$" if b.text else ""
     if b.type in (BlockType.IMAGE, BlockType.CHART):
-        lines = [image_ref(b.image_id) if b.image_id else "![]()"]
+        # Blob reference when a crop was stored, region reference when the
+        # pixels are to be cut out of the page raster instead. No mode flag
+        # needed — which one applies is visible on the block itself.
+        if b.image_id:
+            marker = image_ref(b.image_id)
+        elif b.bbox is not None:
+            marker = bbox_ref(b.bbox)
+        else:
+            marker = "![]()"
+        lines = [marker]
         if b.caption:
             lines.append(b.caption)
         if b.footnote:
@@ -748,8 +837,18 @@ def iter_pairs(
     order = sorted(by_idx)
 
     for page in pages:
+        # In `pages` mode there are no crop blobs: a figure is a rectangle of
+        # the page raster. Pair it anyway — the pixels are just as reachable,
+        # and skipping them would silently drop every table-crop/HTML pair.
+        has_raster = page.page_image_id is not None
         for b in page.blocks:
-            if not b.has_image:
+            region = (
+                has_raster
+                and b.image_id is None
+                and b.bbox is not None
+                and b.type in _PIXEL_BEARING_TYPES
+            )
+            if not (b.has_image or region):
                 continue
             candidates: list[tuple[str, str | None]] = []
             if b.text:
@@ -784,10 +883,11 @@ def iter_pairs(
                     yield ImageTextPair(
                         doc_id=page.doc_id,
                         page_index=page.page_index,
-                        image_id=b.image_id,  # type: ignore[arg-type]
                         block_idx=b.idx,
                         text=text.strip(),
                         source=source,
+                        image_id=b.image_id,
+                        bbox=None if b.image_id else b.bbox,
                     )
                     break
 

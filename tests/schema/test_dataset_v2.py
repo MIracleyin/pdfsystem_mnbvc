@@ -22,12 +22,15 @@ from pdfsys_core import (
     Block,
     BlockType,
     PageRecord,
+    bbox_ref,
     blocks_from_content_list,
     blocks_from_segments,
+    crop_region,
     image_id_for,
     image_ref,
     iter_pairs,
     link_mentions,
+    parse_image_ref,
     probe_image,
     render_markdown,
     split_pages,
@@ -141,7 +144,7 @@ def test_declared_page_count_never_truncates_observed_pages():
 
 def test_text_carries_the_image_marker(pages):
     assert image_ref(IMG_A) in pages[1].text
-    assert IMAGE_REF_RE.findall(pages[1].text) == [IMG_A]
+    assert IMAGE_REF_RE.findall(pages[1].text) == [f"img://{IMG_A}"]
 
 
 def test_interleaved_view_needs_only_the_string(pages):
@@ -151,12 +154,13 @@ def test_interleaved_view_needs_only_the_string(pages):
     assert len(images) == len(texts)
     for img, txt in zip(images, texts, strict=True):
         assert (img is None) != (txt is None)
-    assert images.count(IMG_A) == 1
+    refs = [parse_image_ref(i) for i in images if i]
+    assert [r.image_id for r in refs] == [IMG_A]
 
 
 def test_interleaved_places_caption_immediately_after_its_image(pages):
     images, texts = to_interleaved(pages[1].text)
-    pos = images.index(IMG_A)
+    pos = images.index(f"img://{IMG_A}")
     assert texts[pos + 1].startswith("图 1 系统架构")
 
 
@@ -179,7 +183,66 @@ def test_strip_image_refs_keeps_captions():
 
 
 def test_image_ref_and_regex_are_inverses():
-    assert IMAGE_REF_RE.fullmatch(image_ref(IMG_A)).group(1) == IMG_A
+    ref = parse_image_ref(IMAGE_REF_RE.fullmatch(image_ref(IMG_A)).group(1))
+    assert (ref.kind, ref.image_id) == ("blob", IMG_A)
+
+
+# ---------------------------------------------------------------------------
+# region references: a figure addressed as a rectangle of the page raster
+# ---------------------------------------------------------------------------
+
+BOX = (0.134, 0.222, 0.874, 0.369)
+
+
+def test_bbox_ref_and_regex_are_inverses():
+    ref = parse_image_ref(IMAGE_REF_RE.fullmatch(bbox_ref(BOX)).group(1))
+    assert ref.kind == "region"
+    assert ref.bbox == pytest.approx(BOX)
+
+
+def test_renderer_emits_a_region_ref_when_no_crop_was_stored():
+    """images="pages" drops the crop blob and lets the bbox address the
+    pixels — MinerU's crops are sub-rectangles of a 200-dpi page render, so
+    storing both is storing the same pixels twice."""
+    block = Block(idx=0, page=0, type=BlockType.IMAGE, bbox=BOX, caption="图 1 x")
+    text = render_markdown([block])
+    (ref,) = [parse_image_ref(r) for r in IMAGE_REF_RE.findall(text)]
+    assert ref.kind == "region"
+    assert ref.bbox == pytest.approx(BOX)
+    assert "图 1 x" in text, "the caption still follows the marker"
+
+
+def test_renderer_prefers_the_blob_ref_when_a_crop_exists():
+    block = Block(idx=0, page=0, type=BlockType.IMAGE, bbox=BOX, image_id=IMG_A)
+    (ref,) = [parse_image_ref(r) for r in IMAGE_REF_RE.findall(render_markdown([block]))]
+    assert (ref.kind, ref.image_id) == ("blob", IMG_A)
+
+
+def test_interleaved_and_strip_handle_region_refs():
+    text = f"before\n\n{bbox_ref(BOX)}\n\nafter"
+    images, _ = to_interleaved(text)
+    assert [i for i in images if i] == [bbox_ref(BOX)[4:-1]]
+    assert "bbox://" not in strip_image_refs(text)
+    assert strip_image_refs(text) == "before\n\nafter"
+
+
+def test_crop_region_reproduces_the_crop_mineru_would_have_stored():
+    """A 558x773pt page at 200 dpi is 1550x2147 px; MinerU's stored crop for
+    this bbox is 1148x318.
+
+    We land on 1147x315 — off by 1 and 3 px. That is the bbox quantization,
+    not a bug: bboxes live on a 0-1000 integer grid, so each edge carries up
+    to +/-0.5/1000 of the page, about 1 px per edge at this resolution. Worth
+    asserting the size of the gap so a real regression cannot hide inside it.
+    """
+    left, top, right, bottom = crop_region(BOX, 1550, 2147)
+    assert abs((right - left) - 1148) <= 4
+    assert abs((bottom - top) - 318) <= 4
+
+
+@pytest.mark.parametrize("bad", ["img://short", "bbox://1,2,3", "http://x", "bbox://a,b,c,d"])
+def test_parse_image_ref_rejects_junk(bad):
+    assert parse_image_ref(bad) is None or parse_image_ref(bad).bbox is None
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +465,50 @@ def test_pairs_fall_back_to_model_description():
 def test_pairs_emit_at_most_one_row_per_image(pages):
     ids = [p.image_id for p in iter_pairs(pages)]
     assert len(ids) == len(set(ids)) == 2
+
+
+def test_pairs_survive_dropping_the_crop_blobs(pages):
+    """images="pages" nulls image_id and lets bbox address the pixels. Pairs
+    must keep coming — otherwise every table-crop/HTML pair silently vanishes
+    the moment you stop storing crops."""
+    import dataclasses
+
+    stripped = tuple(
+        dataclasses.replace(
+            p,
+            page_image_id="c" * 64,
+            render_dpi=200,
+            image_ids=(),
+            blocks=tuple(
+                dataclasses.replace(b, image_id=None) if b.image_id else b
+                for b in p.blocks
+            ),
+        )
+        for p in pages
+    )
+    crops = {(p.image_id, p.source) for p in iter_pairs(pages)}
+    regions = list(iter_pairs(stripped))
+    assert len(regions) == len(crops) == 2
+    assert {p.source for p in regions} == {s for _, s in crops}
+    assert all(p.image_id is None and p.bbox is not None for p in regions)
+
+
+def test_pairs_are_not_invented_for_regions_without_a_raster(pages):
+    """No page raster and no crop means no reachable pixels — pointing a pair
+    at a rectangle of an image that does not exist would be worse than none."""
+    import dataclasses
+
+    stripped = tuple(
+        dataclasses.replace(
+            p,
+            blocks=tuple(
+                dataclasses.replace(b, image_id=None) if b.image_id else b
+                for b in p.blocks
+            ),
+        )
+        for p in pages
+    )
+    assert list(iter_pairs(stripped)) == []
 
 
 def test_pairs_skip_images_with_no_usable_text():

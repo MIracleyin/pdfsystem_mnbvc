@@ -232,6 +232,39 @@ def test_page_raster_ids_are_not_mixed_into_the_crops_table(tmp_path):
     assert crops == {IMG_A.image_id}
 
 
+def test_a_page_addressed_only_by_bbox_needs_no_crops_table(tmp_path):
+    """images="pages": the figure is a rectangle of the page raster, so no
+    crop blob is stored and `text` carries a region reference instead."""
+    import dataclasses
+
+    from pdfsys_core import IMAGE_REF_RE, parse_image_ref, render_markdown
+
+    blocks = (
+        Block(idx=0, page=0, type=BlockType.TEXT, text="正文内容"),
+        Block(idx=1, page=0, type=BlockType.IMAGE, caption="图 1", bbox=(0.1, 0.1, 0.5, 0.5)),
+    )
+    page = dataclasses.replace(
+        _page("1" * 64, 0),
+        blocks=blocks,
+        text=render_markdown(blocks),
+        image_ids=(),
+        page_image_id=PAGE_RASTER.image_id,
+        render_dpi=200,
+    )
+    with DatasetWriter(tmp_path) as w:
+        w.write([page], [], [(page, PAGE_RASTER)])
+
+    assert not (tmp_path / "images").exists(), "no duplicated pixels"
+    row = pq.read_table(tmp_path / "pages").to_pylist()[0]
+    assert row["image_ids"] == []
+    assert row["page_image_id"] == PAGE_RASTER.image_id
+    (ref,) = [parse_image_ref(r) for r in IMAGE_REF_RE.findall(row["text"])]
+    assert ref.kind == "region"
+    assert ref.bbox == pytest.approx((0.1, 0.1, 0.5, 0.5))
+    # Everything needed to cut the figure out is on this row alone.
+    assert row["blocks"][1]["bbox"] is not None
+
+
 # ---------------------------------------------------------------------------
 # blocks are droppable, the interleaving is not
 # ---------------------------------------------------------------------------
@@ -247,7 +280,7 @@ def test_no_blocks_keeps_text_and_the_interleaving(tmp_path):
     assert row["blocks"] is None
     # The whole point: the view still works.
     images, _texts = to_interleaved(row["text"])
-    assert IMG_A.image_id in images
+    assert f"img://{IMG_A.image_id}" in images
     assert row["image_ids"] == [IMG_A.image_id]
     assert row["n_chars"] > 0
 

@@ -18,6 +18,7 @@ rebuildable from L0 at any DPI, so the default is not to build them.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 from collections.abc import Iterator, Sequence
@@ -37,7 +38,14 @@ from pdfsys_core import (
 
 _LOG = logging.getLogger(__name__)
 
+#: How image pixels are stored. These are mutually exclusive on purpose:
+#: MinerU's crops are sub-rectangles of a 200-dpi page render (measured at
+#: 200.1 dpi across 172 crops in 19 documents), so keeping both tables means
+#: storing the same pixels twice.
+IMAGE_MODES = ("crops", "pages", "none")
+
 __all__ = [
+    "IMAGE_MODES",
     "build_from_mineru_dir",
     "build_from_extracted",
     "iter_mineru_dirs",
@@ -61,13 +69,20 @@ def build_from_mineru_dir(
     doc_id: str | None = None,
     extractor: str = "",
     link_figure_mentions: bool = True,
+    images: str = "crops",
     **page_fields: Any,
 ) -> tuple[tuple[PageRecord, ...], list[ImageBlob]]:
     """Re-encode one MinerU output directory as page rows.
 
     ``doc_id`` defaults to the sha256 prefix MinerU uses for its filenames,
     which is the source PDF's sha256 as written by our parsers.
+
+    ``images`` selects how image pixels are stored — see :data:`IMAGE_MODES`.
+    ``"pages"`` returns no crop blobs at all (build the page rasters with
+    :func:`render_page_images` instead); ``"none"`` stores no pixels.
     """
+    if images not in IMAGE_MODES:
+        raise ValueError(f"images must be one of {IMAGE_MODES}, got {images!r}")
     doc_dir = Path(doc_dir)
     content_path = _one(doc_dir, "*_content_list.json", exclude="_content_list_v2.json")
     if content_path is None:
@@ -86,6 +101,20 @@ def build_from_mineru_dir(
     blocks = blocks_from_content_list(items, image_ids=path_to_id)
     if link_figure_mentions:
         blocks = link_mentions(blocks)
+
+    if images == "pages":
+        # The crop is a rectangle of the page raster; drop the duplicate blob
+        # and let the bbox address it. Blocks whose bbox could not be
+        # normalized keep their blob — otherwise the image becomes
+        # unreachable, which is worse than a little redundancy.
+        blocks = tuple(
+            dataclasses.replace(b, image_id=None)
+            if b.image_id and b.bbox is not None
+            else b
+            for b in blocks
+        )
+    elif images == "none":
+        blocks = tuple(dataclasses.replace(b, image_id=None) for b in blocks)
 
     pages = split_pages(
         blocks,
@@ -138,9 +167,17 @@ def build_from_extracted(
 
 
 def render_page_images(
-    pdf_path: Path, pages: Sequence[PageRecord], *, dpi: int = 150
+    pdf_path: Path, pages: Sequence[PageRecord], *, dpi: int = 200
 ) -> list[tuple[PageRecord, ImageBlob]]:
     """Render full-page rasters for a document.
+
+    The default of 200 dpi is not arbitrary: MinerU produces its crops by
+    cutting them out of a 200-dpi page render (measured at 200.1 dpi median
+    over 172 crops). Rendering at the same resolution makes a crop taken from
+    this raster match the one MinerU would have stored to within the bbox
+    quantization — bboxes are integers on a 0-1000 grid, so each edge can be
+    off by about a pixel. That is what lets ``images="pages"`` drop the crop
+    table without meaningfully losing anything.
 
     Opt-in and deliberately not part of the default build: a page raster is
     reproducible from the immutable L0 PDF at whatever DPI a downstream task
@@ -151,8 +188,6 @@ def render_page_images(
     ``page_image_id`` / ``render_dpi``; the caller must use these updated
     records, not the originals.
     """
-    import dataclasses
-
     import pymupdf  # lazy: heavy, and only this path needs it
 
     out: list[tuple[PageRecord, ImageBlob]] = []
@@ -225,8 +260,6 @@ def _page_geometry(middle_path: Path) -> tuple[list[tuple[float, float]], str]:
 def _with_geometry(
     page: PageRecord, page_sizes: Sequence[tuple[float, float]]
 ) -> PageRecord:
-    import dataclasses
-
     if not (0 <= page.page_index < len(page_sizes)):
         return page
     width, height = page_sizes[page.page_index]

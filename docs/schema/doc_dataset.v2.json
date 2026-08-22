@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://pdfsys-mnbvc.dev/schema/doc_dataset/v2.json",
   "title": "pdfsys.page/2",
-  "description": "L2 publish format. The row unit is the PAGE, keyed (doc_id, page_index) — an identity the PDF gives us rather than one a layout model invents. Three Parquet tables: `pages` (required), `images` (unique crops, content-addressed) and `page_images` (full-page rasters, optional and rebuildable from L0). The image/text interleaving is encoded inline in `pages.text`, so the interleaved and pair views survive a shard written without `blocks`. Canonical implementation: pdfsys_core.dataset + pdfsys_cli.dataset_writer.",
+  "description": "L2 publish format. The row unit is the PAGE, keyed (doc_id, page_index) — an identity the PDF gives us rather than one a layout model invents. Three Parquet tables: `pages` (required), `images` (unique figure crops, content-addressed) and `page_images` (full-page rasters). `images` and `page_images` are MUTUALLY EXCLUSIVE by build mode: MinerU's crops are already sub-rectangles of a 200-dpi page render, so populating both stores the same pixels twice. The image/text interleaving is encoded inline in `pages.text`, so the interleaved and pair views survive a shard written without `blocks`. Canonical implementation: pdfsys_core.dataset + pdfsys_cli.dataset_writer.",
   "type": "object",
   "properties": {
     "pages": {
@@ -40,7 +40,7 @@
     },
     "BBox": {
       "title": "BBox",
-      "description": "Normalized bounding box, [0, 1], top-left origin, y down. Null when the source coordinates could not be rescaled — an absent bbox is honest, a wrong one silently corrupts every downstream crop.",
+      "description": "Normalized bounding box, [0, 1], top-left origin, y down. Null when the source coordinates could not be rescaled — an absent bbox is honest, a wrong one silently corrupts every downstream crop. In `pages` mode this doubles as the image's address, so a block whose bbox could not be normalized keeps its crop blob instead.",
       "type": [
         "object",
         "null"
@@ -153,7 +153,7 @@
             "string",
             "null"
           ],
-          "description": "SHA-256 of the image bytes; join key into the images table. Non-null for image/chart blocks and for table blocks whose crop was kept."
+          "description": "SHA-256 of a stored crop; join key into the images table. Null in `pages` mode, where `bbox` is the address: crop the page raster at those coordinates. Also null for blocks that carry no image."
         },
         "mentions": {
           "type": [
@@ -206,7 +206,7 @@
         },
         "text": {
           "type": "string",
-          "description": "The page rendered as Markdown. Images appear as `![](img://<image_id>)`, with the caption following as its own paragraph. THIS STRING CARRIES THE INTERLEAVING: splitting it on the marker yields the image/text sequence without reading `blocks`."
+          "description": "The page rendered as Markdown. Figures appear as one of two inline markers: `![](img://<image_id>)` when a crop is stored in the images table, or `![](bbox://x0,y0,x1,y1)` when the pixels are to be cut out of this page's raster instead. The caption follows as its own paragraph. THIS STRING CARRIES THE INTERLEAVING: splitting it on the marker yields the image/text sequence without reading `blocks`, and a region marker is self-contained because the row already supplies doc_id, page_index and page_image_id."
         },
         "image_ids": {
           "type": [
@@ -216,14 +216,14 @@
           "items": {
             "type": "string"
           },
-          "description": "Image crops referenced by this page, in first-use order. Denormalized so a join can be planned without reading the nested column."
+          "description": "Image crops referenced by this page, in first-use order. Empty in `pages` mode, where figures are addressed by bbox against the page raster instead. Denormalized so a join can be planned without reading the nested column."
         },
         "page_image_id": {
           "type": [
             "string",
             "null"
           ],
-          "description": "Full-page raster, joining the page_images table. Null unless the shard was built with --page-images; rasters are reproducible from the source PDF at any DPI."
+          "description": "Full-page raster, joining the page_images table. Null unless the shard was built with `--images pages`. Rasters are reproducible from the source PDF at any DPI, which is why they are not built by default."
         },
         "render_dpi": {
           "type": [
@@ -446,7 +446,7 @@
     },
     "Pair": {
       "title": "Pair",
-      "description": "One row of the optional materialized image-text pair view. Derived from pages.blocks; never a source of truth.",
+      "description": "One row of the optional materialized image-text pair view. Derived from pages.blocks; never a source of truth. The image is addressed either by image_id (a stored crop) or by bbox (a rectangle of this page's raster).",
       "type": "object",
       "properties": {
         "doc_id": {
@@ -458,8 +458,14 @@
           "description": "Page the image sits on."
         },
         "image_id": {
-          "type": "string",
-          "description": "Join key into the images table."
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Join key into the images table when a crop is stored. Null in `pages` mode, where `bbox` addresses the pixels instead. Exactly one of image_id / bbox is set."
+        },
+        "bbox": {
+          "$ref": "#/$defs/BBox"
         },
         "block_idx": {
           "type": "integer",
@@ -484,7 +490,6 @@
       "required": [
         "doc_id",
         "page_index",
-        "image_id",
         "block_idx",
         "text",
         "source"
