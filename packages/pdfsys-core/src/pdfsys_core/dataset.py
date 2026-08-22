@@ -1,40 +1,64 @@
-"""``pdfsys.doc/v1`` — the published dataset format (L2), stdlib-only.
+"""``pdfsys.page/v2`` — the published dataset format (L2), stdlib-only.
 
-This module defines *what a released document looks like*, independent of
-Parquet. The Arrow schemas and the writer live in
-:mod:`pdfsys_cli.dataset_writer`; everything here is a plain dataclass or a
-pure function so that ``pdfsys-core`` keeps its zero-dependency guarantee
+This module defines *what a released page looks like*, independent of Parquet.
+The Arrow schemas and the writer live in :mod:`pdfsys_cli.dataset_writer`;
+everything here is a plain dataclass or a pure function so that
+``pdfsys-core`` keeps its zero-dependency guarantee
 (``docs/golden-principles/ZERO_DEP_CORE.md``).
 
 Design in one sentence
 ----------------------
-**One row per document, with a single ordered ``blocks`` list — the reading
-order IS the interleaving — plus a content-addressed side table for image
-bytes.**
+**One row per page, keyed by ``(doc_id, page_index)`` — an identity the PDF
+gives us, not one a model invents — carrying the page's text with the image
+interleaving encoded inline; model-derived structure is one droppable column
+beside it, and image bytes live in content-addressed side tables.**
 
-Why not the OBELICS / MINT-1T shape
------------------------------------
-OBELICS and MINT-1T-PDF store two parallel arrays (``images`` / ``texts``) in
-which exactly one side is non-null at each position. That works for web pages,
-where a document is literally a run of paragraphs and ``<img>`` tags, but it
-throws away everything a PDF gives us for free: page number, bbox, heading
-level, table structure, caption↔figure attachment. Half of every array is also
-null padding.
+Why the page, not the document
+------------------------------
+v1 used one row per document with a nested ``blocks`` list. Three things went
+wrong at scale:
 
-A document is not a web page — so we keep one array of *typed blocks*. The
-OBELICS view is a two-line projection over it (:func:`to_interleaved`), so
-nothing is lost for consumers that want that shape; the reverse is not true.
+* **Row identity was model-defined.** The only fine-grained handle was
+  ``blocks[].idx``, entirely a product of whichever layout model ran.
+  ``(doc_id, page_index)`` comes from the PDF itself.
+* **Rows were wildly uneven.** A 500-page book is one row with ~20k blocks and
+  megabytes of text; Parquet row groups skew and a predicate is all-or-nothing.
+* **``page_ends`` existed at all.** That column, and the page-tracking loop in
+  the renderer, existed only to recover page boundaries from a document-level
+  text blob. Making the page the row deletes the whole mechanism — a good sign
+  it was the natural unit all along.
+
+FinePDFs stores ``per_page_languages`` / ``ocr_quality_scores`` as *arrays* on
+a document row for the same reason. With page rows they are scalars.
+
+The stability ladder
+--------------------
+Nothing about reading order is truly model-independent for a scanned PDF — a
+layout model decided where the figure sits between paragraphs. So the format
+is layered by how much a consumer has to trust:
+
+1. ``doc_id`` / ``page_index`` / ``width_pt`` / ``height_pt`` / the page
+   raster — from the PDF, no model involved.
+2. ``text`` + the image blobs it references — extractor-dependent, but at the
+   tool level, and stamped with ``extractor``.
+3. ``blocks`` — layout-model-dependent: types, reading order, bboxes,
+   captions. Stamped with ``layout_model``, nullable, droppable as a column.
+
+A consumer can stop at any rung. Critically, the **image/text interleaving
+lives in ``text``** as inline ``![](img://<sha256>)`` markers, not in
+``blocks`` — so dropping rung 3 costs you bboxes and captions, never the
+interleaving itself. :func:`to_interleaved` operates on the string alone.
 
 Views (all derivable, none stored twice)
 ----------------------------------------
-* **plain text** — ``DocRecord.text``, materialized because ~90 % of consumers
-  are text-only and re-deriving it costs a full nested-column read.
+* **plain text** — ``PageRecord.text``, or strip the markers with
+  :data:`IMAGE_REF_RE`.
 * **interleaved** — :func:`to_interleaved`, OBELICS/MINT-1T shape.
 * **image–text pairs** — :func:`iter_pairs`, caption / model description /
-  figure-referencing body text (the last one following PMC-InterCPT, which
-  found reference context materially better than captions alone).
+  figure-referencing body text (the last following PMC-InterCPT, which found
+  reference context materially better than captions alone).
 
-See ``docs/superpowers/specs/2026-08-22-interleaved-parquet-dataset-design.md``
+See ``docs/superpowers/specs/2026-08-22-page-level-parquet-dataset-design.md``
 for the full rationale and the survey of prior formats.
 """
 
@@ -51,23 +75,27 @@ __all__ = [
     "DATASET_SCHEMA_VERSION",
     "BlockType",
     "FURNITURE_TYPES",
+    "IMAGE_REF_RE",
     "Block",
     "ImageBlob",
-    "DocRecord",
+    "PageRecord",
     "ImageTextPair",
+    "image_ref",
+    "strip_image_refs",
     "image_id_for",
     "probe_image",
     "blocks_from_content_list",
     "blocks_from_segments",
     "link_mentions",
     "render_markdown",
+    "split_pages",
     "to_interleaved",
     "iter_pairs",
 ]
 
-#: Bumped on any breaking change to the block/doc field set. Written into the
+#: Bumped on any breaking change to the page/block field set. Written into the
 #: Parquet file-level key-value metadata by the writer.
-DATASET_SCHEMA_VERSION = "pdfsys.doc/1"
+DATASET_SCHEMA_VERSION = "pdfsys.page/2"
 
 
 class BlockType(StrEnum):
@@ -107,10 +135,26 @@ FURNITURE_TYPES = frozenset(
     }
 )
 
+#: The inline marker that carries the image/text interleaving inside ``text``.
+#: This regex is part of the format contract: splitting a page's text on it
+#: yields the interleaved sequence without touching ``blocks``.
+IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(img://([0-9a-f]{64})\)")
+
+
+def image_ref(image_id: str) -> str:
+    """Render the inline marker for an image. Inverse of :data:`IMAGE_REF_RE`."""
+    return f"![](img://{image_id})"
+
+
+def strip_image_refs(text: str) -> str:
+    """Drop image markers, leaving plain text. Captions survive — they are
+    emitted as their own paragraphs, never inside the marker's alt slot."""
+    return re.sub(r"\n{3,}", "\n\n", IMAGE_REF_RE.sub("", text)).strip()
+
 
 @dataclass(frozen=True, slots=True)
 class Block:
-    """One block-level unit in document reading order.
+    """One block-level unit in document reading order — rung 3, model-derived.
 
     ``text`` encoding follows the same contract as :class:`pdfsys_core.Segment`
     so no re-interpretation is needed across the L1→L2 boundary:
@@ -118,7 +162,13 @@ class Block:
     ``None`` (the pixels live in ``image_id``).
     """
 
+    #: Reading-order index, scoped to the *document*, not the page — so that
+    #: ``mentions`` can point across a page break. Dense over the document.
     idx: int
+    #: Page this block sits on. Equals the containing row's ``page_index``;
+    #: carried on the dataclass because blocks are built and linked at
+    #: document scope before being split into page rows, and dropped from the
+    #: Arrow struct where it would be a constant per row.
     page: int
     type: BlockType
     text: str | None = None
@@ -136,8 +186,8 @@ class Block:
     bbox: tuple[float, float, float, float] | None = None
     #: SHA-256 of the image bytes; join key into the images table.
     image_id: str | None = None
-    #: Indices of blocks in the same document whose text references this
-    #: figure/table ("as shown in Fig. 3"). Empty when unknown.
+    #: ``idx`` of blocks in the same *document* whose text references this
+    #: figure/table ("as shown in Fig. 3"). May point to another page.
     mentions: tuple[int, ...] = ()
 
     @property
@@ -170,38 +220,62 @@ class ImageBlob:
 
 
 @dataclass(frozen=True, slots=True)
-class DocRecord:
-    """One published document — one row of the ``documents`` table."""
+class PageRecord:
+    """One published page — one row of the ``pages`` table.
 
-    #: SHA-256 of the source PDF bytes. Same identity as ``ExtractedDoc.sha256``.
-    id: str
-    blocks: tuple[Block, ...]
-    #: Markdown rendering of ``blocks`` (furniture dropped, images as
-    #: ``![](img://<image_id>)``, caption following as its own paragraph).
-    #: Redundant with ``blocks`` by design.
+    Deliberately self-contained: document-level fields are denormalized onto
+    every page so that the common query ("give me text where quality > 2 and
+    lang = zho_Hans") needs no join. Dictionary encoding makes the repetition
+    nearly free, and a page row that answers questions on its own is what
+    "complete" means at this scale.
+    """
+
+    # -- identity: from the PDF, no model involved -------------------------
+    #: SHA-256 of the source PDF bytes.
+    doc_id: str
+    #: Zero-based page number within the source PDF.
+    page_index: int
+    #: Page size in PDF points (1/72 inch), as the PDF declares it.
+    width_pt: float = 0.0
+    height_pt: float = 0.0
+    rotation: int = 0
+
+    # -- content ------------------------------------------------------------
+    #: Page rendered as Markdown. Images appear as ``![](img://<sha256>)``;
+    #: this string alone carries the interleaving.
     text: str = ""
-    #: Character offset in ``text`` at which each page ends. Same trick as
-    #: FinePDFs' ``page_ends`` — recovers page granularity without a second
-    #: copy of the text.
-    page_ends: tuple[int, ...] = ()
-    source_uri: str = ""
-    backend: str = ""  # mupdf | pipeline | vlm
-    n_pages: int = 0
+    #: Image crops referenced by this page, in first-use order.
+    image_ids: tuple[str, ...] = ()
+    #: Full-page raster, if one was built. Joins ``page_images``. Null by
+    #: default: rasters are rebuildable from L0 at any DPI, so committing to
+    #: one now would be paying TB for a choice we can defer.
+    page_image_id: str | None = None
+    render_dpi: int | None = None
+    #: Model-derived structure. Empty when the shard was written without it;
+    #: dropping it costs bboxes, captions and types, never the interleaving.
+    blocks: tuple[Block, ...] = ()
+
+    # -- provenance ---------------------------------------------------------
+    extractor: str = ""  # mupdf | pipeline | vlm
+    layout_model: str = ""
+
+    # -- page-level signals -------------------------------------------------
     lang: str = ""
     lang_score: float | None = None
     quality_score: float | None = None
     quality_model: str = ""
-    router_ocr_prob: float | None = None
+
+    # -- document-level, denormalized onto every page -----------------------
+    doc_n_pages: int = 0
+    source_uri: str = ""
     provenance: str = ""  # opaque upstream JSON (license, crawl batch, ...)
+    doc_lang: str = ""
+    doc_quality_score: float | None = None
+    router_ocr_prob: float | None = None
 
     @property
-    def image_ids(self) -> tuple[str, ...]:
-        """Distinct image ids referenced by this document, in first-use order."""
-        seen: dict[str, None] = {}
-        for b in self.blocks:
-            if b.image_id is not None:
-                seen.setdefault(b.image_id, None)
-        return tuple(seen)
+    def n_chars(self) -> int:
+        return len(self.text)
 
     def count(self, *types: BlockType) -> int:
         wanted = set(types)
@@ -210,14 +284,14 @@ class DocRecord:
 
 @dataclass(frozen=True, slots=True)
 class ImageTextPair:
-    """One image–text pair extracted from a document."""
+    """One image–text pair extracted from a page."""
 
     doc_id: str
+    page_index: int
     image_id: str
     block_idx: int
-    page: int
     text: str
-    #: Where ``text`` came from: ``caption`` | ``alt`` | ``mention`` | ``context``.
+    #: Which tier supplied the text — see :func:`iter_pairs`.
     source: str
 
 
@@ -327,12 +401,13 @@ def blocks_from_content_list(
     bbox_scale: float = 1000.0,
     image_ids: Mapping[str, str] | None = None,
 ) -> tuple[Block, ...]:
-    """Convert MinerU's ``content_list.json`` into blocks.
+    """Convert MinerU's ``content_list.json`` into document-scoped blocks.
 
     ``bbox_scale`` is the coordinate space MinerU's bboxes live in. MinerU maps
     them onto a 0–1000 grid per axis, *independent of page size* — do not try
-    to normalize against ``middle.json``'s ``page_size``, which is a different
-    space entirely (observed: ``page_size=[558, 773]`` with bboxes up to 940).
+    to normalize against ``middle.json``'s ``page_size``, which is the page
+    geometry in PDF points, a different quantity entirely (observed:
+    ``page_size=[558, 773]`` with bboxes reaching 940).
 
     ``image_ids`` maps MinerU's ``img_path`` to the content address of the
     corresponding blob.
@@ -356,7 +431,6 @@ def blocks_from_content_list(
             # text of an image block, if any, is in `text`.
             text = None
 
-        page = _as_int(item.get("page_idx"), default=0)
         img_path = item.get("img_path")
         image_id = None
         if isinstance(img_path, str) and img_path:
@@ -365,7 +439,7 @@ def blocks_from_content_list(
         blocks.append(
             Block(
                 idx=idx,
-                page=page,
+                page=_as_int(item.get("page_idx"), default=0),
                 type=btype,
                 text=text,
                 level=level,
@@ -423,7 +497,8 @@ def blocks_from_segments(segments: Iterable[object]) -> tuple[Block, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Figure-mention linking
+# Figure-mention linking (document-scoped — a figure is often referenced from
+# the facing page)
 # ---------------------------------------------------------------------------
 
 #: "图 3" / "图3-1" / "Figure 3" / "Fig. 3" / "表 2" / "Table 2".
@@ -453,6 +528,9 @@ def link_mentions(blocks: Sequence[Block]) -> tuple[Block, ...]:
     that the paragraphs which *reference* it carry the actual explanation. We
     do the cheap version: parse ``图 N`` / ``Figure N`` / ``表 N`` out of each
     caption, then scan body text for the same label.
+
+    Runs over a whole document's blocks, not one page's — a figure and the
+    paragraph discussing it routinely sit on different pages.
 
     Returns a new tuple; blocks with no match are returned unchanged.
     """
@@ -511,47 +589,26 @@ def _canon_label(match: re.Match[str]) -> tuple[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Views
+# Rendering + page splitting
 # ---------------------------------------------------------------------------
 
 
-def render_markdown(
-    blocks: Sequence[Block], *, drop_furniture: bool = True
-) -> tuple[str, tuple[int, ...]]:
-    """Render blocks to Markdown; return ``(text, page_ends)``.
+def render_markdown(blocks: Sequence[Block], *, drop_furniture: bool = True) -> str:
+    """Render one page's blocks to Markdown.
 
-    ``page_ends[i]`` is the character offset in ``text`` at which page ``i``
-    ends, so a consumer can slice the text back into pages without a second
-    stored copy (FinePDFs uses the same encoding).
+    Images become ``![](img://<image_id>)`` with the caption following as its
+    own paragraph. The empty alt slot is deliberate: put the caption in the
+    marker *and* in the paragraph and every caption is counted twice, and a
+    consumer stripping markers loses it entirely. ``Block.alt`` is
+    model-generated and is never rendered — this string carries human/OCR
+    content only.
     """
-    parts: list[str] = []
-    page_ends: list[int] = []
-    length = 0
-    current_page = 0
-
-    def close_pages_through(page: int) -> None:
-        nonlocal current_page
-        while current_page < page:
-            page_ends.append(length)
-            current_page += 1
-
-    for b in blocks:
-        if drop_furniture and b.is_furniture:
-            close_pages_through(b.page)
-            continue
-        chunk = _render_block(b)
-        if not chunk:
-            continue
-        close_pages_through(b.page)
-        parts.append(chunk)
-        # +2 for the "\n\n" separator that join() will insert after this chunk.
-        length += len(chunk) + 2
-
-    text = "\n\n".join(parts)
-    # The final page ends at the end of the text; so does every trailing page
-    # that produced no renderable block.
-    page_ends.append(len(text))
-    return text, tuple(page_ends)
+    parts = [
+        chunk
+        for b in blocks
+        if not (drop_furniture and b.is_furniture) and (chunk := _render_block(b))
+    ]
+    return "\n\n".join(parts)
 
 
 def _render_block(b: Block) -> str:
@@ -561,13 +618,7 @@ def _render_block(b: Block) -> str:
     if b.type is BlockType.FORMULA:
         return f"$$\n{b.text}\n$$" if b.text else ""
     if b.type in (BlockType.IMAGE, BlockType.CHART):
-        # Empty alt on purpose. The caption follows as its own paragraph so
-        # that stripping `![](img://…)` leaves the caption in the text — put
-        # it in the alt slot too and every caption is counted twice.
-        # `b.alt` is model-generated and deliberately never rendered here:
-        # `text` carries human/OCR-derived content only.
-        ref = f"img://{b.image_id}" if b.image_id else ""
-        lines = [f"![]({ref})"]
+        lines = [image_ref(b.image_id) if b.image_id else "![]()"]
         if b.caption:
             lines.append(b.caption)
         if b.footnote:
@@ -579,44 +630,100 @@ def _render_block(b: Block) -> str:
     return b.text or ""
 
 
-def to_interleaved(
-    blocks: Sequence[Block], *, drop_furniture: bool = True
-) -> tuple[tuple[str | None, ...], tuple[str | None, ...]]:
-    """Project blocks onto the OBELICS / MINT-1T parallel-array shape.
+def split_pages(
+    blocks: Sequence[Block],
+    *,
+    n_pages: int = 0,
+    drop_furniture: bool = True,
+    **page_fields: object,
+) -> tuple[PageRecord, ...]:
+    """Group document-scoped blocks into one :class:`PageRecord` per page.
+
+    ``n_pages`` (from the PDF) makes pages that produced no block at all — a
+    blank scan, a full-page figure the extractor skipped — appear as empty
+    rows rather than vanishing. A page that silently disappears is a page you
+    cannot later notice is missing.
+
+    Remaining keyword arguments are copied onto every page (this is where the
+    denormalized document-level columns come from).
+    """
+    by_page: dict[int, list[Block]] = {}
+    for b in blocks:
+        by_page.setdefault(b.page, []).append(b)
+
+    last = max(by_page, default=-1)
+    total = max(n_pages, last + 1)
+
+    pages = []
+    for index in range(total):
+        page_blocks = tuple(by_page.get(index, ()))
+        text = render_markdown(page_blocks, drop_furniture=drop_furniture)
+        pages.append(
+            PageRecord(
+                page_index=index,
+                text=text,
+                image_ids=_distinct_image_ids(page_blocks),
+                blocks=page_blocks,
+                doc_n_pages=total,
+                **page_fields,  # type: ignore[arg-type]
+            )
+        )
+    return tuple(pages)
+
+
+def _distinct_image_ids(blocks: Sequence[Block]) -> tuple[str, ...]:
+    seen: dict[str, None] = {}
+    for b in blocks:
+        if b.image_id is not None:
+            seen.setdefault(b.image_id, None)
+    return tuple(seen)
+
+
+# ---------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------
+
+
+def to_interleaved(text: str) -> tuple[tuple[str | None, ...], tuple[str | None, ...]]:
+    """Project a page's ``text`` onto the OBELICS / MINT-1T parallel arrays.
 
     Returns ``(images, texts)`` of equal length where exactly one side is
-    non-null at each position. Provided so that code written against those
-    datasets runs unchanged on ours.
+    non-null at each position, so code written against those datasets runs
+    unchanged. Takes the *string*, not the blocks: the interleaving is encoded
+    in the text, which is the whole point — this view survives a shard written
+    without ``blocks``.
     """
     images: list[str | None] = []
     texts: list[str | None] = []
-    for b in blocks:
-        if drop_furniture and b.is_furniture:
-            continue
-        if b.has_image:
-            images.append(b.image_id)
-            texts.append(None)
-            # The caption is text that belongs *after* the image, exactly as
-            # PMC-InterCPT lays out its samples.
-            caption = "\n".join(x for x in (b.caption, b.footnote) if x)
-            if caption:
-                images.append(None)
-                texts.append(caption)
-            continue
-        chunk = _render_block(b)
+    cursor = 0
+    for match in IMAGE_REF_RE.finditer(text):
+        chunk = text[cursor : match.start()].strip()
         if chunk:
             images.append(None)
             texts.append(chunk)
+        images.append(match.group(1))
+        texts.append(None)
+        cursor = match.end()
+    tail = text[cursor:].strip()
+    if tail:
+        images.append(None)
+        texts.append(tail)
     return tuple(images), tuple(texts)
 
 
 def iter_pairs(
-    doc: DocRecord,
+    pages: Iterable[PageRecord],
     *,
     context_window: int = 1,
     min_chars: int = 8,
 ) -> Iterator[ImageTextPair]:
-    """Yield image–text pairs, best text source first.
+    """Yield image–text pairs from one document's pages.
+
+    Pass every page of a document together: ``mentions`` routinely point at a
+    paragraph on the facing page, and a per-page call would silently drop
+    those. Requires ``blocks`` — a shard written without them can only be
+    paired by neighbouring text, which this function cannot see from ``text``
+    alone.
 
     Precedence per image, highest first:
 
@@ -630,55 +737,59 @@ def iter_pairs(
         Model-generated description. Synthetic — filter with
         ``WHERE source != 'alt'`` if that matters to you.
     ``mention``
-        Body text that references the figure by label (PMC-InterCPT's
-        observation that this beats captions for explanatory content).
+        Body text that references the figure by label.
     ``context``
         Adjacent text blocks. Weakest signal, last resort.
 
     Each image yields at most one pair, tagged with the tier that won.
     """
-    by_idx = {b.idx: b for b in doc.blocks}
-    order = [b.idx for b in doc.blocks]
+    pages = list(pages)
+    by_idx = {b.idx: b for page in pages for b in page.blocks}
+    order = sorted(by_idx)
 
-    for b in doc.blocks:
-        if not b.has_image:
-            continue
-        candidates: list[tuple[str, str | None]] = []
-        if b.text:
-            # A crop that also has a transcription (table → HTML). Pair the
-            # image with caption + transcription together.
-            candidates.append(
+    for page in pages:
+        for b in page.blocks:
+            if not b.has_image:
+                continue
+            candidates: list[tuple[str, str | None]] = []
+            if b.text:
+                # A crop that also has a transcription (table → HTML). Pair the
+                # image with caption + transcription together.
+                candidates.append(
+                    (
+                        "content",
+                        "\n\n".join(x for x in (b.caption, b.text, b.footnote) if x)
+                        or None,
+                    )
+                )
+            candidates += [
                 (
-                    "content",
-                    "\n\n".join(x for x in (b.caption, b.text, b.footnote) if x)
+                    "caption",
+                    "\n".join(x for x in (b.caption, b.footnote) if x) or None,
+                ),
+                ("alt", b.alt),
+                (
+                    "mention",
+                    "\n\n".join(
+                        t
+                        for i in b.mentions
+                        if (t := (by_idx[i].text if i in by_idx else None))
+                    )
                     or None,
-                )
-            )
-        candidates += [
-            ("caption", "\n".join(x for x in (b.caption, b.footnote) if x) or None),
-            ("alt", b.alt),
-            (
-                "mention",
-                "\n\n".join(
-                    t
-                    for i in b.mentions
-                    if (t := (by_idx[i].text if i in by_idx else None))
-                )
-                or None,
-            ),
-            ("context", _neighbour_text(b, by_idx, order, context_window)),
-        ]
-        for source, text in candidates:
-            if text and len(text.strip()) >= min_chars:
-                yield ImageTextPair(
-                    doc_id=doc.id,
-                    image_id=b.image_id,  # type: ignore[arg-type]
-                    block_idx=b.idx,
-                    page=b.page,
-                    text=text.strip(),
-                    source=source,
-                )
-                break
+                ),
+                ("context", _neighbour_text(b, by_idx, order, context_window)),
+            ]
+            for source, text in candidates:
+                if text and len(text.strip()) >= min_chars:
+                    yield ImageTextPair(
+                        doc_id=page.doc_id,
+                        page_index=page.page_index,
+                        image_id=b.image_id,  # type: ignore[arg-type]
+                        block_idx=b.idx,
+                        text=text.strip(),
+                        source=source,
+                    )
+                    break
 
 
 def _neighbour_text(

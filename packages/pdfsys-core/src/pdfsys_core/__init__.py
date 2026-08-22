@@ -12,7 +12,7 @@ Public surface:
                   :class:`LayoutDocument`, :func:`make_region_id`
 * Parser output — :class:`Segment`, :class:`ExtractedDoc`,
                   :func:`merge_segments_to_markdown`
-* Dataset (L2)  — :class:`Block`, :class:`ImageBlob`, :class:`DocRecord`,
+* Dataset (L2)  — :class:`PageRecord`, :class:`Block`, :class:`ImageBlob`,
                   :class:`ImageTextPair` and the projections in
                   :mod:`pdfsys_core.dataset`
 * Cache         — :class:`LayoutCache`
@@ -35,18 +35,23 @@ from .config import (
 )
 from .dataset import (
     DATASET_SCHEMA_VERSION,
+    FURNITURE_TYPES,
+    IMAGE_REF_RE,
     Block,
     BlockType,
-    DocRecord,
     ImageBlob,
     ImageTextPair,
+    PageRecord,
     blocks_from_content_list,
     blocks_from_segments,
     image_id_for,
+    image_ref,
     iter_pairs,
     link_mentions,
     probe_image,
     render_markdown,
+    split_pages,
+    strip_image_refs,
     to_interleaved,
 )
 from .extract import ExtractedDoc, Segment, merge_segments_to_markdown
@@ -77,16 +82,21 @@ __all__ = [
     # dataset (L2 publish format)
     "DATASET_SCHEMA_VERSION",
     "BlockType",
+    "FURNITURE_TYPES",
+    "IMAGE_REF_RE",
     "Block",
     "ImageBlob",
-    "DocRecord",
+    "PageRecord",
     "ImageTextPair",
     "image_id_for",
+    "image_ref",
+    "strip_image_refs",
     "probe_image",
     "blocks_from_content_list",
     "blocks_from_segments",
     "link_mentions",
     "render_markdown",
+    "split_pages",
     "to_interleaved",
     "iter_pairs",
     # cache

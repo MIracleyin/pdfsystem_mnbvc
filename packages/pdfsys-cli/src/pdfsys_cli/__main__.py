@@ -23,8 +23,8 @@ Usage::
     pdfsys annotate --port 9000
     pdfsys annotate --import annotations_2026-04-18.json
 
-    # Pack a run's MinerU output into a pdfsys.doc/v1 Parquet shard
-    pdfsys dataset --from-mineru ./out --to ./dataset/v1 --meta ./out/results.jsonl
+    # Pack a run's MinerU output into a pdfsys.page/v2 Parquet shard
+    pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl
 """
 
 from __future__ import annotations
@@ -112,25 +112,32 @@ def build_parser() -> argparse.ArgumentParser:
     # ---- dataset ----
     d = sub.add_parser(
         "dataset",
-        help="Pack pipeline output into a pdfsys.doc/v1 Parquet shard.",
+        help="Pack pipeline output into a pdfsys.page/v2 Parquet shard.",
     )
     d.add_argument("--from-mineru", required=True, dest="from_mineru",
                    help="Run directory containing MinerU *_content_list.json outputs.")
     d.add_argument("--to", required=True, dest="to_dir",
-                   help="Output dataset directory (documents/ + images/ are created inside).")
+                   help="Output dataset directory (pages/ + images/ are created inside).")
     d.add_argument("--shard", default="shard-00000", help="Shard name (default: shard-00000).")
     d.add_argument("--meta", default=None,
                    help="results.jsonl from the same run; joins quality/router columns by sha256.")
     d.add_argument("--compression", default="zstd", choices=("zstd", "snappy", "none"))
-    d.add_argument("--embed-images", action="store_true", default=False,
-                   help="Inline image bytes into documents/ as well (self-contained but larger).")
     d.add_argument("--pairs", action="store_true", default=False,
                    help="Also write the materialized image-text pair view to pairs/.")
     d.add_argument("--no-mentions", action="store_true", default=False,
                    help="Skip figure-mention linking (faster; leaves blocks.mentions empty).")
-    d.add_argument("--no-text", action="store_true", default=False,
-                   help="Leave the rendered `text` column null; derive it from blocks instead. "
-                        "Saves ~40%% of the documents file on image-free corpora.")
+    d.add_argument("--no-blocks", action="store_true", default=False,
+                   help="Write the model-derived `blocks` column null. `text` still carries "
+                        "the image interleaving; you lose bboxes, captions and block types.")
+    d.add_argument("--page-images", action="store_true", default=False,
+                   help="Also render a full-page raster per page into page_images/. "
+                        "Needs --pdf-dir. Off by default: rasters are rebuildable from the "
+                        "source PDF at any DPI, so freezing one now costs TB for nothing.")
+    d.add_argument("--pdf-dir", default=None,
+                   help="Directory of source PDFs, required by --page-images. Matched to "
+                        "documents by sha256.")
+    d.add_argument("--render-dpi", type=int, default=150,
+                   help="DPI for --page-images (default: 150).")
 
     # ---- release ----
     r = sub.add_parser("release", help="Manage system_release.toml component pins.")
@@ -224,13 +231,21 @@ def cmd_dataset(args: argparse.Namespace) -> int:
 
     import pyarrow.parquet as pq
 
-    from .dataset_build import build_from_mineru_dir, iter_mineru_dirs
+    from .dataset_build import build_from_mineru_dir, iter_mineru_dirs, render_page_images
     from .dataset_writer import DatasetWriter, pairs_table
 
     src = Path(args.from_mineru)
     if not src.is_dir():
         print(f"Error: not a directory: {src}", file=sys.stderr)
         return 1
+
+    pdf_index: dict[str, Path] = {}
+    if args.page_images:
+        if not args.pdf_dir:
+            print("Error: --page-images requires --pdf-dir.", file=sys.stderr)
+            return 1
+        pdf_index = _index_pdfs_by_sha256(Path(args.pdf_dir))
+        print(f"[pdfsys dataset] indexed {len(pdf_index)} source PDFs for rasterisation")
 
     meta = _load_run_meta(Path(args.meta)) if args.meta else {}
     doc_dirs = list(iter_mineru_dirs(src))
@@ -241,18 +256,18 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     out_dir = Path(args.to_dir)
     print(f"[pdfsys dataset] {len(doc_dirs)} documents → {out_dir}")
 
-    docs = []
+    docs: list = []
     failures = 0
+    missing_pdfs = 0
     with DatasetWriter(
         out_dir,
         shard=args.shard,
         compression=args.compression,
-        embed_images=args.embed_images,
-        include_text=not args.no_text,
+        include_blocks=not args.no_blocks,
     ) as writer:
         for doc_dir in doc_dirs:
             try:
-                doc, blobs = build_from_mineru_dir(
+                pages, blobs = build_from_mineru_dir(
                     doc_dir,
                     link_figure_mentions=not args.no_mentions,
                 )
@@ -260,13 +275,46 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 failures += 1
                 print(f"  ! {doc_dir}: {type(e).__name__}: {e}", file=sys.stderr)
                 continue
-            doc = _apply_run_meta(doc, meta.get(doc.id))
-            writer.write(doc, blobs)
-            if args.pairs:
-                docs.append(doc)
-        n_docs, n_images = writer.docs_written, writer.images_written
 
-    print(f"[pdfsys dataset] documents={n_docs} images={n_images} failed={failures}")
+            pages = tuple(
+                _apply_run_meta(p, meta.get(p.doc_id)) for p in pages
+            )
+
+            rasters: list = []
+            if args.page_images:
+                pdf_path = pdf_index.get(pages[0].doc_id) if pages else None
+                if pdf_path is None:
+                    missing_pdfs += 1
+                else:
+                    rasters = render_page_images(
+                        pdf_path, pages, dpi=args.render_dpi
+                    )
+                    # render_page_images returns pages stamped with the raster
+                    # id; those are the rows that must be written.
+                    pages = tuple(p for p, _ in rasters)
+
+            writer.write(pages, blobs, [(p, b) for p, b in rasters])
+            if args.pairs:
+                docs.append(pages)
+
+        stats = (
+            writer.docs_written,
+            writer.pages_written,
+            writer.images_written,
+            writer.page_images_written,
+        )
+
+    n_docs, n_pages, n_images, n_page_images = stats
+    print(
+        f"[pdfsys dataset] documents={n_docs} pages={n_pages} "
+        f"images={n_images} page_images={n_page_images} failed={failures}"
+    )
+    if missing_pdfs:
+        print(
+            f"[pdfsys dataset] warning: {missing_pdfs} documents had no matching "
+            f"PDF under --pdf-dir; their page_image_id is null",
+            file=sys.stderr,
+        )
 
     if args.pairs:
         table = pairs_table(docs)
@@ -282,10 +330,14 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     (out_dir / f"{args.shard}.meta.json").write_text(
         json.dumps(
             {
-                "schema": "pdfsys.doc/1",
+                "schema": "pdfsys.page/2",
                 "shard": args.shard,
                 "documents": n_docs,
+                "pages": n_pages,
                 "images": n_images,
+                "page_images": n_page_images,
+                "render_dpi": args.render_dpi if args.page_images else None,
+                "has_blocks": not args.no_blocks,
                 "failed": failures,
                 "source": str(src),
             },
@@ -295,6 +347,27 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     return 0
+
+
+def _index_pdfs_by_sha256(pdf_dir) -> dict:
+    """Map sha256 -> path for every PDF under ``pdf_dir``.
+
+    Documents are identified by content hash throughout the pipeline, so this
+    is the only reliable way to pair a MinerU output directory back to the PDF
+    it came from; filenames are not stable across ingest.
+    """
+    import hashlib
+    from pathlib import Path
+
+    index: dict = {}
+    for path in sorted(Path(pdf_dir).rglob("*.pdf")):
+        try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError as e:
+            print(f"Warning: cannot read {path}: {e}", file=sys.stderr)
+            continue
+        index.setdefault(digest, path)
+    return index
 
 
 def _load_run_meta(path) -> dict:
@@ -320,17 +393,24 @@ def _load_run_meta(path) -> dict:
     return out
 
 
-def _apply_run_meta(doc, row):
+def _apply_run_meta(page, row):
+    """Copy a run's per-document telemetry onto a page row.
+
+    The pipeline scores quality per document today, so it lands in
+    ``doc_quality_score``; the page-level ``quality_score`` column stays null
+    until a per-page scorer fills it. Conflating the two would misreport a
+    whole book's score as every page's.
+    """
     import dataclasses
 
     if not row:
-        return doc
+        return page
     return dataclasses.replace(
-        doc,
-        source_uri=doc.source_uri or (row.get("pdf_path") or ""),
-        backend=row.get("extract_backend") or doc.backend,
-        n_pages=doc.n_pages or int(row.get("num_pages") or 0),
-        quality_score=row.get("quality_score"),
+        page,
+        source_uri=page.source_uri or (row.get("pdf_path") or ""),
+        extractor=row.get("extract_backend") or page.extractor,
+        doc_n_pages=page.doc_n_pages or int(row.get("num_pages") or 0),
+        doc_quality_score=row.get("quality_score"),
         quality_model=row.get("quality_model") or "",
         router_ocr_prob=row.get("ocr_prob"),
     )

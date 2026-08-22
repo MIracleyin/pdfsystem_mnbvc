@@ -1,20 +1,25 @@
-"""Parquet encoding for ``pdfsys.doc/v1`` — the L2 publish format.
+"""Parquet encoding for ``pdfsys.page/v2`` — the L2 publish format.
 
-Two physical tables, joined on ``image_id``:
+Three tables. Only the first is required; the other two are joined by content
+address and can be built, rebuilt or dropped independently.
 
-* ``documents/`` — one row per PDF. Carries the whole reading-order ``blocks``
-  list plus the pre-rendered ``text``. Text-only and metadata scans never
-  touch image bytes, which is the entire point of the split: at PB scale a
-  1 KB text row and a 400 KB JPEG must not share a row group.
-* ``images/`` — one row per *unique* image blob, content-addressed by
-  SHA-256. Repeated letterheads / stamps / logos collapse to one copy, and
-  the ``image`` column is a ``struct<bytes, path>`` so
-  ``datasets.load_dataset(...).cast_column("image", Image())`` decodes it
-  without conversion.
+``pages/``
+    One row per page, keyed ``(doc_id, page_index)``. Carries the page text
+    (with the image interleaving inline), the model-derived ``blocks``, and
+    document-level columns denormalized so the common filter needs no join.
+    Rows are written sorted by ``(doc_id, page_index)`` so that reassembling a
+    document is a sequential scan.
+``images/``
+    One row per *unique* image crop, content-addressed by SHA-256. Repeated
+    letterheads / stamps / logos collapse to one copy.
+``page_images/``
+    One row per full-page raster. Separate from ``images/`` on purpose: a
+    200-dpi page is one to two orders of magnitude larger than a crop, so
+    mixing them wrecks row-group sizing, and keeping them apart means the
+    whole table can be built later — or never — without rewriting anything.
 
-For small datasets ``embed_images=True`` inlines the same struct into the
-documents table so a single file is self-contained (handy for a 150-PDF bench
-shard); at corpus scale leave it off.
+Why the split at all: at PB scale a 1 KB text row and a 400 KB JPEG must not
+share a row group, or every text-only scan pays for pixels it will not read.
 
 The schema version lives in the Parquet file-level key-value metadata under
 ``pdfsys.schema`` so a reader can dispatch on it without a side-channel.
@@ -33,8 +38,8 @@ from pdfsys_core import (
     DATASET_SCHEMA_VERSION,
     Block,
     BlockType,
-    DocRecord,
     ImageBlob,
+    PageRecord,
     iter_pairs,
 )
 
@@ -42,11 +47,12 @@ __all__ = [
     "BBOX_TYPE",
     "BLOCK_TYPE",
     "IMAGE_TYPE",
-    "DOC_SCHEMA",
+    "PAGE_SCHEMA",
     "IMAGE_SCHEMA",
+    "PAGE_IMAGE_SCHEMA",
     "PAIR_SCHEMA",
     "DatasetWriter",
-    "doc_to_row",
+    "page_to_row",
     "image_to_row",
     "pairs_table",
 ]
@@ -68,13 +74,13 @@ BBOX_TYPE = pa.struct(
 #: images by content, not location.
 IMAGE_TYPE = pa.struct([("bytes", pa.large_binary()), ("path", pa.string())])
 
-#: One block of a document. ``type`` is dictionary-encoded: a dozen distinct
-#: values over billions of rows compresses to nothing and keeps predicate
-#: pushdown (``blocks.type == 'image'``) cheap.
+#: One block of a page. ``type`` is dictionary-encoded: a dozen distinct values
+#: over billions of rows compresses to nothing and keeps predicate pushdown
+#: (``blocks.type == 'image'``) cheap. ``Block.page`` is deliberately absent —
+#: it is a constant per row, equal to ``page_index``.
 BLOCK_TYPE = pa.struct(
     [
         ("idx", pa.int32()),
-        ("page", pa.int32()),
         ("type", pa.dictionary(pa.int8(), pa.string())),
         ("text", pa.large_string()),
         ("level", pa.int8()),
@@ -87,32 +93,41 @@ BLOCK_TYPE = pa.struct(
     ]
 )
 
-DOC_SCHEMA = pa.schema(
+PAGE_SCHEMA = pa.schema(
     [
-        # -- identity / provenance -------------------------------------------
-        ("id", pa.string()),  # sha256 of the source PDF
-        ("source_uri", pa.string()),
-        ("provenance", pa.string()),  # opaque upstream JSON (license, batch)
-        # -- text view -------------------------------------------------------
-        ("text", pa.large_string()),
-        ("page_ends", pa.list_(pa.int32())),
-        # -- interleaved view ------------------------------------------------
-        ("blocks", pa.list_(BLOCK_TYPE)),
+        # -- identity: from the PDF, no model involved -----------------------
+        ("doc_id", pa.string()),  # sha256 of the source PDF
+        ("page_index", pa.int32()),
+        ("width_pt", pa.float32()),
+        ("height_pt", pa.float32()),
+        ("rotation", pa.int16()),
+        # -- content ---------------------------------------------------------
+        ("text", pa.large_string()),  # image interleaving encoded inline
         ("image_ids", pa.list_(pa.string())),
+        ("page_image_id", pa.string()),
+        ("render_dpi", pa.int16()),
+        ("blocks", pa.list_(BLOCK_TYPE)),  # model-derived, droppable
+        # -- provenance -------------------------------------------------------
+        ("extractor", pa.dictionary(pa.int8(), pa.string())),
+        ("layout_model", pa.dictionary(pa.int8(), pa.string())),
         # -- cheap filter columns (all derivable; stored to avoid nested scans)
-        ("n_pages", pa.int32()),
-        ("n_blocks", pa.int32()),
         ("n_chars", pa.int32()),
+        ("n_blocks", pa.int32()),
         ("n_images", pa.int32()),
         ("n_tables", pa.int32()),
         ("n_formulas", pa.int32()),
-        # -- pipeline signals -------------------------------------------------
-        ("backend", pa.dictionary(pa.int8(), pa.string())),
-        ("router_ocr_prob", pa.float32()),
-        ("quality_score", pa.float32()),
-        ("quality_model", pa.string()),
+        # -- page-level signals ------------------------------------------------
         ("lang", pa.dictionary(pa.int16(), pa.string())),
         ("lang_score", pa.float32()),
+        ("quality_score", pa.float32()),
+        ("quality_model", pa.dictionary(pa.int8(), pa.string())),
+        # -- document-level, denormalized onto every page ----------------------
+        ("doc_n_pages", pa.int32()),
+        ("source_uri", pa.string()),
+        ("provenance", pa.string()),
+        ("doc_lang", pa.dictionary(pa.int16(), pa.string())),
+        ("doc_quality_score", pa.float32()),
+        ("router_ocr_prob", pa.float32()),
     ]
 )
 
@@ -127,14 +142,30 @@ IMAGE_SCHEMA = pa.schema(
     ]
 )
 
+#: Full-page rasters. Same columns as ``images``, plus the page it renders and
+#: at what DPI — a page can legitimately appear at several resolutions.
+PAGE_IMAGE_SCHEMA = pa.schema(
+    [
+        ("image_id", pa.string()),
+        ("doc_id", pa.string()),
+        ("page_index", pa.int32()),
+        ("render_dpi", pa.int16()),
+        ("image", IMAGE_TYPE),
+        ("format", pa.dictionary(pa.int8(), pa.string())),
+        ("width", pa.int32()),
+        ("height", pa.int32()),
+        ("n_bytes", pa.int32()),
+    ]
+)
+
 #: Materialized image-text pair view. Not written by default — build it from
-#: ``documents`` + ``images`` when a pair-shaped dataset is what you want.
+#: ``pages`` + ``images`` when a pair-shaped dataset is what you want.
 PAIR_SCHEMA = pa.schema(
     [
         ("doc_id", pa.string()),
+        ("page_index", pa.int32()),
         ("image_id", pa.string()),
         ("block_idx", pa.int32()),
-        ("page", pa.int32()),
         ("text", pa.large_string()),
         ("source", pa.dictionary(pa.int8(), pa.string())),
     ]
@@ -151,7 +182,6 @@ _KV_METADATA = {b"pdfsys.schema": DATASET_SCHEMA_VERSION.encode()}
 def _block_to_dict(b: Block) -> dict[str, Any]:
     return {
         "idx": b.idx,
-        "page": b.page,
         "type": str(b.type),
         "text": b.text,
         "level": b.level,
@@ -168,43 +198,44 @@ def _block_to_dict(b: Block) -> dict[str, Any]:
     }
 
 
-def doc_to_row(
-    doc: DocRecord, *, embed_images: bool = False, include_text: bool = True
-) -> dict[str, Any]:
-    """Encode one :class:`DocRecord` as a ``DOC_SCHEMA`` row dict.
+def page_to_row(page: PageRecord, *, include_blocks: bool = True) -> dict[str, Any]:
+    """Encode one :class:`PageRecord` as a ``PAGE_SCHEMA`` row dict.
 
-    ``text`` duplicates the content already in ``blocks[].text`` — measured at
-    ~40 % of a documents file, i.e. ~4 % of a shard once image bytes are in
-    the picture. It is stored anyway because text-only consumers are the
-    majority and re-rendering costs a full nested-column read. Set
-    ``include_text=False`` for an image-free corpus, where the duplication is
-    no longer amortized against image bytes; the column stays in the schema
-    and is written null.
+    ``include_blocks=False`` writes the column null. The counts derived from
+    blocks are still populated, and ``text`` still carries the interleaving —
+    what you lose is bboxes, captions, types and mention links.
     """
-    row: dict[str, Any] = {
-        "id": doc.id,
-        "source_uri": doc.source_uri or None,
-        "provenance": doc.provenance or None,
-        "text": doc.text if include_text else None,
-        "page_ends": list(doc.page_ends),
-        "blocks": [_block_to_dict(b) for b in doc.blocks],
-        "image_ids": list(doc.image_ids),
-        "n_pages": doc.n_pages or len(doc.page_ends),
-        "n_blocks": len(doc.blocks),
-        "n_chars": len(doc.text),
-        "n_images": doc.count(BlockType.IMAGE, BlockType.CHART),
-        "n_tables": doc.count(BlockType.TABLE),
-        "n_formulas": doc.count(BlockType.FORMULA),
-        "backend": doc.backend or None,
-        "router_ocr_prob": doc.router_ocr_prob,
-        "quality_score": doc.quality_score,
-        "quality_model": doc.quality_model or None,
-        "lang": doc.lang or None,
-        "lang_score": doc.lang_score,
+    return {
+        "doc_id": page.doc_id,
+        "page_index": page.page_index,
+        "width_pt": page.width_pt or None,
+        "height_pt": page.height_pt or None,
+        "rotation": page.rotation,
+        "text": page.text,
+        "image_ids": list(page.image_ids),
+        "page_image_id": page.page_image_id,
+        "render_dpi": page.render_dpi,
+        "blocks": (
+            [_block_to_dict(b) for b in page.blocks] if include_blocks else None
+        ),
+        "extractor": page.extractor or None,
+        "layout_model": page.layout_model or None,
+        "n_chars": page.n_chars,
+        "n_blocks": len(page.blocks),
+        "n_images": page.count(BlockType.IMAGE, BlockType.CHART),
+        "n_tables": page.count(BlockType.TABLE),
+        "n_formulas": page.count(BlockType.FORMULA),
+        "lang": page.lang or None,
+        "lang_score": page.lang_score,
+        "quality_score": page.quality_score,
+        "quality_model": page.quality_model or None,
+        "doc_n_pages": page.doc_n_pages,
+        "source_uri": page.source_uri or None,
+        "provenance": page.provenance or None,
+        "doc_lang": page.doc_lang or None,
+        "doc_quality_score": page.doc_quality_score,
+        "router_ocr_prob": page.router_ocr_prob,
     }
-    if embed_images:
-        row["images"] = None  # filled by DatasetWriter, which owns the blobs
-    return row
 
 
 def image_to_row(blob: ImageBlob) -> dict[str, Any]:
@@ -218,23 +249,24 @@ def image_to_row(blob: ImageBlob) -> dict[str, Any]:
     }
 
 
-def pairs_table(docs: Iterable[DocRecord], **kwargs: Any) -> pa.Table:
-    """Build the image-text pair view from documents.
+def pairs_table(docs: Iterable[Sequence[PageRecord]], **kwargs: Any) -> pa.Table:
+    """Build the image-text pair view.
 
-    ``kwargs`` are forwarded to :func:`pdfsys_core.iter_pairs`
-    (``context_window``, ``min_chars``).
+    Takes an iterable of *documents*, each a sequence of its pages — mention
+    links cross page boundaries, so pairs cannot be built one page at a time.
+    ``kwargs`` are forwarded to :func:`pdfsys_core.iter_pairs`.
     """
     rows = [
         {
             "doc_id": p.doc_id,
+            "page_index": p.page_index,
             "image_id": p.image_id,
             "block_idx": p.block_idx,
-            "page": p.page,
             "text": p.text,
             "source": p.source,
         }
-        for doc in docs
-        for p in iter_pairs(doc, **kwargs)
+        for pages in docs
+        for p in iter_pairs(pages, **kwargs)
     ]
     return pa.Table.from_pylist(rows, schema=PAIR_SCHEMA)
 
@@ -245,16 +277,17 @@ def pairs_table(docs: Iterable[DocRecord], **kwargs: Any) -> pa.Table:
 
 
 class DatasetWriter:
-    """Streaming writer for a ``pdfsys.doc/v1`` shard.
+    """Streaming writer for a ``pdfsys.page/v2`` shard.
 
     Usage::
 
-        with DatasetWriter(Path("out/v1")) as w:
-            for doc, blobs in produce():
-                w.write(doc, blobs)
+        with DatasetWriter(Path("out/v2")) as w:
+            for pages, blobs in produce():
+                w.write(pages, blobs)
 
-    Image blobs are deduped across the whole shard by ``image_id``; calling
-    ``write`` with a blob already seen is free.
+    ``write`` takes all pages of one document at a time so the file stays
+    sorted by ``(doc_id, page_index)``. Image blobs are deduped across the
+    whole shard by ``image_id``.
     """
 
     def __init__(
@@ -263,55 +296,58 @@ class DatasetWriter:
         *,
         shard: str = "shard-00000",
         compression: str = "zstd",
-        embed_images: bool = False,
-        include_text: bool = True,
-        row_group_size: int = 512,
+        include_blocks: bool = True,
+        row_group_size: int = 2048,
     ) -> None:
         self.out_dir = Path(out_dir)
         self.shard = shard
         self.compression = compression
-        self.embed_images = embed_images
-        self.include_text = include_text
+        self.include_blocks = include_blocks
         self.row_group_size = row_group_size
 
-        self._doc_schema = _doc_schema_for(embed_images)
-        (self.out_dir / "documents").mkdir(parents=True, exist_ok=True)
-        self._docs = pq.ParquetWriter(
-            str(self.out_dir / "documents" / f"{shard}.parquet"),
-            self._doc_schema.with_metadata(_KV_METADATA),
+        (self.out_dir / "pages").mkdir(parents=True, exist_ok=True)
+        self._pages = pq.ParquetWriter(
+            str(self.out_dir / "pages" / f"{shard}.parquet"),
+            PAGE_SCHEMA.with_metadata(_KV_METADATA),
             compression=compression,
         )
         self._images: pq.ParquetWriter | None = None
+        self._page_images: pq.ParquetWriter | None = None
         self._seen_images: set[str] = set()
-        self._doc_buffer: list[dict[str, Any]] = []
+        self._seen_page_images: set[str] = set()
+        self._buffer: list[dict[str, Any]] = []
+        self.pages_written = 0
         self.docs_written = 0
         self.images_written = 0
+        self.page_images_written = 0
 
     # -- public ------------------------------------------------------------
 
-    def write(self, doc: DocRecord, blobs: Sequence[ImageBlob] = ()) -> None:
-        by_id = {b.image_id: b for b in blobs}
-        row = doc_to_row(
-            doc, embed_images=self.embed_images, include_text=self.include_text
-        )
-        if self.embed_images:
-            row["images"] = [
-                image_to_row(by_id[i])["image"] for i in doc.image_ids if i in by_id
-            ]
-        else:
-            self._write_images(by_id.values())
+    def write(
+        self,
+        pages: Sequence[PageRecord],
+        blobs: Sequence[ImageBlob] = (),
+        page_rasters: Sequence[tuple[PageRecord, ImageBlob]] = (),
+    ) -> None:
+        """Append one document: all its pages, its crops, and any page rasters."""
+        self._write_images(blobs)
+        self._write_page_images(page_rasters)
 
-        self._doc_buffer.append(row)
+        for page in sorted(pages, key=lambda p: p.page_index):
+            self._buffer.append(page_to_row(page, include_blocks=self.include_blocks))
+            self.pages_written += 1
         self.docs_written += 1
-        if len(self._doc_buffer) >= self.row_group_size:
-            self._flush_docs()
+
+        if len(self._buffer) >= self.row_group_size:
+            self._flush()
 
     def close(self) -> None:
-        self._flush_docs()
-        self._docs.close()
-        if self._images is not None:
-            self._images.close()
-            self._images = None
+        self._flush()
+        self._pages.close()
+        for writer in (self._images, self._page_images):
+            if writer is not None:
+                writer.close()
+        self._images = self._page_images = None
 
     def __enter__(self) -> DatasetWriter:
         return self
@@ -321,32 +357,53 @@ class DatasetWriter:
 
     # -- internals ---------------------------------------------------------
 
-    def _flush_docs(self) -> None:
-        if not self._doc_buffer:
+    def _flush(self) -> None:
+        if not self._buffer:
             return
-        table = pa.Table.from_pylist(self._doc_buffer, schema=self._doc_schema)
-        self._docs.write_table(table)
-        self._doc_buffer.clear()
+        self._pages.write_table(
+            pa.Table.from_pylist(self._buffer, schema=PAGE_SCHEMA)
+        )
+        self._buffer.clear()
 
     def _write_images(self, blobs: Iterable[ImageBlob]) -> None:
         fresh = [b for b in blobs if b.image_id not in self._seen_images]
         if not fresh:
             return
         if self._images is None:
-            (self.out_dir / "images").mkdir(parents=True, exist_ok=True)
-            self._images = pq.ParquetWriter(
-                str(self.out_dir / "images" / f"{self.shard}.parquet"),
-                IMAGE_SCHEMA.with_metadata(_KV_METADATA),
-                compression=self.compression,
-            )
+            self._images = self._open("images", IMAGE_SCHEMA)
         self._images.write_table(
             pa.Table.from_pylist([image_to_row(b) for b in fresh], schema=IMAGE_SCHEMA)
         )
         self._seen_images.update(b.image_id for b in fresh)
         self.images_written += len(fresh)
 
+    def _write_page_images(
+        self, rasters: Iterable[tuple[PageRecord, ImageBlob]]
+    ) -> None:
+        rows = [
+            {
+                **image_to_row(blob),
+                "doc_id": page.doc_id,
+                "page_index": page.page_index,
+                "render_dpi": page.render_dpi,
+            }
+            for page, blob in rasters
+            if blob.image_id not in self._seen_page_images
+        ]
+        if not rows:
+            return
+        if self._page_images is None:
+            self._page_images = self._open("page_images", PAGE_IMAGE_SCHEMA)
+        self._page_images.write_table(
+            pa.Table.from_pylist(rows, schema=PAGE_IMAGE_SCHEMA)
+        )
+        self._seen_page_images.update(r["image_id"] for r in rows)
+        self.page_images_written += len(rows)
 
-def _doc_schema_for(embed_images: bool) -> pa.Schema:
-    if not embed_images:
-        return DOC_SCHEMA
-    return DOC_SCHEMA.append(pa.field("images", pa.list_(IMAGE_TYPE)))
+    def _open(self, subdir: str, schema: pa.Schema) -> pq.ParquetWriter:
+        (self.out_dir / subdir).mkdir(parents=True, exist_ok=True)
+        return pq.ParquetWriter(
+            str(self.out_dir / subdir / f"{self.shard}.parquet"),
+            schema.with_metadata(_KV_METADATA),
+            compression=self.compression,
+        )
