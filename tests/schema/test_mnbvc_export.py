@@ -225,6 +225,20 @@ def test_v2_image_column_is_the_huggingface_wire_struct(shard, tmp_path):
     assert row["图片"]["path"].endswith(".jpeg")
 
 
+def test_v2_media_columns_all_use_the_same_struct():
+    """图片 / 视频 / 音频 三列必须一致 —— HF 的 Image/Audio/Video 三个 feature
+    用的都是 struct<bytes, path>，媒体列之间没有理由各用各的。"""
+    types = {V2_SCHEMA.field(n).type for n in ("图片", "视频", "音频")}
+    assert len(types) == 1
+    assert pa.types.is_struct(types.pop())
+
+
+def test_v2_block_type_is_a_plain_string_matching_mmdatablock():
+    """mm_template_mnbvc 的 BLOCK_SCHEMA 里 块类型 是 string。字典编码在这里
+    只会让两边 schema 对不上，省下的那点空间不值。"""
+    assert V2_SCHEMA.field("块类型").type == pa.string()
+
+
 def test_v2_page_id_is_an_integer(shard, tmp_path):
     table, _ = _export(shard, tmp_path, dialect="v2")
     assert table.schema.field("页ID").type == pa.int32()

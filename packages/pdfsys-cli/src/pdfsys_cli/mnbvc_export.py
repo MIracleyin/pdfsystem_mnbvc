@@ -112,19 +112,27 @@ LEGACY_SCHEMA = pa.schema(
 #: HuggingFace ``datasets.Image`` wire struct — the reason ``v2`` exists.
 _IMAGE_TYPE = pa.struct([("bytes", pa.large_binary()), ("path", pa.string())])
 
+#: Must stay byte-identical to ``mmdata_block.BLOCK_SCHEMA`` in
+#: mm_template_mnbvc — the whole point of the v2 dialect is that the code, the
+#: published example dataset and this exporter finally agree on one schema.
+#: Three columns were out of line here and have been brought over:
+#: ``块类型`` is a plain string (not dictionary-encoded), and ``视频`` / ``音频``
+#: use the same ``struct<bytes, path>`` as ``图片`` — HuggingFace's Audio and
+#: Video features use that struct too, so there is no reason for the media
+#: columns to disagree with each other.
 V2_SCHEMA = pa.schema(
     [
         ("实体ID", pa.string()),
         ("md5", pa.string()),
         ("块ID", pa.int32()),
-        ("块类型", pa.dictionary(pa.int8(), pa.string())),
+        ("块类型", pa.string()),
         ("扩展字段", pa.string()),
         ("时间", pa.string()),
         ("页ID", pa.int32()),
         ("文本", pa.large_string()),
         ("图片", _IMAGE_TYPE),
-        ("视频", pa.large_binary()),
-        ("音频", pa.large_binary()),
+        ("视频", _IMAGE_TYPE),
+        ("音频", _IMAGE_TYPE),
         ("OCR文本", pa.large_string()),
         ("STT文本", pa.large_string()),
     ]
