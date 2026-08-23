@@ -2,14 +2,16 @@
 
 What the export has to guarantee:
 
-1. `legacy` really is what mm_template_mnbvc writes — same columns, same
-   types, images base64 in a string column.
-2. The two upstream bugs it repairs stay repaired: 块ID increments, 页ID is
-   populated.
-3. Nothing from the v2 page row is silently dropped; the columns that have no
-   home in mmDataBlock land in 扩展字段.
+1. `v2` matches what mm_template_mnbvc writes since PR #4 (``260b92ee``) — and
+   is the default, because emitting the pre-merge shape by default would be
+   backwards now that upstream no longer produces it.
+2. `legacy` still reproduces the pre-merge shape for anyone reading old
+   shards, minus two bugs that are safe to fix either way: 块ID increments,
+   页ID is populated.
+3. Nothing from the page row is silently dropped; columns with no home in
+   mmDataBlock land in 扩展字段.
 4. `v2` images are loadable as a HuggingFace Image; `legacy` ones are not,
-   which is the whole reason the dialect exists.
+   which is the whole reason the dialects differ.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import pytest
 
 from pdfsys_cli.dataset_writer import DatasetWriter
 from pdfsys_cli.mnbvc_export import (
+    DIALECTS,
     LEGACY_SCHEMA,
     V2_SCHEMA,
     export_shard,
@@ -97,6 +100,7 @@ def shard(tmp_path):
 
 
 def _export(shard, tmp_path, dialect="legacy", **kwargs):
+    """Defaults to legacy so the pre-merge assertions below stay explicit."""
     out = tmp_path / f"mnbvc_{dialect}.parquet"
     stats = export_shard(shard, out, dialect=dialect, timestamp="20260822", **kwargs)
     return pq.read_table(out), stats
@@ -107,6 +111,36 @@ def _export(shard, tmp_path, dialect="legacy", **kwargs):
 # ---------------------------------------------------------------------------
 
 
+def test_v2_is_the_default_dialect():
+    """Upstream writes this schema now; defaulting to the pre-merge shape would
+    hand people a format their own reference implementation no longer emits."""
+    import inspect
+
+    assert DIALECTS[0] == "v2"
+    assert inspect.signature(export_shard).parameters["dialect"].default == "v2"
+
+
+def test_v2_schema_is_pinned_column_for_column():
+    """Verified identical to mm_template_mnbvc's BLOCK_SCHEMA at 260b92ee.
+    That repo is not a dependency here, so the expectation is spelled out —
+    if upstream moves, this fails and someone has to reconcile the two."""
+    assert [(f.name, str(f.type)) for f in V2_SCHEMA] == [
+        ("实体ID", "string"),
+        ("md5", "string"),
+        ("块ID", "int32"),
+        ("块类型", "string"),
+        ("扩展字段", "string"),
+        ("时间", "string"),
+        ("页ID", "int32"),
+        ("文本", "large_string"),
+        ("图片", "struct<bytes: large_binary, path: string>"),
+        ("视频", "struct<bytes: large_binary, path: string>"),
+        ("音频", "struct<bytes: large_binary, path: string>"),
+        ("OCR文本", "large_string"),
+        ("STT文本", "large_string"),
+    ]
+
+
 def test_legacy_columns_are_the_mmdatablock_fields_in_order():
     assert LEGACY_SCHEMA.names == [
         "实体ID", "md5", "块ID", "块类型", "扩展字段", "时间",
@@ -115,7 +149,7 @@ def test_legacy_columns_are_the_mmdatablock_fields_in_order():
     assert V2_SCHEMA.names == LEGACY_SCHEMA.names
 
 
-def test_legacy_stores_images_as_base64_text_like_upstream(shard, tmp_path):
+def test_legacy_stores_images_as_base64_text_like_the_pre_merge_format(shard, tmp_path):
     table, _ = _export(shard, tmp_path)
     assert table.schema.field("图片").type == pa.large_string()
     row = table.to_pylist()[0]
@@ -128,7 +162,7 @@ def test_legacy_page_id_is_a_string_matching_the_declared_optional_str(shard, tm
     assert [r["页ID"] for r in table.to_pylist()] == ["0", "1", "2"]
 
 
-def test_legacy_md5_keeps_upstreams_name_hash_semantics(shard, tmp_path):
+def test_legacy_keeps_the_pre_merge_name_hash_semantics(shard, tmp_path):
     row = _export(shard, tmp_path)[0].to_pylist()[0]
     assert row["md5"] == hashlib.md5(row["实体ID"].encode()).hexdigest()
 
@@ -139,8 +173,8 @@ def test_legacy_md5_keeps_upstreams_name_hash_semantics(shard, tmp_path):
 
 
 def test_block_id_increments_instead_of_staying_zero(shard, tmp_path):
-    """Upstream sets block_id = 0 and never advances it, so every block in a
-    document shares id 0."""
+    """Before PR #4 block_id was set to 0 and never advanced, so every block
+    in a document shared id 0."""
     table, _ = _export(shard, tmp_path)
     assert [r["块ID"] for r in table.to_pylist()] == [0, 1, 2]
 
@@ -157,7 +191,7 @@ def test_block_id_restarts_per_document(tmp_path):
 
 
 def test_page_id_column_is_populated_not_only_buried_in_the_json(shard, tmp_path):
-    """Upstream puts page_id in 扩展字段 and leaves the 页ID column None."""
+    """Before PR #4, page_id lived in 扩展字段 and the 页ID column stayed None."""
     table, _ = _export(shard, tmp_path)
     for row in table.to_pylist():
         assert row["页ID"] is not None
@@ -178,16 +212,16 @@ def test_v2_columns_with_no_mmdatablock_home_land_in_the_extension_field(shard, 
 
 
 def test_extension_field_keeps_upstreams_own_keys(shard, tmp_path):
-    """A reader written against the reference implementation still finds what
-    it expects."""
+    """A reader written against the chinaxiv converter still finds what it
+    expects."""
     extra = json.loads(_export(shard, tmp_path)[0].to_pylist()[0]["扩展字段"])
     assert extra["page_image_size"] == {"width": 4, "height": 3}
     assert extra["page_text_length"] == len(_export(shard, tmp_path)[0].to_pylist()[0]["文本"])
 
 
 def test_extension_field_is_always_a_string(shard, tmp_path):
-    """Upstream passes a dict on the pdf path and a JSON string on the
-    image-text-pair path, so the column type drifts between shards."""
+    """Before PR #4 the pdf path passed a dict and the image-text-pair path a
+    JSON string, so the column type drifted between shards."""
     for dialect in ("legacy", "v2"):
         table, _ = _export(shard, tmp_path, dialect=dialect)
         assert table.schema.field("扩展字段").type == pa.string()
@@ -246,8 +280,8 @@ def test_v2_page_id_is_an_integer(shard, tmp_path):
 
 
 def test_v2_md5_is_over_content_not_over_a_name(shard, tmp_path):
-    """Upstream hashes the image filename, which can neither dedupe nor
-    verify."""
+    """The pre-merge format hashed the image filename, which can neither dedupe
+    nor verify."""
     row = _export(shard, tmp_path, dialect="v2")[0].to_pylist()[0]
     expected = hashlib.md5()
     expected.update(JPEG)
@@ -257,9 +291,9 @@ def test_v2_md5_is_over_content_not_over_a_name(shard, tmp_path):
 
 
 def test_both_dialects_declare_their_schema_so_shards_concatenate(shard, tmp_path):
-    """Upstream infers the schema per batch via from_pandas: a batch where
-    every 视频 is None types the column null, the next types it binary, and
-    the two shards will not concatenate."""
+    """Before PR #4 the schema was inferred per batch via from_pandas: a batch
+    where every 视频 is None types the column null, the next types it binary,
+    and the two shards will not concatenate."""
     for dialect in ("legacy", "v2"):
         table, _ = _export(shard, tmp_path, dialect=dialect)
         declared = schema_for(dialect)

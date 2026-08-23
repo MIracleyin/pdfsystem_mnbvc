@@ -14,37 +14,34 @@ raster.
 
 Two dialects
 ------------
+``v2`` (default)
+    What ``mm_template_mnbvc`` writes today. Its ``mmdata_block.BLOCK_SCHEMA``
+    and this module's :data:`V2_SCHEMA` are verified column-for-column
+    identical; the fixes that got them there landed upstream in
+    `PR #4 <https://github.com/MIracleyin/mm_template_mnbvc/pull/4>`_
+    (merged as ``260b92ee``): a declared Arrow schema instead of one inferred
+    per batch, media columns as ``struct<bytes, path>`` rather than base64
+    text, ``md5`` over content rather than over a filename, an integer
+    ``页ID``, and one vocabulary for ``块类型``.
+
 ``legacy``
-    Same column names and types the existing repo writes, so anything reading
-    those Parquet files today reads ours. Two things are populated that the
-    reference implementation leaves empty, because both are bugs rather than
-    conventions and filling them cannot break a reader: ``块ID`` actually
-    increments (upstream initialises ``block_id = 0`` and never advances it,
-    so every block in a document shares id 0), and ``页ID`` is filled from the
-    page index (upstream buries ``page_id`` in the ``扩展字段`` JSON while the
-    dedicated column stays ``None``).
+    What that repo wrote *before* ``260b92ee``: media base64-encoded into a
+    string column, ``页ID`` as a string, ``md5`` over the entity name. Kept so
+    a consumer still reading pre-merge shards can be handed matching output.
+    Two upstream bugs stay fixed even here, because filling a column that was
+    always empty cannot break a reader: ``块ID`` increments (it used to stay 0
+    for every block in a document) and ``页ID`` is populated (``page_id`` used
+    to live only inside the ``扩展字段`` JSON).
 
-``v2``
-    Same row semantics, four repairs that do change the wire format — see
-    ``docs/schema/mnbvc-mm-compat.md``. In short: images as binary rather than
-    base64 text, ``md5`` over content rather than over a filename, ``页ID``
-    typed as an integer, and a declared Arrow schema instead of one inferred
-    per batch.
+On the media-column change, the obvious guess is wrong: base64 is *not* a disk
+cost. It inflates by a third but zstd takes almost all of it back — measured on
+a real shard the base64 column compressed 0.7 % *smaller*. What binary buys is
+that ``cast_column("图片", Image())`` works at all (base64 and even plain
+``binary`` both raise ``ArrowNotImplementedError``), plus 33 % less
+uncompressed memory and ~0.8 ms/page of decoding, close to an hour of
+single-core time per pass over a 4-million-page corpus.
 
-    The binary change is *not* a disk saving, contrary to the obvious guess:
-    base64 inflates by a third but zstd takes almost all of it back, and
-    measured on a real shard the base64 column compressed 0.7 % *smaller*.
-    What it buys is that ``cast_column("图片", Image())`` works at all —
-    on the legacy column it raises ``ArrowNotImplementedError`` — plus 33 %
-    less uncompressed memory and ~0.8 ms/page of base64 decoding, which is
-    close to an hour of single-core time per pass over a 4-million-page
-    corpus.
-
-Both dialects declare their schema explicitly. The reference implementation
-builds each shard with ``pa.Table.from_pandas``, which infers column types
-from whatever that batch happens to contain — a batch where every ``视频`` is
-None types the column as null, the next one types it as binary, and the two
-shards will not concatenate.
+Both dialects declare their schema explicitly.
 """
 
 from __future__ import annotations
@@ -68,7 +65,8 @@ __all__ = [
     "export_shard",
 ]
 
-DIALECTS = ("legacy", "v2")
+#: ``v2`` first: it is what upstream writes now, so it is the default.
+DIALECTS = ("v2", "legacy")
 
 #: Field order matches ``mmDataBlock``'s declaration order, which is what the
 #: reference implementation's ``to_dict()`` walks.
@@ -88,9 +86,9 @@ _FIELDS = (
     "STT文本",
 )
 
-#: Byte-compatible with what the reference implementation writes today:
-#: binaries arrive base64-encoded because ``to_dict()`` encodes them before
-#: pandas ever sees them, so the Parquet column is a string.
+#: Byte-compatible with what the reference implementation wrote before
+#: ``260b92ee``: binaries arrived base64-encoded because ``to_dict()`` encoded
+#: them before pandas ever saw them, so the Parquet column was a string.
 LEGACY_SCHEMA = pa.schema(
     [
         ("实体ID", pa.string()),
@@ -112,14 +110,12 @@ LEGACY_SCHEMA = pa.schema(
 #: HuggingFace ``datasets.Image`` wire struct — the reason ``v2`` exists.
 _IMAGE_TYPE = pa.struct([("bytes", pa.large_binary()), ("path", pa.string())])
 
-#: Must stay byte-identical to ``mmdata_block.BLOCK_SCHEMA`` in
-#: mm_template_mnbvc — the whole point of the v2 dialect is that the code, the
-#: published example dataset and this exporter finally agree on one schema.
-#: Three columns were out of line here and have been brought over:
-#: ``块类型`` is a plain string (not dictionary-encoded), and ``视频`` / ``音频``
-#: use the same ``struct<bytes, path>`` as ``图片`` — HuggingFace's Audio and
-#: Video features use that struct too, so there is no reason for the media
-#: columns to disagree with each other.
+#: Must stay column-for-column identical to ``mmdata_block.BLOCK_SCHEMA`` in
+#: mm_template_mnbvc (verified against ``260b92ee``). The point of this dialect
+#: is that the code, the published example dataset
+#: (hf.co/datasets/miracleyin/example_mmdata_mnbvc, v2.1) and this exporter
+#: finally agree on one schema — so if you change anything here, change it
+#: upstream in the same breath.
 V2_SCHEMA = pa.schema(
     [
         ("实体ID", pa.string()),
@@ -184,7 +180,7 @@ def page_row_to_block(
     page: dict[str, Any],
     raster: dict[str, Any] | None,
     *,
-    dialect: str,
+    dialect: str = "v2",
     block_id: int,
     timestamp: str,
     block_type: str = "image-text-pair",
@@ -192,9 +188,9 @@ def page_row_to_block(
     """Map one ``pages`` row (+ its raster) onto one ``mmDataBlock`` row."""
     image_bytes = (raster or {}).get("image", {}).get("bytes")
 
-    # 实体ID: upstream uses the page image's filename. We use the document's
-    # sha256 plus the page number — same shape, but stable across re-ingests
-    # and not dependent on a file ever having existed on disk.
+    # 实体ID: the chinaxiv converter uses the page image's filename. We use the
+    # document's sha256 plus the page number — same shape, but stable across
+    # re-ingests and not dependent on a file ever having existed on disk.
     entity_id = f"{page['doc_id']}-page-{page['page_index']}"
 
     extra = {k: page.get(k) for k in _EXTRA_COLUMNS if page.get(k) is not None}
@@ -254,7 +250,7 @@ def export_shard(
     shard_dir: Path,
     out_path: Path,
     *,
-    dialect: str = "legacy",
+    dialect: str = "v2",
     timestamp: str,
     block_type: str = "image-text-pair",
     compression: str = "zstd",

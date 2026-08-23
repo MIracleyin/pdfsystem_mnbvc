@@ -3,6 +3,14 @@
 对象是 [`mm_template_mnbvc`](https://github.com/MIracleyin/mm_template_mnbvc) 里的 `mmDataBlock`
 ——一行一块、字段名全中文、二进制内联。
 
+> **状态**：本文档里提出的修复已经在
+> [PR #4](https://github.com/MIracleyin/mm_template_mnbvc/pull/4) 合并进上游
+> （`260b92ee`，2026-08-23）。所以 `--dialect v2` 现在**就是上游的格式**，不再是提案；
+> 已发布的标准示例数据集
+> [`example_mmdata_mnbvc`](https://huggingface.co/datasets/miracleyin/example_mmdata_mnbvc)
+> 也随之更新到 v2.1。`--dialect legacy` 保留给还在读合并前 shard 的消费者。
+> 下文里描述的「历史实现如何如何」，指的都是 `260b92ee` 之前。
+
 **结论先说：两个格式在最要紧的那一点上本来就是一致的，不需要改 `pdfsys.page/v2` 去迁就它。**
 那个仓库的 `chinaxiv_to_image_text_pair_blocks()` 产出的是**一行一页、每行带该页 PNG 和该页 Markdown**
 的 `块类型="image-text-pair"` 块 —— 这正是 `pdfsys.page/v2` 的页行。所以映射是改名，不是重构。
@@ -14,6 +22,8 @@
 pdfsys dataset --from-mineru ./out --to ./dataset/v2 --images pages --pdf-dir ./data/pdfs
 pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/chinaxiv_0.parquet
 ```
+
+`--dialect` 默认 `v2`（上游当前格式）；要合并前那份形态用 `--dialect legacy`。
 
 ---
 
@@ -37,7 +47,7 @@ pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/chinaxiv_0.parquet
 
 ## 2 · 两个直接修掉的 bug（`legacy` 方言也修）
 
-这两条填上不会破坏任何现有读端，所以两种方言都修。
+这两条填上不会破坏任何现有读端，所以两种方言都修。**上游已随 PR #4 修复。**
 
 ### `块ID` 恒为 0
 
@@ -61,7 +71,8 @@ for page_id, (img_file, md_file) in enumerate(zip(img_files, md_files)):
 
 ## 3 · `v2` 方言：四处改动线格式的修复
 
-用 `--dialect v2` 打开。每条都有代价，所以和 `legacy` 分开。
+**这四条已经是上游的默认行为了**（PR #4）。这里保留完整论证，因为它们解释了
+`legacy` 方言为什么还要存在，以及迁移时会踩到什么。
 
 ### 3.1 `图片` 存二进制，不存 base64
 
@@ -128,27 +139,44 @@ table = pa.Table.from_pandas(df)   # 类型从这一批数据推断
 
 ---
 
-## 5 · 还没解决的语义错位
+## 5 · 合并后新发现的一处
 
-| | 说明 |
-|---|---|
-| `图片` 列装 PDF 字节 | `chinaxiv_to_pdf_blocks` 里 `图片=pdf_data`。导出器不产 `块类型="pdf"` 的块，所以没踩到；但历史数据里这一列混着两种东西 |
-| 一份 PDF 多个 backend | 同一份 PDF 被 pipeline 和 vlm 各跑一遍会产生两套同 `doc_id` 的页行，导出后就是两套同 `实体ID` 的块。发布前需要按 `(doc_id, extractor)` 择优去重 |
-| `时间` 是处理时间 | 不是文档时间。两边一致，但值得在数据卡里写明 |
+覆盖已发布的标准示例数据集时才发现：**它和代码在 schema 上也是对不上的**，
+而且它才是「标准」。
+
+| | `example_mmdata_mnbvc` v2.0（2024-07） | 代码（合并前） |
+|---|---|---|
+| md5 列 | `文件md5` | `md5` |
+| `视频` 列 | 没有 | 有 |
+| 图片/音频 | **`binary`**（对的） | base64 字符串（错的） |
+| `块类型` | `文字`/`图片`/`音频` | `pdf`/`image-text-pair`/`视频` |
+
+也就是说 **2024 年那份示例把二进制存对了，2025 年的代码反而退回了 base64**；
+`块类型` 是**三套**词汇不是两套。PR 里补了 `text`/`image`/`audio` 常量，
+示例数据集也更新到 v2.1 与代码对齐。三处（代码 / 示例 / 本导出器）现在同一个 schema。
+
+## 6 · 还没解决的语义错位
+
+| | 状态 | 说明 |
+|---|---|---|
+| `图片` 列装 PDF 字节 | **已修**（PR #4） | `chinaxiv_to_pdf_blocks` 原来是 `图片=pdf_data`。现在不塞了——PDF 不是图片，那个块的价值在 docling 解析出的文本。**但合并前落盘的数据里这一列仍混着两种东西**，读历史 shard 时要按 `块类型` 分支 |
+| 一份 PDF 多个 backend | **已修**（本仓库侧） | 同一份 PDF 被 pipeline 和 vlm 各跑一遍会产生两套同 `doc_id` 的页行。`pdfsys dataset` 现在按 `(doc_id, extractor)` 择优去重并打印丢弃了哪些，`pdfsys dataset-validate` 会把重复主键报成错误。导出器拿到的 shard 已经是干净的 |
+| `时间` 是处理时间 | 未解决 | 不是文档时间。两边一致，但值得在数据卡里写明 |
+| `whisperx` 是硬依赖 | 未解决 | `uv sync` 会为了转 PDF 把 torch 拉下来。建议挪到 optional extra，PR #4 没动依赖树 |
 
 ---
 
-## 6 · 实现
+## 7 · 实现
 
 | 位置 | 内容 |
 |---|---|
 | `pdfsys_cli/mnbvc_export.py` | 两种方言的 schema + 行映射 + 导出器 |
 | `pdfsys mnbvc-export` | CLI 子命令 |
-| `tests/schema/test_mnbvc_export.py` | 21 个测试，含 HuggingFace 往返 |
+| `tests/schema/test_mnbvc_export.py` | 25 个测试，含 HuggingFace 往返、schema 逐列钉住 |
 
 ```sh
-pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet            # legacy
-pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet --dialect v2
+pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet                  # v2，默认
+pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet --dialect legacy
 ```
 
 没有整页光栅的页仍然导出（文本还是有价值的），但 `图片` 为 null，

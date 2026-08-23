@@ -170,11 +170,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="A pdfsys.page/v2 dataset directory (contains pages/).")
     m.add_argument("--to", required=True, dest="out_path",
                    help="Output .parquet path.")
-    m.add_argument("--dialect", default="legacy", choices=("legacy", "v2"),
-                   help="`legacy`: the column names and types mm_template_mnbvc writes "
-                        "today (images base64-encoded into a string column). `v2`: same "
-                        "rows with images as binary so HuggingFace can decode them "
-                        "directly, plus a content-based md5 and an integer 页ID — see "
+    m.add_argument("--dialect", default="v2", choices=("v2", "legacy"),
+                   help="`v2` (default): what mm_template_mnbvc writes today — declared "
+                        "schema, media columns as struct<bytes, path> so HuggingFace can "
+                        "decode them, content-based md5, integer 页ID. `legacy`: what it "
+                        "wrote before PR #4 (media base64-encoded into a string column), "
+                        "for consumers still reading pre-merge shards. See "
                         "docs/schema/mnbvc-mm-compat.md.")
     m.add_argument("--block-type", default="image-text-pair",
                    help="Value for the 块类型 column (default: image-text-pair).")
