@@ -120,12 +120,22 @@ pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl 
 pdfsys dataset --from-mineru ./out --to ./dataset/v2 \
                --images pages --pdf-dir ./data/pdfs --render-dpi 200
 
+# The text-ok documents never reached MinerU, so they leave no sidecars.
+# Package those straight from the PDFs. This re-runs mupdf (~10ms/page),
+# because a run persists only merged markdown with no page boundaries.
+# Whole-page rasters are the default here — mupdf has no crops to store.
+pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2-mupdf \
+               --meta ./out/results.jsonl
+
 # Contract check. Run this before anything leaves the machine.
 pdfsys dataset-validate --shard ./dataset/v2
 
 # Re-emit in the MNBVC multimodal block format.
 pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet --dialect v2
 ```
+
+The two lanes write separate shards on purpose: rows within a shard are sorted
+by `doc_id`, so one shard cannot be fed from two sources without merging first.
 
 Worked example of one real page:
 [`docs/schema/doc_dataset.v2.sample.md`](docs/schema/doc_dataset.v2.sample.md).

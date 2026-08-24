@@ -9,6 +9,8 @@ Two entry points, one per lane:
   re-parse.
 * :func:`build_from_extracted` — the mupdf fast lane, where
   ``ExtractedDoc.segments`` is the authority and there are no images.
+  :func:`build_from_pdf` wraps it for callers holding a PDF rather than an
+  already-extracted document.
 
 Both return ``(pages, blobs)`` ready for
 :class:`pdfsys_cli.dataset_writer.DatasetWriter`. Full-page rasters are opt-in
@@ -21,7 +23,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -48,8 +50,11 @@ __all__ = [
     "IMAGE_MODES",
     "build_from_mineru_dir",
     "build_from_extracted",
+    "build_from_pdf",
     "iter_mineru_dirs",
+    "iter_pdfs",
     "select_documents",
+    "select_pdfs",
     "page_geometry_from_pdf",
     "render_page_images",
 ]
@@ -63,6 +68,79 @@ def iter_mineru_dirs(root: Path) -> Iterator[Path]:
         if path.name.endswith("_content_list_v2.json"):
             continue
         yield path.parent
+
+
+def iter_pdfs(root: Path) -> Iterator[Path]:
+    """Yield every PDF under ``root``.
+
+    Deliberately the same glob the runner discovers with, so
+    ``pdfsys dataset --from-pdf-dir X`` packages exactly the set that
+    ``pdfsys run --pdf-dir X`` processed. A glob that differed even slightly
+    would produce a shard quietly covering a different corpus than the run it
+    claims to come from.
+    """
+    yield from (p for p in sorted(Path(root).rglob("*.pdf")) if p.is_file())
+
+
+def select_pdfs(
+    paths: Iterable[Path],
+) -> tuple[list[tuple[str, Path]], list[tuple[Path, str, str]]]:
+    """一个 doc_id 只留一份 PDF，按 doc_id 排序。
+
+    返回 ``(选中的 (doc_id, path), 丢弃的 (path, doc_id, 原因))``——和
+    :func:`select_documents` 同形状，调用方一套代码处理两条链路。
+
+    同一份 PDF 在语料里出现两次（不同文件名、同样内容）是常态，而
+    ``(doc_id, page_index)`` 是主键，两份都写就是违约的 shard。排序也在这里
+    做：``DatasetWriter`` 要求 doc_id 递增，而文件名和 sha256 没有关系。
+    """
+    import hashlib
+
+    seen: dict[str, Path] = {}
+    dropped: list[tuple[Path, str, str]] = []
+    for raw in paths:
+        path = Path(raw)
+        try:
+            doc_id = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError as e:
+            dropped.append((path, "", f"读不出来: {e}"))
+            continue
+        if doc_id in seen:
+            dropped.append((path, doc_id, f"与 {seen[doc_id]} 内容相同"))
+            continue
+        seen[doc_id] = path
+    return sorted(seen.items()), dropped
+
+
+def build_from_pdf(
+    pdf_path: Path,
+    **page_fields: Any,
+) -> tuple[tuple[PageRecord, ...], list[ImageBlob]]:
+    """Extract one PDF through the mupdf fast lane and encode it as page rows.
+
+    This re-extracts rather than reading a finished run's output, because the
+    mupdf lane leaves its page structure nowhere on disk: it writes one merged
+    ``markdown/<sha256>.md`` with no page boundaries, and ``segments_excerpt``
+    in ``results.jsonl`` is populated only on the VLM branch and truncated to
+    200 characters — a viz artifact, not a data source. Re-running mupdf costs
+    ~10 ms/page, which is cheaper than inventing a format to persist what it
+    already knows how to recompute.
+
+    ``source_uri`` defaults to the PDF's path, so this lane needs no ``--meta``
+    to produce a row that says where it came from.
+    """
+    from pdfsys_parser_mupdf import extract_doc
+
+    pdf_path = Path(pdf_path)
+    geometry = page_geometry_from_pdf(pdf_path)
+    extracted = extract_doc(pdf_path)
+    page_fields.setdefault("source_uri", str(pdf_path))
+    return build_from_extracted(
+        extracted,
+        n_pages=len(geometry),
+        page_sizes=geometry,
+        **page_fields,
+    )
 
 
 #: 同一份 PDF 被多个 backend 跑过时，谁的产物进 shard。越靠前越优先——

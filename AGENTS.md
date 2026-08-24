@@ -49,9 +49,10 @@ pdfsys init-config > pdfsys.yaml           # generate example config
 pdfsys run -c pdfsys.yaml --stages router  # run specific stage
 pdfsys run -c pdfsys.yaml                  # run full pipeline
 
-# L2 packaging
+# L2 packaging — two entrances, one per lane (see ARCHITECTURE.md)
 pdfsys dataset --from-mineru ./out --to ./dataset/v2 --meta ./out/results.jsonl
 pdfsys dataset --from-mineru ./out --to ./dataset/v2 --images pages --pdf-dir ./data/pdfs
+pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2-mupdf   # mupdf lane; re-extracts
 pdfsys dataset-validate --shard ./dataset/v2   # format contract; run before publishing
 pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet
 

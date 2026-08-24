@@ -118,8 +118,16 @@ def build_parser() -> argparse.ArgumentParser:
         "dataset",
         help="Pack pipeline output into a pdfsys.page/v2 Parquet shard.",
     )
-    d.add_argument("--from-mineru", required=True, dest="from_mineru",
-                   help="Run directory containing MinerU *_content_list.json outputs.")
+    d_src = d.add_mutually_exclusive_group(required=True)
+    d_src.add_argument("--from-mineru", dest="from_mineru",
+                       help="Run directory containing MinerU *_content_list.json outputs "
+                            "(the pipeline / vlm lanes).")
+    d_src.add_argument("--from-pdf-dir", dest="from_pdf_dir",
+                       help="Directory of source PDFs, packaged through the mupdf fast "
+                            "lane. This is the route for text-ok documents the router "
+                            "never sent to MinerU — they leave no *_content_list.json "
+                            "behind. Extraction is re-run here (~10ms/page) because a "
+                            "run persists only merged markdown, with no page boundaries.")
     d.add_argument("--to", required=True, dest="to_dir",
                    help="Output dataset directory (pages/ + images/ are created inside).")
     d.add_argument("--shard", default="shard-00000", help="Shard name (default: shard-00000).")
@@ -133,16 +141,19 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--no-blocks", action="store_true", default=False,
                    help="Write the model-derived `blocks` column null. `text` still carries "
                         "the image interleaving; you lose bboxes, captions and block types.")
-    d.add_argument("--images", default="crops", choices=("crops", "pages", "none"),
-                   help="How image pixels are stored. `crops` (default): only the cropped "
-                        "figures, ~90 KiB/page. `pages`: only full-page rasters, with figures "
+    d.add_argument("--images", default=None, choices=("crops", "pages", "none"),
+                   help="How image pixels are stored. `crops`: only the cropped figures, "
+                        "~90 KiB/page. `pages`: only full-page rasters, with figures "
                         "addressed by bbox and cut out on read, ~311 KiB/page — needs "
-                        "--pdf-dir. `none`: no pixels at all. They are mutually exclusive "
-                        "because MinerU's crops are already sub-rectangles of a 200-dpi page "
-                        "render, so keeping both stores the same pixels twice.")
+                        "--pdf-dir on the MinerU lane. `none`: no pixels at all. They are "
+                        "mutually exclusive because MinerU's crops are already "
+                        "sub-rectangles of a 200-dpi page render, so keeping both stores "
+                        "the same pixels twice. Defaults to `crops` for --from-mineru and "
+                        "`pages` for --from-pdf-dir, which has no crops to store.")
     d.add_argument("--pdf-dir", default=None,
-                   help="Directory of source PDFs, required by --images pages. Matched to "
-                        "documents by sha256.")
+                   help="Directory of source PDFs, required by --images pages on the "
+                        "MinerU lane. Matched to documents by sha256. Not needed with "
+                        "--from-pdf-dir, which already knows where the PDF is.")
     d.add_argument("--on-duplicate", default="best", choices=("best", "error"),
                    help="同一份 PDF 有多个 backend 产物时怎么办。`best`（默认）按 "
                         "vlm > pipeline > mupdf 择一并打印丢弃了哪些；`error` 直接报错。"
@@ -240,6 +251,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         print("Error: --pdf-dir is required (or set input.pdf_dir in config).", file=sys.stderr)
         return 1
 
+    if cfg.dropped_stages:
+        # A stage vanishing between what was asked for and what runs is the
+        # kind of thing you only notice three hours later, when the output
+        # you expected isn't there.
+        print(
+            f"[pdfsys] warning: --no-quality also dropped "
+            f"{', '.join(cfg.dropped_stages)} — the L1 parquet's `kept` column "
+            f"is decided by quality_score, so without the scorer there is "
+            f"nothing to write.",
+            file=sys.stderr,
+        )
+
     # Print run plan.
     print(f"[pdfsys] stages:  {' → '.join(cfg.stages)}")
     print(f"[pdfsys] input:   {cfg.input.pdf_dir}" + (f" (limit {cfg.input.limit})" if cfg.input.limit else ""))
@@ -271,47 +294,89 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_dataset(args: argparse.Namespace) -> int:
     import json
+    from functools import partial
     from pathlib import Path
 
     import pyarrow.parquet as pq
 
     from .dataset_build import (
         build_from_mineru_dir,
+        build_from_pdf,
         iter_mineru_dirs,
+        iter_pdfs,
         render_page_images,
         select_documents,
+        select_pdfs,
     )
     from .dataset_writer import DatasetWriter, pairs_table
 
-    src = Path(args.from_mineru)
+    from_pdfs = args.from_pdf_dir is not None
+    src = Path(args.from_pdf_dir if from_pdfs else args.from_mineru)
     if not src.is_dir():
         print(f"Error: not a directory: {src}", file=sys.stderr)
         return 1
 
-    want_rasters = args.images == "pages"
-    pdf_index: dict[str, Path] = {}
-    if want_rasters:
-        if not args.pdf_dir:
-            print(
-                "Error: --images pages requires --pdf-dir (figures are cut out of the "
-                "page raster, so the raster has to exist).",
-                file=sys.stderr,
-            )
-            return 1
-        pdf_index = _index_pdfs_by_sha256(Path(args.pdf_dir))
-        print(f"[pdfsys dataset] indexed {len(pdf_index)} source PDFs for rasterisation")
-
-    meta = _load_run_meta(Path(args.meta)) if args.meta else {}
-    doc_dirs = list(iter_mineru_dirs(src))
-    if not doc_dirs:
-        print(f"Error: no *_content_list.json found under {src}", file=sys.stderr)
+    # MinerU hands us crops. The mupdf lane rasterises nothing at all, so the
+    # only pixels it could ever store are whole-page renders.
+    images = args.images or ("pages" if from_pdfs else "crops")
+    if from_pdfs and images == "crops":
+        print(
+            "Error: --images crops is impossible with --from-pdf-dir — the mupdf "
+            "lane reads the PDF's text layer and never cuts figures out of the "
+            "page. Use --images pages (whole-page rasters, figures addressed by "
+            "bbox) or --images none.",
+            file=sys.stderr,
+        )
         return 1
+    want_rasters = images == "pages"
 
-    doc_dirs, dropped = select_documents(doc_dirs)
+    # Both lanes reduce to the same shape: a label to blame on failure, a
+    # thunk returning (pages, blobs), and the source PDF when we already know
+    # it. Everything downstream is lane-agnostic.
+    work: list = []
+    pdf_index: dict[str, Path] = {}
+
+    if from_pdfs:
+        selected, dropped = select_pdfs(iter_pdfs(src))
+        if not selected:
+            print(f"Error: no *.pdf found under {src}", file=sys.stderr)
+            return 1
+        work = [(str(p), partial(build_from_pdf, p), p) for _, p in selected]
+    else:
+        if want_rasters:
+            if not args.pdf_dir:
+                print(
+                    "Error: --images pages requires --pdf-dir (figures are cut out of "
+                    "the page raster, so the raster has to exist).",
+                    file=sys.stderr,
+                )
+                return 1
+            pdf_index = _index_pdfs_by_sha256(Path(args.pdf_dir))
+            print(f"[pdfsys dataset] indexed {len(pdf_index)} source PDFs for rasterisation")
+
+        doc_dirs = list(iter_mineru_dirs(src))
+        if not doc_dirs:
+            print(f"Error: no *_content_list.json found under {src}", file=sys.stderr)
+            return 1
+        doc_dirs, dropped = select_documents(doc_dirs)
+        work = [
+            (
+                str(doc_dir),
+                partial(
+                    build_from_mineru_dir,
+                    doc_dir,
+                    link_figure_mentions=not args.no_mentions,
+                    images=images,
+                ),
+                None,
+            )
+            for doc_dir in doc_dirs
+        ]
+
     if dropped:
         if args.on_duplicate == "error":
             for path, doc_id, why in dropped:
-                print(f"Error: {doc_id[:12]}… 有多份产物: {path} — {why}", file=sys.stderr)
+                print(f"Error: {doc_id[:12]}… 有多份: {path} — {why}", file=sys.stderr)
             print(
                 "Error: (doc_id, page_index) 是主键，重复会写出违约的 shard。"
                 "用 --on-duplicate best 择优，或先清理输入。",
@@ -321,8 +386,11 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         for path, doc_id, why in dropped:
             print(f"  - 跳过 {path}: {why}", file=sys.stderr)
 
+    meta = _load_run_meta(Path(args.meta)) if args.meta else {}
     out_dir = Path(args.to_dir)
-    print(f"[pdfsys dataset] {len(doc_dirs)} documents → {out_dir}"
+    lane = "mupdf" if from_pdfs else "mineru"
+    print(f"[pdfsys dataset] lane={lane} images={images} "
+          f"{len(work)} documents → {out_dir}"
           + (f"（去重丢弃 {len(dropped)} 份）" if dropped else ""))
 
     docs: list = []
@@ -334,16 +402,12 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         compression=args.compression,
         include_blocks=not args.no_blocks,
     ) as writer:
-        for doc_dir in doc_dirs:
+        for label, build, known_pdf in work:
             try:
-                pages, blobs = build_from_mineru_dir(
-                    doc_dir,
-                    link_figure_mentions=not args.no_mentions,
-                    images=args.images,
-                )
+                pages, blobs = build()
             except Exception as e:  # one bad document must not kill the shard
                 failures += 1
-                print(f"  ! {doc_dir}: {type(e).__name__}: {e}", file=sys.stderr)
+                print(f"  ! {label}: {type(e).__name__}: {e}", file=sys.stderr)
                 continue
 
             pages = tuple(
@@ -352,7 +416,11 @@ def cmd_dataset(args: argparse.Namespace) -> int:
 
             rasters: list = []
             if want_rasters:
-                pdf_path = pdf_index.get(pages[0].doc_id) if pages else None
+                # The mupdf lane came from the PDF, so it already has it; the
+                # MinerU lane has to find it by content hash.
+                pdf_path = known_pdf or (
+                    pdf_index.get(pages[0].doc_id) if pages else None
+                )
                 if pdf_path is None:
                     missing_pdfs += 1
                 else:
@@ -406,10 +474,11 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 "pages": n_pages,
                 "n_images": n_images,
                 "n_page_images": n_page_images,
-                "images_mode": args.images,
+                "images_mode": images,
                 "render_dpi": args.render_dpi if want_rasters else None,
                 "has_blocks": not args.no_blocks,
                 "failed": failures,
+                "lane": lane,
                 "source": str(src),
             },
             ensure_ascii=False,

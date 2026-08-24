@@ -24,8 +24,13 @@ PDF ──► Stage-A Router (XGBoost, CPU, ≤10ms)
                  ┌───────────────┴───────────────┐
                  ▼                               ▼
    L1  results.jsonl + dataset.parquet    L2  pdfsys dataset
-       (run telemetry: routing probs,         (pdfsys.page/v2 — one row per
-        stage timings, error class)            PAGE, keyed (doc_id, page_index))
+       (run telemetry: routing probs,         ├─ --from-mineru <run dir>
+        stage timings, error class)           │    pipeline / vlm sidecars
+                                              └─ --from-pdf-dir <pdf dir>
+                                                   mupdf lane, re-extracted
+                                                        │
+                                              pdfsys.page/v2 — one row per
+                                              PAGE, keyed (doc_id, page_index)
                                                         │
                                               pdfsys dataset-validate
                                               (format contract; must pass
@@ -40,6 +45,18 @@ product**. L1 answers "did the run behave?" — one flat row per PDF. L2 answers
 "what do I train on?" — one row per page, with the image/text interleaving
 encoded inline in the page text so the model-derived block structure stays a
 droppable column.
+
+**Why L2 has two entrances.** The MinerU lanes leave `content_list.json` behind,
+which is already a reading-order interleaved list — packaging it is a pure
+re-encoding. The mupdf lane leaves nothing comparable: a run writes one merged
+`markdown/<sha256>.md` with no page boundaries, and `segments_excerpt` in
+`results.jsonl` is filled only on the VLM branch and truncated to 200
+characters, so it is a visualisation artifact rather than a data source.
+`--from-pdf-dir` therefore re-extracts from the PDF. At ~10 ms/page that is
+cheaper than designing, writing and versioning a format to persist something
+mupdf can recompute on demand. It also means the two entrances differ in what
+pixels they can hold: MinerU crops figures, mupdf never rasterises anything, so
+its only image mode is whole-page renders (`--images pages`, the default there).
 
 ## Packages
 

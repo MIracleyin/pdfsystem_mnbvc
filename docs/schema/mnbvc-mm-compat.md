@@ -23,6 +23,13 @@ pdfsys dataset --from-mineru ./out --to ./dataset/v2 --images pages --pdf-dir ./
 pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/chinaxiv_0.parquet
 ```
 
+走 mupdf 快道的文档没有 MinerU 产物，从 PDF 直接打包，整页光栅是默认：
+
+```sh
+pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2-mupdf
+pdfsys mnbvc-export --from-shard ./dataset/v2-mupdf --to ./mnbvc/chinaxiv_1.parquet
+```
+
 `--dialect` 默认 `v2`（上游当前格式）；要合并前那份形态用 `--dialect legacy`。
 
 ---

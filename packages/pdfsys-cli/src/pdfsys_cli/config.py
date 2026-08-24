@@ -110,6 +110,10 @@ class RunConfig:
     runtime: RuntimeCfg = field(default_factory=RuntimeCfg)
     parquet: ParquetCfg = field(default_factory=ParquetCfg)
 
+    #: Stages an override removed rather than the user. The CLI prints these,
+    #: so a stage that was asked for never disappears without a word.
+    dropped_stages: list[str] = field(default_factory=list)
+
     # --- derived paths ---
 
     @property
@@ -207,6 +211,7 @@ def apply_cli_overrides(cfg: RunConfig, **overrides: Any) -> RunConfig:
         for stage in ("quality", "parquet"):
             if stage in cfg.stages:
                 cfg.stages.remove(stage)
+                cfg.dropped_stages.append(stage)
     if overrides.get("quality_model") is not None:
         cfg.quality.model = str(overrides["quality_model"])
 
