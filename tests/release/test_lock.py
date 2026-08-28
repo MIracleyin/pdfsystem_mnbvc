@@ -369,3 +369,74 @@ tag = "v0.1.0"
     assert "parsers" in captured.err, (
         "error must name the offending component"
     )
+
+
+# ---------------------------------------------------------------------------
+# tag relabelling
+#
+# `lock` used to rewrite `commit` and leave `tag` alone, so a pin could
+# advertise the release it had just moved off: `release status` printed
+# "0795144… (tag v0.2.0)" for a commit that was v0.3.0.
+# ---------------------------------------------------------------------------
+
+
+def test_lock_relabels_the_tag_when_the_new_head_is_tagged(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    repo, sub_head = _make_fake_repo(tmp_path)
+    _git(["tag", "-a", "v0.3.0", "-m", "release"], repo / "external" / "parsers")
+    config_path = repo / "system_release.toml"
+
+    assert cmd_lock(argparse.Namespace(config=str(config_path))) == 0
+
+    updated = config_path.read_text()
+    assert 'tag = "v0.3.0"' in updated
+    assert 'tag = "v0.1.0"' not in updated
+    assert sub_head in updated, "the commit still has to move too"
+    assert "components.parsers.tag: v0.1.0 → v0.3.0" in capsys.readouterr().out
+
+
+def test_an_untagged_head_is_described_rather_than_left_stale(tmp_path: Path) -> None:
+    """Past a tag, `v0.3.0-1-g<sha>` is true; keeping `v0.1.0` is not."""
+    repo, _ = _make_fake_repo(tmp_path)
+    sub = repo / "external" / "parsers"
+    _git(["tag", "-a", "v0.3.0", "-m", "release"], sub)
+    (sub / "extra.md").write_text("more\n")
+    _git(["add", "extra.md"], sub)
+    _git(["commit", "-m", "past the tag"], sub)
+
+    assert cmd_lock(argparse.Namespace(config=str(repo / "system_release.toml"))) == 0
+
+    updated = (repo / "system_release.toml").read_text()
+    assert 'tag = "v0.3.0-1-g' in updated
+    assert 'tag = "v0.1.0"' not in updated
+
+
+def test_a_repo_with_no_tags_keeps_its_handwritten_label(tmp_path: Path) -> None:
+    """`tag` is a human release label, not necessarily a git tag —
+    `in-tree-0.1.0` is one. Overwriting it with a bare SHA would destroy
+    information to fix a smaller problem, so an untaggable repo is left alone."""
+    repo, sub_head = _make_fake_repo(tmp_path)   # fixture creates no tags
+
+    assert cmd_lock(argparse.Namespace(config=str(repo / "system_release.toml"))) == 0
+
+    updated = (repo / "system_release.toml").read_text()
+    assert 'tag = "v0.1.0"' in updated, "label survives"
+    assert sub_head in updated, "commit still moves"
+
+
+def test_a_current_pin_keeps_its_label_even_once_a_tag_appears(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """Only a moving commit relabels. Otherwise `lock` would stop being a
+    no-op and would overwrite labels a maintainer chose deliberately."""
+    repo, _sub_head = _make_fake_repo(tmp_path)
+    config_path = repo / "system_release.toml"
+    cmd_lock(argparse.Namespace(config=str(config_path)))       # pin now current
+    _git(["tag", "-a", "v9.9.9", "-m", "later"], repo / "external" / "parsers")
+    capsys.readouterr()
+
+    assert cmd_lock(argparse.Namespace(config=str(config_path))) == 0
+
+    assert "already up-to-date" in capsys.readouterr().out
+    assert 'tag = "v0.1.0"' in config_path.read_text()

@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -471,6 +472,82 @@ def _abbrev_lock(sha: str) -> str:
     return sha[:7]
 
 
+def _resolve_component_tags(
+    release: SystemRelease,
+    base_dir: Path,
+) -> dict[str, str | None]:
+    """Resolve a git description of each component's HEAD, or ``None``.
+
+    ``git describe --tags`` without ``--always``: an exactly-tagged HEAD gives
+    ``v0.3.0``, three commits past it gives ``v0.3.0-3-g0795144``, and a repo
+    with **no tags at all** fails — which is what we want, because ``tag`` is a
+    human-readable release label, not necessarily a git tag (``in-tree-0.1.0``
+    is one). Falling back to ``--always`` would overwrite such a label with a
+    bare SHA, destroying information to fix a lesser problem.
+
+    ``None`` therefore means "git has nothing better to say than what is
+    already written", and the caller leaves the field alone.
+    """
+    result: dict[str, str | None] = {}
+
+    for name, comp in release.components.items():
+        if comp.is_in_tree:
+            continue
+
+        path = (base_dir / comp.path).resolve()
+        if not path.exists():
+            result[name] = None
+            continue
+
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(path), "describe", "--tags", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            result[name] = None
+            continue
+
+        result[name] = proc.stdout.strip() if proc.returncode == 0 else None
+
+    return result
+
+
+def _compute_tag_changes(
+    release: SystemRelease,
+    tags: dict[str, str | None],
+    moved: Iterable[str],
+) -> list[tuple[str, str, str]]:
+    """Compute which components need their ``tag`` field relabelled.
+
+    Pure function — no I/O.
+
+    ``moved`` is the set of components whose ``commit`` is being rewritten,
+    and only those are considered. This is what keeps ``lock`` a genuine no-op
+    when nothing has moved: a maintainer who hand-wrote a label on a pin that
+    is still current gets to keep it. The stale label this fixes is the other
+    case — ``commit`` advancing while ``tag`` keeps naming the commit it left
+    behind, which is how ``release status`` came to print a v0.2.0 label next
+    to a v0.3.0 pin.
+
+    Returns:
+        List of ``(name, old_tag, new_tag)``. Empty when nothing has changed.
+    """
+    moved = set(moved)
+    changes: list[tuple[str, str, str]] = []
+    for name, comp in release.components.items():
+        if comp.is_in_tree or name not in moved:
+            continue
+        new_tag = tags.get(name)
+        if new_tag is None or new_tag == comp.tag:
+            continue
+        changes.append((name, comp.tag, new_tag))
+    return changes
+
+
 def _compute_lock_changes(
     release: SystemRelease,
     heads: dict[str, str | None],
@@ -506,6 +583,7 @@ def _compute_lock_changes(
 def _write_lock(
     config_path: Path,
     changes: list[tuple[str, str, str]],
+    tag_changes: list[tuple[str, str, str]] | None = None,
 ) -> None:
     """Apply ``changes`` to ``config_path`` in-place, preserving comments.
 
@@ -522,6 +600,8 @@ def _write_lock(
     doc = tomlkit.parse(config_path.read_text(encoding="utf-8"))
     for name, _old, new_sha in changes:
         doc["components"][name]["commit"] = new_sha  # type: ignore[index]
+    for name, _old, new_tag in tag_changes or ():
+        doc["components"][name]["tag"] = new_tag  # type: ignore[index]
 
     tmp = config_path.with_suffix(config_path.suffix + ".tmp")
     try:
@@ -701,8 +781,14 @@ def cmd_lock(args: object) -> int:
     # 3. resolve HEADs
     heads = _resolve_component_heads(release, base_dir)
 
-    # 4. compute diff
+    # 4. compute diff — a moving commit relabels its tag with it, because a
+    #    pin whose label names the commit it left behind is worse than none.
     changes = _compute_lock_changes(release, heads)
+    tag_changes = _compute_tag_changes(
+        release,
+        _resolve_component_tags(release, base_dir),
+        moved=[name for name, _old, _new in changes],
+    )
 
     if not changes:
         print(f"{config_path.name} already up-to-date.")
@@ -711,7 +797,7 @@ def cmd_lock(args: object) -> int:
 
     # 5. write (atomic; surface disk errors as a clean exit-1, not a traceback)
     try:
-        _write_lock(config_path, changes)
+        _write_lock(config_path, changes, tag_changes)
     except OSError as exc:
         print(
             f"error: failed to write {config_path.name}: {exc}",
@@ -725,5 +811,7 @@ def cmd_lock(args: object) -> int:
         print(
             f"  components.{name}.commit: {_abbrev_lock(old)} → {_abbrev_lock(new)}"
         )
+    for name, old, new in tag_changes:
+        print(f"  components.{name}.tag: {old} → {new}")
     _print_in_tree_warnings(release)
     return 0
