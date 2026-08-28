@@ -6,6 +6,7 @@ Mock the HTTP layer + subprocess startup so tests don't spawn
 
 from __future__ import annotations
 
+import base64
 import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -30,6 +31,7 @@ def _fake_response(
     markdown: str | None = "# VLM\n",
     middle_json: dict | None = None,
     content_list: list | None = None,
+    images: dict | None = None,
     error: str | None = None,
     version: str = "3.1.14",
 ) -> MagicMock:
@@ -45,6 +47,8 @@ def _fake_response(
         result["middle_json"] = middle_json
     if content_list is not None:
         result["content_list"] = content_list
+    if images is not None:
+        result["images"] = images
     resp.json.return_value = {
         "task_id": "fake-task-id",
         "status": status,
@@ -159,6 +163,46 @@ def test_vlm_extract_no_sidecars_when_output_dir_none(tmp_path: Path) -> None:
 
     assert doc.stats["middle_json_path"] is None
     assert doc.stats["content_list_path"] is None
+
+
+# ---------------------------------------------------------------- image crops
+#
+# Same change as the pipeline lane: the crops `content_list.json` points at
+# used to stay inside the mineru-api process's own filesystem. Kept symmetric
+# on purpose — the two parsers share this code path verbatim.
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"pixels" * 3
+
+
+def _data_uri(payload: bytes = PNG, mime: str = "image/png") -> str:
+    return f"data:{mime};base64,{base64.b64encode(payload).decode()}"
+
+
+def test_vlm_crops_are_requested_by_default() -> None:
+    assert VlmConfig().return_images is True
+
+
+def test_vlm_extract_writes_crops_next_to_the_sidecars(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    out_dir = tmp_path / "out"
+    response = _fake_response(images={"fig1.png": _data_uri()})
+
+    sp, pp = _patched_parser(response)
+    with sp, pp:
+        doc = VlmParser(VlmConfig(output_dir=out_dir)).extract(pdf)
+
+    assert doc.stats["images_written"] == 1
+    assert (out_dir / doc.sha256 / "images" / "fig1.png").read_bytes() == PNG
+
+
+def test_vlm_request_carries_the_return_images_flag(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+
+    sp, pp = _patched_parser(_fake_response())
+    with sp, pp as post:
+        VlmParser(VlmConfig(return_images=False)).extract(pdf)
+
+    assert post.call_args.kwargs["data"]["return_images"] == "false"
 
 
 # ---------------------------------------------------------------- errors
