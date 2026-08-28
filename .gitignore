@@ -12,7 +12,12 @@ dist/
 # uv / virtualenv
 .venv/
 venv/
-uv.lock
+# uv.lock is deliberately NOT ignored. It was, from the bootstrap commit,
+# grouped here next to .venv/ as if it were a local artifact — but this is a
+# deployed application, not a library, and system_release.toml calls the lock
+# "ground truth for Python deps". Ignored, that was only ever true per-machine:
+# a constraint change propagated but the resolved versions did not, so every
+# host drifted to whatever it happened to resolve at deploy time.
 
 # secrets — committed shape lives in .env.example
 .env
