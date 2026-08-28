@@ -17,6 +17,7 @@ What the export has to guarantee:
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 
@@ -327,8 +328,16 @@ def test_v2_images_decode_through_huggingface_and_legacy_ones_do_not(shard, tmp_
     legacy = tmp_path / "legacy.parquet"
     export_shard(shard, legacy, dialect="legacy", timestamp="20260822")
     ds2 = datasets.load_dataset("parquet", data_files=str(legacy), split="train")
-    with pytest.raises(Exception, match="(?i)cast|struct"):
-        ds2.cast_column("图片", datasets.Image())[0]
+    # How it fails is the library's business and has already changed once:
+    # datasets 4 raised ArrowNotImplementedError casting large_string→struct,
+    # datasets 5 accepts the cast and then treats the base64 payload as a
+    # filename, dying with FileNotFoundError on read. Asserting on either
+    # exception makes this a tripwire for HF's internals rather than for our
+    # format, so assert the outcome: no image comes out, however it fails.
+    decoded = None
+    with contextlib.suppress(Exception):
+        decoded = ds2.cast_column("图片", datasets.Image())[0]["图片"]
+    assert decoded is None, "legacy base64 must not decode into an image"
 
 
 # ---------------------------------------------------------------------------

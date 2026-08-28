@@ -97,7 +97,10 @@ base64 膨胀 1/3，但 zstd 几乎全部拿回来了——**压缩后 base64 �
 改二进制真正买到的是三样别的东西：
 
 1. **HuggingFace 能直接解码。** `cast_column("图片", Image())` 在 v2 上正常出 PIL 对象；
-   在 legacy 上抛 `ArrowNotImplementedError: Unsupported cast from large_string to struct`。
+   在 legacy 上失败。**怎么失败是会变的**：`datasets` 4 抛
+   `ArrowNotImplementedError: Unsupported cast from large_string to struct`；
+   `datasets` 5 接受了这次 cast，转而把 base64 内容当**文件名**去打开，死在
+   `FileNotFoundError`。两种都取不到图，所以结论不变，但别拿具体报错去做判断。
 2. **未压缩内存 -33%**，影响 row group 缓冲和任何 mmap 的读法。
 3. **省掉 base64 解码。** 实测 0.773 ms/页；436 万页跑一趟约 **56 分钟单核**，还不含 JPEG 解码。
 
