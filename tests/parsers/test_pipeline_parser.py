@@ -6,6 +6,7 @@ Mock the HTTP layer + subprocess startup so tests don't spawn
 
 from __future__ import annotations
 
+import base64
 import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -29,6 +30,7 @@ def _fake_response(
     markdown: str | None = "# Hello\n\nWorld.\n",
     middle_json: dict | None = None,
     content_list: list | None = None,
+    images: dict | None = None,
     error: str | None = None,
     version: str = "3.1.14",
 ) -> MagicMock:
@@ -45,6 +47,8 @@ def _fake_response(
         result["middle_json"] = middle_json
     if content_list is not None:
         result["content_list"] = content_list
+    if images is not None:
+        result["images"] = images
     resp.json.return_value = {
         "task_id": "fake-task-id",
         "status": status,
@@ -155,6 +159,110 @@ def test_extract_no_sidecars_when_output_dir_none(tmp_path: Path) -> None:
 
     assert doc.stats["middle_json_path"] is None
     assert doc.stats["content_list_path"] is None
+
+
+# ---------------------------------------------------------------- image crops
+#
+# The crops are what `content_list.json`'s `img_path` entries point at. When
+# the client asked for return_images=false they existed only inside the
+# mineru-api process's own filesystem — which under docker-compose is not a
+# volume the client shares, so `pdfsys dataset --images crops` had nothing to
+# read.
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"pixels" * 3
+
+
+def _data_uri(payload: bytes = PNG, mime: str = "image/png") -> str:
+    return f"data:{mime};base64,{base64.b64encode(payload).decode()}"
+
+
+def test_crops_are_requested_by_default() -> None:
+    """The whole point: the request has to ask for them."""
+    assert PipelineConfig().return_images is True
+
+
+def test_extract_writes_crops_next_to_the_sidecars(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    out_dir = tmp_path / "out"
+    response = _fake_response(
+        content_list=[{"type": "image", "img_path": "images/fig1.png"}],
+        images={"fig1.png": _data_uri(), "fig2.jpg": _data_uri(mime="image/jpeg")},
+    )
+
+    sp, pp = _patched_parser(None, response)
+    with sp, pp:
+        doc = PipelineParser(PipelineConfig(output_dir=out_dir)).extract(pdf)
+
+    images_dir = out_dir / doc.sha256 / "images"
+    assert doc.stats["images_written"] == 2
+    assert (images_dir / "fig1.png").read_bytes() == PNG
+    assert (images_dir / "fig2.jpg").exists()
+
+
+def test_the_request_carries_the_return_images_flag(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    response = _fake_response()
+
+    sp, pp = _patched_parser(None, response)
+    with sp, pp as post:
+        PipelineParser(PipelineConfig(return_images=False)).extract(pdf)
+
+    assert post.call_args.kwargs["data"]["return_images"] == "false"
+
+
+def test_a_crop_filename_cannot_escape_the_output_directory(tmp_path: Path) -> None:
+    """The filename comes from the server. A figure crop is never worth
+    letting a path traversal out."""
+    pdf = _make_pdf(tmp_path)
+    out_dir = tmp_path / "out"
+    response = _fake_response(images={"../../escaped.png": _data_uri()})
+
+    sp, pp = _patched_parser(None, response)
+    with sp, pp:
+        doc = PipelineParser(PipelineConfig(output_dir=out_dir)).extract(pdf)
+
+    assert (out_dir / doc.sha256 / "images" / "escaped.png").exists()
+    assert not (tmp_path / "escaped.png").exists()
+
+
+def test_a_malformed_crop_is_skipped_not_fatal(tmp_path: Path) -> None:
+    """One unreadable crop must not cost us the document's text."""
+    pdf = _make_pdf(tmp_path)
+    out_dir = tmp_path / "out"
+    response = _fake_response(
+        images={"good.png": _data_uri(), "bad.png": "not-a-data-uri", "none.png": None}
+    )
+
+    sp, pp = _patched_parser(None, response)
+    with sp, pp:
+        doc = PipelineParser(PipelineConfig(output_dir=out_dir)).extract(pdf)
+
+    assert doc.stats["images_written"] == 1
+    assert doc.markdown, "the markdown still has to come back"
+
+
+def test_no_output_dir_means_no_crops_and_no_crash(tmp_path: Path) -> None:
+    pdf = _make_pdf(tmp_path)
+    response = _fake_response(images={"fig1.png": _data_uri()})
+
+    sp, pp = _patched_parser(None, response)
+    with sp, pp:
+        doc = PipelineParser(PipelineConfig(output_dir=None)).extract(pdf)
+
+    assert doc.stats["images_written"] == 0
+
+
+def test_a_response_without_images_is_fine(tmp_path: Path) -> None:
+    """Older mineru-api builds, or return_images=false, simply omit the key."""
+    pdf = _make_pdf(tmp_path)
+    out_dir = tmp_path / "out"
+    response = _fake_response(content_list=[])
+
+    sp, pp = _patched_parser(None, response)
+    with sp, pp:
+        doc = PipelineParser(PipelineConfig(output_dir=out_dir)).extract(pdf)
+
+    assert doc.stats["images_written"] == 0
 
 
 # ---------------------------------------------------------------- errors

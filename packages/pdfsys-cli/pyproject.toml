@@ -16,7 +16,12 @@ dependencies = [
     "pdfsys-parser-vlm",
     "pdfsys-bench",
     "pyyaml>=6.0",
-    "pyarrow>=15.0,<19.0",
+    # Upper bound is the next untested major, not a known incompatibility.
+    # The old `<19.0` had neither a reason nor a comment, and it was load-
+    # bearing: `datasets` 5.x requires pyarrow>=21, so the cap silently held
+    # datasets at 4.0.0 and huggingface-hub at 0.36.x for the whole workspace.
+    # 25.0.1 was verified green across the full suite before this was raised.
+    "pyarrow>=15.0,<26.0",
     "tomlkit>=0.13",
 ]
 

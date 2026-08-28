@@ -24,8 +24,8 @@ notes = "Parsers extracted to external/parsers submodule (MIracleyin/pdfsys-pars
 [components.parsers]
 repo = "MIracleyin/pdfsys-parsers"
 path = "external/parsers"
-commit = "e429a4546c9155c4d0dedd118730326428011f5e"
-tag = "v0.2.0"
+commit = "0795144fc62f667073cf6f904be8bb2150e2c0b7"
+tag = "v0.3.0"
 schema_version = "extracted_doc.v1"
 
 # quality-scorer component — currently in-tree at packages/pdfsys-bench.
