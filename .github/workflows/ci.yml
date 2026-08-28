@@ -17,8 +17,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          submodules: recursive
+      # .gitmodules points at ssh://git@github.com-personal/… — a host alias
+      # that exists only in a maintainer's ~/.ssh/config, so checkout's own
+      # submodule fetch cannot resolve it and has failed on every run since
+      # the submodule landed (2026-06-13). Rewrite it to authenticated HTTPS
+      # here instead of editing .gitmodules, because the local insteadOf rule
+      # that makes the alias work drops the owner segment on the canonical
+      # URL. Needs a SUBMODULE_PAT secret with read access to the private
+      # pdfsys-parsers repo; GITHUB_TOKEN is scoped to this repo only.
+      - name: Fetch private submodule
+        run: |
+          git config --global \
+            url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf \
+            "ssh://git@github.com-personal/"
+          git submodule update --init --recursive --depth 1
+        env:
+          SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
       - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb # v6.1.0
         with:
           version: "latest"
@@ -29,8 +43,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          submodules: recursive
+      # .gitmodules points at ssh://git@github.com-personal/… — a host alias
+      # that exists only in a maintainer's ~/.ssh/config, so checkout's own
+      # submodule fetch cannot resolve it and has failed on every run since
+      # the submodule landed (2026-06-13). Rewrite it to authenticated HTTPS
+      # here instead of editing .gitmodules, because the local insteadOf rule
+      # that makes the alias work drops the owner segment on the canonical
+      # URL. Needs a SUBMODULE_PAT secret with read access to the private
+      # pdfsys-parsers repo; GITHUB_TOKEN is scoped to this repo only.
+      - name: Fetch private submodule
+        run: |
+          git config --global \
+            url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf \
+            "ssh://git@github.com-personal/"
+          git submodule update --init --recursive --depth 1
+        env:
+          SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
       - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb # v6.1.0
         with:
           version: "latest"
@@ -41,8 +69,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          submodules: recursive
+      # .gitmodules points at ssh://git@github.com-personal/… — a host alias
+      # that exists only in a maintainer's ~/.ssh/config, so checkout's own
+      # submodule fetch cannot resolve it and has failed on every run since
+      # the submodule landed (2026-06-13). Rewrite it to authenticated HTTPS
+      # here instead of editing .gitmodules, because the local insteadOf rule
+      # that makes the alias work drops the owner segment on the canonical
+      # URL. Needs a SUBMODULE_PAT secret with read access to the private
+      # pdfsys-parsers repo; GITHUB_TOKEN is scoped to this repo only.
+      - name: Fetch private submodule
+        run: |
+          git config --global \
+            url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf \
+            "ssh://git@github.com-personal/"
+          git submodule update --init --recursive --depth 1
+        env:
+          SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
       - uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb # v6.1.0
         with:
           version: "latest"
