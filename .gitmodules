@@ -1,3 +1,3 @@
 [submodule "external/parsers"]
 	path = external/parsers
-	url = ssh://git@github.com-personal/MIracleyin/pdfsys-parsers.git
+	url = https://github.com/MIracleyin/pdfsys-parsers.git
