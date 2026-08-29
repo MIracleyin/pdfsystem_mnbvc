@@ -38,6 +38,10 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 |----------|------|-------------|
 | **Live Demo** | [🤗 HF Spaces](https://huggingface.co/spaces/roger1024/DocPipe) | Upload PDF and try the pipeline instantly |
 | **Source Code** | [GitHub](https://github.com/MIracleyin/pdfsystem_mnbvc) | Full source code and documentation |
+| **Data Demo** | [🤗 pdfsys-page-v2-demo](https://huggingface.co/datasets/miracleyin/pdfsys-page-v2-demo) | The L2 output format on 25 real pages — `pages` / `images` / `page_images` / `pairs` |
+| **MNBVC Format** | [🤗 example_mmdata_mnbvc](https://huggingface.co/datasets/miracleyin/example_mmdata_mnbvc) | Reference sample for the MNBVC multimodal block format (v2.1) |
+| **Quality Scorer** | [🤗 ModernBERT fine-tune](https://huggingface.co/miracleyin/mnbvc-pdf-quality-scorer-modernbert) | OCR quality regression, 0–3 scale |
+| **Parsers** | `MIracleyin/pdfsys-parsers` 🔒 | Submodule at `external/parsers` (mupdf / pipeline / vlm backends). **Private — the repo is not publicly reachable**, so a clone without access will fail at the submodule step |
 
 ---
 
@@ -65,8 +69,11 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 | **Unified CLI** | ✅ Ready | `pdfsys run -c config.yaml --stages ...` |
 | **Annotation UI** | ✅ Ready | `pdfsys annotate` — PDF labeling + layout overlay |
 | **L2 Dataset Format** | ✅ Ready | `pdfsys.page/v2` — one row per page, interleaved image-text ([spec](docs/superpowers/specs/2026-08-22-page-level-parquet-dataset-design.md), [sample](docs/schema/doc_dataset.v2.sample.md)) |
+| **L2 Packaging** | ✅ Ready | `pdfsys dataset` — both lanes reach L2: `--from-mineru` (pipeline/vlm sidecars), `--from-pdf-dir` (mupdf, re-extracted) |
 | **Format Validator** | ✅ Ready | `pdfsys dataset-validate` — contract check before publishing |
 | **MNBVC Export** | ✅ Ready | `pdfsys mnbvc-export` — → MNBVC multimodal block format ([mapping](docs/schema/mnbvc-mm-compat.md)) |
+| **Published demo** | ✅ Live | [`pdfsys-page-v2-demo`](https://huggingface.co/datasets/miracleyin/pdfsys-page-v2-demo) — 25 pages, all three extractors, validator-clean |
+| **CI** | ⚠️ Not running | `.github/workflows/ci.yml` exists but the workflow is not active. `uv run pytest` + `pdfsys release verify` locally are the real gate |
 
 ---
 
@@ -77,6 +84,28 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 Visit [Hugging Face Spaces](https://huggingface.co/spaces/roger1024/DocPipe) and upload a PDF — no installation required.
 
 ### Option 2: Local Development
+
+> **Before you start: the parser submodule is not public.** This repository is
+> public, but `external/parsers` points at `MIracleyin/pdfsys-parsers`, which is
+> private — so `--recurse-submodules` will fail without access, and `uv sync`
+> needs it because `pyproject.toml` lists `external/parsers/packages/*` as
+> workspace members. Two separate things are in the way:
+>
+> 1. **Access.** Ask for read access to `pdfsys-parsers`, or wait for it to be
+>    published.
+> 2. **The URL.** `.gitmodules` records `ssh://git@github.com-personal/…` — a
+>    host alias defined in one maintainer's `~/.ssh/config`, not a real
+>    hostname. Even with access, you need your own alias for it:
+>    ```
+>    # ~/.ssh/config
+>    Host github.com-personal
+>      HostName ssh.github.com
+>      Port 443
+>      IdentityFile ~/.ssh/<your key>
+>    ```
+>
+> Everything not under `external/parsers` — the router, CLI, dataset format,
+> validator and exporter — is in this repository and readable without either.
 
 ```bash
 # 1. Install uv package manager

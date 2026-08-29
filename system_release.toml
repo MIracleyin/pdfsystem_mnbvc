@@ -1,16 +1,21 @@
 # pdfsys system release manifest.
 # Owned by docs/superpowers/specs/2026-05-30-parsers-submodule-design.md (§5).
-# Update via `pdfsys release lock`. Diff via `pdfsys release status`.
-# CI runs `pdfsys release verify` and fails if any submodule HEAD != pinned commit.
+# Update via `pdfsys release lock` (rewrites `commit`, and relabels `tag` when
+# the commit moves). Diff via `pdfsys release status`.
+#
+# `pdfsys release verify` is the gate that fails when a submodule HEAD differs
+# from its pin. It is wired into .github/workflows/ci.yml, but that workflow
+# does not currently run — so treat verify as a local pre-flight, not something
+# that catches drift on your behalf.
 #
 # parsers is now an external submodule (Task 2.4 complete);
 # quality-scorer remains in-tree (`repo = "in-tree:..."`) pending Spec #2.
 
 [system]
-version = "0.4.0"
-released_at = "2026-06-13"
+version = "0.5.0"
+released_at = "2026-08-29"
 released_by = "miracleyin"
-notes = "Parsers extracted to external/parsers submodule (MIracleyin/pdfsys-parsers@v0.1.0). Quality-scorer still in-tree pending Spec #2."
+notes = "L2 packaging complete: both extraction lanes reach pdfsys.page/v2 (`pdfsys dataset --from-mineru` / `--from-pdf-dir`), validated by `dataset-validate` and re-emitted by `mnbvc-export`. Parsers at v0.3.0 — figure crops now return over HTTP, so --images crops works in the containerised deployment. uv.lock is in version control as of this release. Quality-scorer still in-tree pending Spec #2."
 
 # `parsers` collectively refers to the four document-understanding packages
 # plus the vendored pdfsys-types canonical type layer, all living in the
