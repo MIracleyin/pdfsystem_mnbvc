@@ -29,8 +29,8 @@ notes = "L2 packaging complete: both extraction lanes reach pdfsys.page/v2 (`pdf
 [components.parsers]
 repo = "MIracleyin/pdfsys-parsers"
 path = "external/parsers"
-commit = "0795144fc62f667073cf6f904be8bb2150e2c0b7"
-tag = "v0.3.0"
+commit = "19b1b3398d9f72aea4a688c7a64ac7527d40fdb1"
+tag = "v0.3.1"
 schema_version = "extracted_doc.v1"
 
 # quality-scorer component — currently in-tree at packages/pdfsys-bench.
