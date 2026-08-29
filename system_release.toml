@@ -25,7 +25,7 @@ notes = "L2 packaging complete: both extraction lanes reach pdfsys.page/v2 (`pdf
 #   - pdfsys-parser-pipeline
 #   - pdfsys-parser-vlm
 #   - pdfsys-layout-analyser
-# Source: https://github.com/MIracleyin/pdfsys-parsers (private)
+# Source: https://github.com/MIracleyin/pdfsys-parsers (public)
 [components.parsers]
 repo = "MIracleyin/pdfsys-parsers"
 path = "external/parsers"
