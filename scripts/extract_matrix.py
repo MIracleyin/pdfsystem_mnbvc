@@ -36,10 +36,11 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from pdfsys_types import PipelineConfig, VlmConfig
+
 from pdfsys_parser_mupdf import extract_doc as mupdf_extract
 from pdfsys_parser_pipeline import PipelineParser
 from pdfsys_parser_vlm import VlmParser
-from pdfsys_types import PipelineConfig, VlmConfig
 
 _LOG = logging.getLogger("extract_matrix")
 
@@ -93,7 +94,8 @@ def _run_one(
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="extract_matrix")
     p.add_argument("--pdf-dir", type=Path, required=True,
-                   help="Directory of PDFs (rglob).")
+                   help="Directory of PDFs (recursive; *.pdf in any case, plus "
+                        "extensionless files with a PDF header).")
     p.add_argument("--out", type=Path, required=True,
                    help="JSONL output path.")
     p.add_argument("--markdown-dir", type=Path, required=True,
@@ -118,11 +120,15 @@ def main(argv: list[str] | None = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.markdown_dir.mkdir(parents=True, exist_ok=True)
 
-    pdfs = sorted(p for p in args.pdf_dir.rglob("*.pdf") if p.is_file())
+    # Shares pdfsys_core's rule so the matrix covers the same corpus every
+    # other entry point does — including .PDF and extensionless files.
+    from pdfsys_core import iter_pdf_paths
+
+    pdfs = list(iter_pdf_paths(args.pdf_dir))
     if args.limit:
         pdfs = pdfs[: args.limit]
     if not pdfs:
-        print(f"error: no *.pdf found under {args.pdf_dir}", file=sys.stderr)
+        print(f"error: no PDFs found under {args.pdf_dir}", file=sys.stderr)
         return 1
     print(f"[matrix] {len(pdfs)} PDFs × "
           f"{sum(not s for s in (args.skip_mupdf, args.skip_pipeline, args.skip_vlm))} "

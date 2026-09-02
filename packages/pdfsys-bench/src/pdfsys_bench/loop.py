@@ -71,7 +71,12 @@ class LoopResult:
 
 
 def _iter_pdfs(root: Path, limit: int | None) -> Iterable[Path]:
-    pdfs = sorted(p for p in root.rglob("*.pdf") if p.is_file())
+    # Shares pdfsys_core's rule so this entry point covers the same corpus as
+    # `pdfsys run` — including .PDF and extensionless files, which the plain
+    # rglob("*.pdf") this replaces silently skipped.
+    from pdfsys_core import iter_pdf_paths
+
+    pdfs = list(iter_pdf_paths(root))
     if limit is not None:
         pdfs = pdfs[:limit]
     yield from pdfs

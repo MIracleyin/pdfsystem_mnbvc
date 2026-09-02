@@ -33,6 +33,7 @@ from pdfsys_core import (
     blocks_from_content_list,
     blocks_from_segments,
     image_id_for,
+    iter_pdf_paths,
     link_mentions,
     probe_image,
     split_pages,
@@ -73,13 +74,14 @@ def iter_mineru_dirs(root: Path) -> Iterator[Path]:
 def iter_pdfs(root: Path) -> Iterator[Path]:
     """Yield every PDF under ``root``.
 
-    Deliberately the same glob the runner discovers with, so
+    Deliberately the same discovery the runner uses, so
     ``pdfsys dataset --from-pdf-dir X`` packages exactly the set that
-    ``pdfsys run --pdf-dir X`` processed. A glob that differed even slightly
+    ``pdfsys run --pdf-dir X`` processed. A rule that differed even slightly
     would produce a shard quietly covering a different corpus than the run it
-    claims to come from.
+    claims to come from — which is why both call
+    :func:`pdfsys_core.iter_pdf_paths` rather than each spelling a glob.
     """
-    yield from (p for p in sorted(Path(root).rglob("*.pdf")) if p.is_file())
+    yield from iter_pdf_paths(root)
 
 
 def select_pdfs(

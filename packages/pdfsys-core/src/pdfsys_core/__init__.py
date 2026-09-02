@@ -16,6 +16,8 @@ Public surface:
                   :class:`ImageTextPair` and the projections in
                   :mod:`pdfsys_core.dataset`
 * Cache         — :class:`LayoutCache`
+* Discovery     — :func:`iter_pdf_paths`, :func:`take_inventory`,
+                  :func:`read_pdf_list`: the one rule for what counts as a PDF
 * Config        — :class:`PdfsysConfig` and its sub-configs
 * Serde         — :func:`to_dict`, :func:`from_dict`
 """
@@ -57,6 +59,14 @@ from .dataset import (
     split_pages,
     strip_image_refs,
     to_interleaved,
+)
+from .discovery import (
+    PDF_MAGIC,
+    PdfInventory,
+    Worklist,
+    iter_pdf_paths,
+    read_pdf_list,
+    take_inventory,
 )
 from .extract import ExtractedDoc, Segment, merge_segments_to_markdown
 from .layout import BBox, LayoutDocument, LayoutPage, LayoutRegion, make_region_id
@@ -109,6 +119,13 @@ __all__ = [
     "iter_pairs",
     # cache
     "LayoutCache",
+    # discovery
+    "PDF_MAGIC",
+    "PdfInventory",
+    "Worklist",
+    "iter_pdf_paths",
+    "read_pdf_list",
+    "take_inventory",
     # config
     "PdfsysConfig",
     "PathsConfig",
