@@ -137,7 +137,8 @@ pdfsys dataset --from-mineru ./out --to ./dataset/v2 \
 # Package those straight from the PDFs. This re-runs mupdf (~10ms/page),
 # because a run persists only merged markdown with no page boundaries.
 # Whole-page rasters are the default here — mupdf has no crops to store.
-pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2-mupdf \
+# Same --to as above, different --shard: the two lanes coexist in one dataset.
+pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2 --shard mupdf-00 \
                --meta ./out/results.jsonl
 
 # Contract check. Run this before anything leaves the machine.
@@ -147,8 +148,12 @@ pdfsys dataset-validate --shard ./dataset/v2
 pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet --dialect v2
 ```
 
-The two lanes write separate shards on purpose: rows within a shard are sorted
-by `doc_id`, so one shard cannot be fed from two sources without merging first.
+The two lanes write separate *shards* — one parquet each — into the same
+dataset directory. Sortedness is a per-file promise, because a reader
+reassembles a document by scanning one file; the two lanes' doc_id ranges are
+free to interleave. What the shards may not do is overlap: a document belongs
+to exactly one lane, and `pdfsys dataset` refuses to reuse a shard name without
+`--overwrite` rather than truncate the other lane's work.
 
 Worked example of one real page:
 [`docs/schema/doc_dataset.v2.sample.md`](docs/schema/doc_dataset.v2.sample.md).

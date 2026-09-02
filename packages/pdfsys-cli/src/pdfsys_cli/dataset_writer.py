@@ -294,8 +294,13 @@ class DatasetWriter:
                 w.write(pages, blobs)
 
     ``write`` takes all pages of one document at a time so the file stays
-    sorted by ``(doc_id, page_index)``. Image blobs are deduped across the
-    whole shard by ``image_id``.
+    sorted by ``(doc_id, page_index)``. Sortedness is a promise about *this*
+    file, not about a dataset directory several writers contributed to.
+
+    Crops are deduped by ``image_id``, which is what the images table is keyed
+    on. Page rasters are deduped by ``(doc_id, page_index, render_dpi)``, which
+    is what *that* table is keyed on — two pages can legitimately render to the
+    same bytes, and both are still pages.
     """
 
     def __init__(
@@ -322,7 +327,7 @@ class DatasetWriter:
         self._images: pq.ParquetWriter | None = None
         self._page_images: pq.ParquetWriter | None = None
         self._seen_images: set[str] = set()
-        self._seen_page_images: set[str] = set()
+        self._seen_page_images: set[tuple[str, int, int | None]] = set()
         self._last_doc_id: str | None = None
         self._buffer: list[dict[str, Any]] = []
         self.pages_written = 0
@@ -364,7 +369,11 @@ class DatasetWriter:
         for page in sorted(pages, key=lambda p: p.page_index):
             self._buffer.append(page_to_row(page, include_blocks=self.include_blocks))
             self.pages_written += 1
-        self.docs_written += 1
+        if pages:
+            # Guarded: a call carrying no pages wrote no document, and counting
+            # it makes docs_written disagree with the distinct doc_ids a reader
+            # finds in the shard — which is what the build summary reports.
+            self.docs_written += 1
 
         if len(self._buffer) >= self.row_group_size:
             self._flush()
@@ -394,7 +403,17 @@ class DatasetWriter:
         self._buffer.clear()
 
     def _write_images(self, blobs: Iterable[ImageBlob]) -> None:
-        fresh = [b for b in blobs if b.image_id not in self._seen_images]
+        # Dedupe *within* the call too, not only against what earlier calls
+        # wrote: one document repeating a logo on every page hands us the same
+        # image_id many times in one batch, and _seen_images is only updated
+        # after the write. The images table promises image_id is unique.
+        fresh: list[ImageBlob] = []
+        batch: set[str] = set()
+        for b in blobs:
+            if b.image_id in self._seen_images or b.image_id in batch:
+                continue
+            batch.add(b.image_id)
+            fresh.append(b)
         if not fresh:
             return
         if self._images is None:
@@ -408,16 +427,27 @@ class DatasetWriter:
     def _write_page_images(
         self, rasters: Iterable[tuple[PageRecord, ImageBlob]]
     ) -> None:
-        rows = [
-            {
-                **image_to_row(blob),
-                "doc_id": page.doc_id,
-                "page_index": page.page_index,
-                "render_dpi": page.render_dpi,
-            }
-            for page, blob in rasters
-            if blob.image_id not in self._seen_page_images
-        ]
+        # Keyed on (doc_id, page_index, render_dpi) — the key the format
+        # actually requires to be unique, and the one dataset-validate checks.
+        # Keying on image_id alone silently dropped the *second* of two pages
+        # whose rasters hashed identically (two blank pages in one document is
+        # enough), leaving that page with no raster and any bbox:// marker on
+        # it dangling.
+        rows = []
+        batch: set[tuple[str, int, int | None]] = set()
+        for page, blob in rasters:
+            key = (page.doc_id, page.page_index, page.render_dpi)
+            if key in self._seen_page_images or key in batch:
+                continue
+            batch.add(key)
+            rows.append(
+                {
+                    **image_to_row(blob),
+                    "doc_id": page.doc_id,
+                    "page_index": page.page_index,
+                    "render_dpi": page.render_dpi,
+                }
+            )
         if not rows:
             return
         if self._page_images is None:
@@ -425,7 +455,7 @@ class DatasetWriter:
         self._page_images.write_table(
             pa.Table.from_pylist(rows, schema=PAGE_IMAGE_SCHEMA)
         )
-        self._seen_page_images.update(r["image_id"] for r in rows)
+        self._seen_page_images.update(batch)
         self.page_images_written += len(rows)
 
     def _open(self, subdir: str, schema: pa.Schema) -> pq.ParquetWriter:
