@@ -9,6 +9,7 @@ All heavy dependencies are imported lazily at first use.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -44,6 +45,11 @@ class DocResult:
     extract_backend: str | None = None
     extract_stats: dict[str, Any] = field(default_factory=dict)
     markdown_chars: int = 0
+    #: Why this row produced no text, when that was a decision rather than a
+    #: failure. ``None`` on every row that actually extracted. Without it a
+    #: deferred document and a document whose backend was never reached are
+    #: indistinguishable from a successful extraction of an empty PDF.
+    skip_reason: str | None = None
     # quality
     quality_score: float | None = None
     quality_num_chars: int | None = None
@@ -176,6 +182,8 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         "num_extracted": 0,
         "num_scored": 0,
         "num_errors": 0,
+        "num_skipped": 0,
+        "by_skip_reason": {},
         "sum_quality": 0.0,
         "started_at": time.time(),
     }
@@ -209,8 +217,19 @@ def run(cfg: RunConfig) -> dict[str, Any]:
                 if row.stage_b_backend:
                     by_sb = summary["by_stage_b"]
                     by_sb[row.stage_b_backend] = by_sb.get(row.stage_b_backend, 0) + 1
-                if row.error_class is None and row.sha256 is not None:
+                # Extracted means text came back — not merely "was routed".
+                # sha256 is set for every routed document now, so it no longer
+                # distinguishes anything; extract_backend + no skip does.
+                if (
+                    row.error_class is None
+                    and row.skip_reason is None
+                    and row.extract_backend is not None
+                ):
                     summary["num_extracted"] += 1
+                if row.skip_reason is not None:
+                    summary["num_skipped"] += 1
+                    by_sr = summary["by_skip_reason"]
+                    by_sr[row.skip_reason] = by_sr.get(row.skip_reason, 0) + 1
                 if row.quality_score is not None:
                     summary["num_scored"] += 1
                     summary["sum_quality"] += row.quality_score
@@ -293,6 +312,19 @@ def _stage_router(row: DocResult, pdf_path: Path, comps: Components) -> None:
     t0 = time.perf_counter()
     decision = comps.router.classify(pdf_path)
     t1 = time.perf_counter()
+
+    # doc_id for every routed document, not just the ones that go on to layout
+    # or extraction. It is the primary key of pdfsys.page/v2, so a row without
+    # it cannot be joined to anything — which is exactly what a worklist row
+    # for a document handed to another machine needs to be. The later stages
+    # recompute the identical value and overwrite it.
+    try:
+        row.sha256 = _sha256_of_file(pdf_path)
+    except OSError as e:
+        # classify() reports unreadable files through decision.error rather
+        # than raising, so this is the one place a dead file would otherwise
+        # take the whole run down.
+        _set_error(row, "router", e)
 
     row.backend = decision.backend.value
     row.ocr_prob = decision.ocr_prob
@@ -404,9 +436,25 @@ def _stage_extract(
             _set_error(row, "extract_vlm", e)
             return None
 
-    # DEFERRED or no layout — skip extraction.
+    # DEFERRED or no layout — skip extraction. Say which: "the layout stage was
+    # not run so the OCR branches were unreachable" and "stage-B held this back
+    # for a later batch" are different facts, and both used to arrive here as a
+    # silent no-op that the summary counted as a success.
     else:
         row.extract_backend = backend
+        if row.error_class is not None:
+            # An earlier stage already failed — the router could not read the
+            # file, or the layout model died. That is not a routing decision,
+            # and labelling it as one would queue a broken document onto the
+            # GPU worklist as a routine deferral. Leaving skip_reason None also
+            # keeps the skip and error counters disjoint.
+            return None
+        if backend in (Backend.PIPELINE.value, Backend.VLM.value):
+            row.skip_reason = "no-layout"
+        elif backend == Backend.DEFERRED.value:
+            row.skip_reason = "deferred"
+        else:
+            row.skip_reason = f"unknown-backend:{backend}"
         return None
 
     # Dump markdown.
@@ -434,6 +482,15 @@ def _stage_quality(row: DocResult, extracted: Any, comps: Components) -> None:
 
 
 # ---------------------------------------------------------------- util
+
+def _sha256_of_file(path: Path) -> str:
+    """Hash a file in 1 MiB chunks. Same value pdfsys_parser_mupdf computes."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
 
 def _iter_pdfs(root: Path, limit: int | None) -> Iterable[Path]:
     pdfs = sorted(p for p in root.rglob("*.pdf") if p.is_file())
