@@ -9,11 +9,12 @@ All heavy dependencies are imported lazily at first use.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import time
-from collections.abc import Iterable
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -172,10 +173,15 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         cfg.markdown_path.mkdir(parents=True, exist_ok=True)
 
     comps = Components(cfg)
+    inputs, discovery = resolve_inputs(cfg)
 
     summary: dict[str, Any] = {
         "config_stages": cfg.stages,
         "pdf_dir": cfg.input.pdf_dir,
+        "pdf_list": cfg.input.pdf_list,
+        "path_root": cfg.input.path_root,
+        "resume": cfg.resume,
+        "discovery": discovery,
         "num_pdfs": 0,
         "by_backend": {},
         "by_stage_b": {},
@@ -198,9 +204,52 @@ def run(cfg: RunConfig) -> dict[str, Any]:
             include_markdown=cfg.parquet.include_markdown,
         )
 
+    # ---- resume: carry the existing rows into the summary, skip their PDFs ----
+    done_keys: set[str] = set()
+    if cfg.resume and cfg.jsonl_path.exists():
+
+        def _carry(row: dict[str, Any]) -> None:
+            _tally(summary, row)
+            done_keys.update(_path_keys(row.get("pdf_path")))
+
+        n_carried, good_bytes = _scan_completed(cfg.jsonl_path, _carry)
+        size = cfg.jsonl_path.stat().st_size
+        if good_bytes < size:
+            # An interrupted write leaves a partial final line. Appending after
+            # it would splice two records; truncating to the last complete one
+            # costs at most the row we were mid-write on. _scan_completed has
+            # already refused anything that is not tail damage.
+            os.truncate(cfg.jsonl_path, good_bytes)
+            summary["repaired_tail_bytes"] = size - good_bytes
+        summary["resumed_rows"] = n_carried
+
+        # Resume is per document, not per stage: a document already in the file
+        # is skipped whole. So resuming with a longer stage list does not go
+        # back and fill the earlier rows in, and the shard would silently mix
+        # two depths of processing. Stages this invocation dropped are excluded
+        # from the comparison — --resume drops `parquet` itself, and warning
+        # about our own removal on every single resume would train the operator
+        # to ignore the message.
+        previous = _previous_stages(cfg.jsonl_path.with_suffix(".summary.json"))
+        if previous is not None:
+            before = [s for s in previous if s not in cfg.dropped_stages]
+            if before != cfg.stages:
+                summary["resumed_stage_mismatch"] = before
+
+    paths = [p for p in inputs if not _path_keys(str(p)) & done_keys]
+    summary["num_skipped_as_done"] = len(inputs) - len(paths)
+
+    summary_path = cfg.jsonl_path.with_suffix(".summary.json")
+    # Write it once before any work, not only on a clean exit. The stage list it
+    # carries is what a later --resume compares against, and the case that
+    # comparison exists for is precisely the leg that was killed and never
+    # reached the end.
+    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+
+    mode = "a" if cfg.resume else "w"
     try:
-        with cfg.jsonl_path.open("w", encoding="utf-8") as out_f:
-            for pdf_path in _iter_pdfs(Path(cfg.input.pdf_dir), cfg.input.limit):
+        with cfg.jsonl_path.open(mode, encoding="utf-8") as out_f:
+            for pdf_path in paths:
                 row, extracted = _process_one(pdf_path, cfg, comps)
                 out_f.write(row.to_json_line() + "\n")
                 out_f.flush()
@@ -209,32 +258,7 @@ def run(cfg: RunConfig) -> dict[str, Any]:
                     md = extracted.markdown if extracted is not None else None
                     parquet_sink.write_row(row, md)
 
-                summary["num_pdfs"] += 1
-                if row.backend:
-                    by_b = summary["by_backend"]
-                    final = row.extract_backend or row.backend
-                    by_b[final] = by_b.get(final, 0) + 1
-                if row.stage_b_backend:
-                    by_sb = summary["by_stage_b"]
-                    by_sb[row.stage_b_backend] = by_sb.get(row.stage_b_backend, 0) + 1
-                # Extracted means text came back — not merely "was routed".
-                # sha256 is set for every routed document now, so it no longer
-                # distinguishes anything; extract_backend + no skip does.
-                if (
-                    row.error_class is None
-                    and row.skip_reason is None
-                    and row.extract_backend is not None
-                ):
-                    summary["num_extracted"] += 1
-                if row.skip_reason is not None:
-                    summary["num_skipped"] += 1
-                    by_sr = summary["by_skip_reason"]
-                    by_sr[row.skip_reason] = by_sr.get(row.skip_reason, 0) + 1
-                if row.quality_score is not None:
-                    summary["num_scored"] += 1
-                    summary["sum_quality"] += row.quality_score
-                if row.error_class is not None:
-                    summary["num_errors"] += 1
+                _tally(summary, asdict(row))
     finally:
         if parquet_sink is not None:
             parquet_sink.close()
@@ -242,12 +266,14 @@ def run(cfg: RunConfig) -> dict[str, Any]:
             summary["parquet_path"] = str(cfg.parquet_path)
 
     summary["finished_at"] = time.time()
+    # This leg only — num_pdfs spans every leg of a resumed run, so pairing the
+    # two would read as a throughput they never achieved.
     summary["wall_seconds"] = summary["finished_at"] - summary["started_at"]
+    summary["leg_num_pdfs"] = len(paths)
     summary["avg_quality"] = (
         summary["sum_quality"] / summary["num_scored"] if summary["num_scored"] else None
     )
 
-    summary_path = cfg.jsonl_path.with_suffix(".summary.json")
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     summary["summary_path"] = str(summary_path)
 
@@ -481,6 +507,170 @@ def _stage_quality(row: DocResult, extracted: Any, comps: Components) -> None:
         _set_error(row, "quality", e)
 
 
+# ---------------------------------------------------------------- inputs
+
+def resolve_inputs(cfg: RunConfig) -> tuple[list[Path], dict[str, Any]]:
+    """Work out which PDFs this run covers, and say how it decided.
+
+    Either a worklist (``input.pdf_list``) or a directory scan
+    (``input.pdf_dir``) — the worklist wins when both are set, because it is
+    the more specific instruction. The returned dict goes into the run summary
+    so a shard can be traced back to the exact corpus it covers.
+    """
+    from pdfsys_core import read_pdf_list, take_inventory
+
+    info: dict[str, Any] = {}
+    if cfg.input.pdf_list:
+        worklist = read_pdf_list(cfg.input.pdf_list, path_root=cfg.input.path_root)
+        paths = list(worklist.paths)
+        info["source"] = "list"
+        info["entries"] = worklist.entries
+        info["missing"] = len(worklist.missing)
+        info["missing_examples"] = list(worklist.missing[:5])
+        info["duplicates"] = len(worklist.duplicates)
+        info["duplicate_examples"] = list(worklist.duplicates[:5])
+    else:
+        inventory = take_inventory(cfg.input.pdf_dir)
+        paths = list(inventory.paths)
+        info["source"] = "scan"
+        info["by_suffix"] = len(inventory.by_suffix)
+        info["by_magic"] = len(inventory.by_magic)
+
+    if cfg.input.limit is not None:
+        # Applied before the resume filter, so --limit names the same slice of
+        # the corpus on every invocation rather than "N more each time".
+        paths = paths[: cfg.input.limit]
+
+    # Absolute, always. `pdf_path` in results.jsonl is what --resume matches on
+    # and what another machine reads as a worklist, and a relative path means
+    # something different from a different working directory — a supervisor
+    # restarting the job from elsewhere would silently reprocess the whole
+    # corpus. Resolving here is the one place both input routes pass through.
+    paths = [p.resolve() for p in paths]
+
+    info["selected"] = len(paths)
+    return paths, info
+
+
+def _path_keys(path: str | None) -> set[str]:
+    """The strings that could name this same file in results.jsonl.
+
+    ``resolve_inputs`` records absolute paths, so new files match on the string
+    alone. The resolved form is kept as a second key so a results.jsonl written
+    before that — holding paths relative to whatever directory the run started
+    in — still matches when resumed from that same directory. It cannot rescue
+    a relative path resumed from elsewhere; nothing can, which is why the paths
+    are absolute now.
+    """
+    if not path:
+        return set()
+    keys = {str(path)}
+    with contextlib.suppress(OSError):
+        keys.add(str(Path(path).resolve()))
+    return keys
+
+
+def _previous_stages(summary_path: Path) -> list[str] | None:
+    """The stage list the run being resumed was started with, if recorded."""
+    try:
+        data = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    stages = data.get("config_stages")
+    return stages if isinstance(stages, list) else None
+
+
+class CorruptResultsError(RuntimeError):
+    """results.jsonl has damage that cannot be attributed to an interrupted write."""
+
+
+def _scan_completed(
+    path: Path, on_row: Callable[[dict[str, Any]], None]
+) -> tuple[int, int]:
+    """Stream an existing results.jsonl. Returns (rows, bytes of intact prefix).
+
+    Rows are handed to *on_row* and dropped, never accumulated: a 218k-document
+    results.jsonl is hundreds of megabytes, and resume needs a tally and a set
+    of keys, not the corpus.
+
+    A line counts as complete only when it is newline-terminated *and* parses.
+    Requiring the newline is what makes the byte count land on a record
+    boundary — a final line that is valid JSON but lost its terminator would
+    otherwise be counted as intact, and the next append would splice the two
+    records into one.
+
+    Damage in the *tail* is an interrupted write, which is expected and
+    recoverable. Damage anywhere else is not explicable that way, and this
+    raises rather than guessing: JSONL records are framed independently, so a
+    bad line in the middle says nothing about the intact rows after it, and
+    truncating to the prefix would delete work that was really done.
+    """
+    n_rows = 0
+    good = 0
+    bad_at: int | None = None
+    trailing = 0
+    with path.open("rb") as f:
+        for lineno, raw in enumerate(f, start=1):
+            ok = raw.endswith(b"\n")
+            if ok:
+                try:
+                    row = json.loads(raw.decode("utf-8"))
+                except (ValueError, UnicodeDecodeError):
+                    ok = False
+                else:
+                    ok = isinstance(row, dict)
+            if not ok:
+                if bad_at is None:
+                    bad_at = lineno
+                trailing += len(raw)
+                continue
+            if bad_at is not None:
+                raise CorruptResultsError(
+                    f"{path} 第 {bad_at} 行损坏，但后面还有完好的记录"
+                    f"（例如第 {lineno} 行）。中间的坏行无法用“写到一半被中断”解释，"
+                    f"自动截断会删掉真的做过的工作。请人工检查后再用 --resume。"
+                )
+            on_row(row)
+            n_rows += 1
+            good += len(raw)
+    return n_rows, good
+
+
+def _tally(summary: dict[str, Any], row: dict[str, Any]) -> None:
+    """Fold one result row into the summary counters.
+
+    Takes a dict rather than a DocResult so a run being resumed can replay the
+    rows it already wrote through the identical arithmetic — otherwise the
+    summary would describe only the last leg of a restarted run.
+    """
+    summary["num_pdfs"] += 1
+    if row.get("backend"):
+        by_b = summary["by_backend"]
+        final = row.get("extract_backend") or row["backend"]
+        by_b[final] = by_b.get(final, 0) + 1
+    if row.get("stage_b_backend"):
+        by_sb = summary["by_stage_b"]
+        by_sb[row["stage_b_backend"]] = by_sb.get(row["stage_b_backend"], 0) + 1
+    # Extracted means text came back — not merely "was routed". sha256 is set
+    # for every routed document now, so it no longer distinguishes anything;
+    # extract_backend plus the absence of a skip does.
+    if (
+        row.get("error_class") is None
+        and row.get("skip_reason") is None
+        and row.get("extract_backend") is not None
+    ):
+        summary["num_extracted"] += 1
+    if row.get("skip_reason") is not None:
+        summary["num_skipped"] += 1
+        by_sr = summary["by_skip_reason"]
+        by_sr[row["skip_reason"]] = by_sr.get(row["skip_reason"], 0) + 1
+    if row.get("quality_score") is not None:
+        summary["num_scored"] += 1
+        summary["sum_quality"] += row["quality_score"]
+    if row.get("error_class") is not None:
+        summary["num_errors"] += 1
+
+
 # ---------------------------------------------------------------- util
 
 def _sha256_of_file(path: Path) -> str:
@@ -492,8 +682,6 @@ def _sha256_of_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _iter_pdfs(root: Path, limit: int | None) -> Iterable[Path]:
-    pdfs = sorted(p for p in root.rglob("*.pdf") if p.is_file())
-    if limit is not None:
-        pdfs = pdfs[:limit]
-    yield from pdfs
+# Discovery lives in pdfsys_core.discovery so that `pdfsys run`,
+# `pdfsys dataset` and pdfsys-bench cannot drift apart about what a PDF is.
+# See resolve_inputs above.

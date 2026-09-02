@@ -35,6 +35,32 @@ def test_only_stages_that_were_actually_requested_are_reported():
     assert cfg.dropped_stages == []
 
 
+def test_resume_drops_parquet_because_parquet_cannot_be_appended_to():
+    """pq.ParquetWriter truncates on open, so a resumed leg would leave
+    dataset.parquet describing only that leg while results.jsonl describes the
+    whole run — two artifacts of one run silently disagreeing."""
+    cfg = apply_cli_overrides(default_config(), resume=True)
+
+    assert "parquet" not in cfg.stages
+    assert cfg.dropped_stages == ["parquet"]
+    assert "not appendable" in cfg.drop_reasons["parquet"]
+
+
+def test_a_resumed_run_that_never_wanted_parquet_says_nothing():
+    cfg = apply_cli_overrides(
+        default_config(), stages="router,extract", resume=True
+    )
+
+    assert cfg.dropped_stages == []
+
+
+def test_every_dropped_stage_carries_its_reason():
+    cfg = apply_cli_overrides(default_config(), no_quality=True, resume=True)
+
+    assert set(cfg.drop_reasons) == set(cfg.dropped_stages)
+    assert all(cfg.drop_reasons[s] for s in cfg.dropped_stages)
+
+
 def test_asking_for_parquet_and_then_disabling_quality_reports_both():
     """``parquet`` auto-includes ``quality`` as a dependency, so ``--no-quality``
     takes out a stage that was never typed. That is exactly the combination

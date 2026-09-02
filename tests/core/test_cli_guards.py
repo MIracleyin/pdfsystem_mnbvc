@@ -45,6 +45,87 @@ def test_run_over_a_directory_with_no_pdfs_exits_nonzero(tmp_path):
     assert rc == 1
 
 
+def test_a_missing_pdf_list_exits_nonzero(tmp_path):
+    rc = main([
+        "run", "--pdf-list", str(tmp_path / "nope.txt"),
+        "--out-dir", str(tmp_path / "out"), "--stages", "router",
+    ])
+    assert rc == 1
+
+
+def test_a_worklist_whose_every_entry_is_missing_exits_nonzero(tmp_path):
+    """The signature of a wrong --path-root, which otherwise looks like an
+    empty corpus and marches on."""
+    listing = tmp_path / "work.txt"
+    listing.write_text("a.pdf\nb.pdf\n", encoding="utf-8")
+    rc = main([
+        "run", "--pdf-list", str(listing), "--path-root", str(tmp_path / "wrong"),
+        "--out-dir", str(tmp_path / "out"), "--stages", "router",
+    ])
+    assert rc == 1
+
+
+def test_a_worklist_run_reaches_the_files_through_path_root(tmp_path, capsys):
+    corpus = tmp_path / "corpus"
+    _pdf(corpus / "a.pdf")
+    _pdf(corpus / "nested" / "b.pdf")
+    listing = tmp_path / "work.txt"
+    listing.write_text("a.pdf\nnested/b.pdf\nghost.pdf\n", encoding="utf-8")
+
+    rc = main([
+        "run", "--pdf-list", str(listing), "--path-root", str(corpus),
+        "--out-dir", str(tmp_path / "out"), "--stages", "router",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr()
+    assert "processed 2 PDFs" in out.out
+    assert "1/3 listed paths do not exist" in out.err
+
+
+def test_pdf_list_takes_precedence_over_pdf_dir_and_says_so(tmp_path, capsys):
+    corpus = tmp_path / "corpus"
+    _pdf(corpus / "a.pdf")
+    _pdf(corpus / "b.pdf")
+    listing = tmp_path / "work.txt"
+    listing.write_text(str(corpus / "a.pdf") + "\n", encoding="utf-8")
+
+    rc = main([
+        "run", "--pdf-list", str(listing), "--pdf-dir", str(corpus),
+        "--out-dir", str(tmp_path / "out"), "--stages", "router",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr()
+    assert "--pdf-list wins" in out.err
+    assert "processed 1 PDFs" in out.out
+
+
+def test_a_resumed_leg_that_matched_nothing_warns(tmp_path, capsys):
+    """Carried rows but zero skips means the paths do not line up — the leg is
+    silently redoing every document."""
+    corpus = tmp_path / "corpus"
+    _pdf(corpus / "a.pdf")
+    out_dir = tmp_path / "out"
+    assert main([
+        "run", "--pdf-dir", str(corpus), "--out-dir", str(out_dir),
+        "--stages", "router",
+    ]) == 0
+    # Rewrite the recorded path so nothing matches on the next leg.
+    rows = out_dir / "results.jsonl"
+    rows.write_text(
+        json.dumps({**json.loads(rows.read_text()), "pdf_path": "/gone/a.pdf"}) + "\n",
+        encoding="utf-8",
+    )
+
+    main([
+        "run", "--pdf-dir", str(corpus), "--out-dir", str(out_dir),
+        "--stages", "router", "--resume",
+    ])
+
+    assert "skipped nothing" in capsys.readouterr().err
+
+
 def test_run_that_found_pdfs_still_exits_zero(tmp_path):
     src = tmp_path / "pdfs"
     _pdf(src / "a.pdf")

@@ -74,6 +74,22 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Comma-separated stages to run: {','.join(VALID_STAGES)}",
     )
     p.add_argument("--pdf-dir", type=str, default=None, help="Input PDF directory.")
+    p.add_argument("--pdf-list", type=str, default=None,
+                   help="File of PDF paths, one per line, processed instead of "
+                        "scanning --pdf-dir. This is how a box works on a slice it "
+                        "was handed — the documents another machine routed to it, or "
+                        "one bucket of a fleet split (`split -n l/8` on the list). "
+                        "Order is preserved; duplicates and missing files are "
+                        "reported, not silently dropped.")
+    p.add_argument("--path-root", type=str, default=None,
+                   help="Directory that relative entries in --pdf-list are resolved "
+                        "against. Lets one worklist be read on a machine that mounted "
+                        "the corpus somewhere else. Absolute entries are left alone.")
+    p.add_argument("--resume", action="store_true", default=False,
+                   help="Append to an existing results.jsonl and skip the documents "
+                        "already in it, instead of truncating it. The summary is "
+                        "recomputed over the whole file, so it describes the run and "
+                        "not just this leg of it.")
     p.add_argument("--out-dir", type=str, default=None, help="Output directory.")
     p.add_argument("--limit", type=int, default=None, help="Max PDFs to process.")
     p.add_argument("--markdown-dir", type=str, default=None, help="Dump markdown here.")
@@ -232,6 +248,8 @@ def cmd_init_config() -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
     # Load config: YAML file → defaults → CLI overrides.
     cfg = load_config(args.config) if args.config else default_config()
 
@@ -239,6 +257,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         cfg,
         stages=args.stages,
         pdf_dir=args.pdf_dir,
+        pdf_list=args.pdf_list,
+        path_root=args.path_root,
+        resume=args.resume,
         out_dir=args.out_dir,
         limit=args.limit,
         markdown_dir=args.markdown_dir,
@@ -251,25 +272,53 @@ def cmd_run(args: argparse.Namespace) -> int:
         quality_model=args.quality_model,
     )
 
-    if not cfg.input.pdf_dir:
-        print("Error: --pdf-dir is required (or set input.pdf_dir in config).", file=sys.stderr)
+    if not cfg.input.pdf_dir and not cfg.input.pdf_list:
+        print(
+            "Error: --pdf-dir or --pdf-list is required "
+            "(or set input.pdf_dir / input.pdf_list in config).",
+            file=sys.stderr,
+        )
         return 1
+    if cfg.input.pdf_list and not Path(cfg.input.pdf_list).is_file():
+        print(f"Error: --pdf-list not found: {cfg.input.pdf_list}", file=sys.stderr)
+        return 1
+    if cfg.input.pdf_list and cfg.input.pdf_dir:
+        print(
+            f"[pdfsys] note: --pdf-list wins; --pdf-dir {cfg.input.pdf_dir} is ignored",
+            file=sys.stderr,
+        )
+    if cfg.input.path_root and not cfg.input.pdf_list:
+        print(
+            "[pdfsys] note: --path-root only applies to --pdf-list; ignoring it",
+            file=sys.stderr,
+        )
 
-    if cfg.dropped_stages:
+    for stage in cfg.dropped_stages:
         # A stage vanishing between what was asked for and what runs is the
         # kind of thing you only notice three hours later, when the output
         # you expected isn't there.
         print(
-            f"[pdfsys] warning: --no-quality also dropped "
-            f"{', '.join(cfg.dropped_stages)} — the L1 parquet's `kept` column "
-            f"is decided by quality_score, so without the scorer there is "
-            f"nothing to write.",
+            f"[pdfsys] warning: dropped stage {stage!r} — "
+            f"{cfg.drop_reasons.get(stage, 'no reason recorded')}.",
+            file=sys.stderr,
+        )
+    if "parquet" in cfg.dropped_stages and cfg.parquet_path.exists():
+        print(
+            f"[pdfsys] warning: {cfg.parquet_path} is left over from an earlier "
+            f"leg and now covers only part of this run — treat it as stale.",
             file=sys.stderr,
         )
 
     # Print run plan.
     print(f"[pdfsys] stages:  {' → '.join(cfg.stages)}")
-    print(f"[pdfsys] input:   {cfg.input.pdf_dir}" + (f" (limit {cfg.input.limit})" if cfg.input.limit else ""))
+    source = cfg.input.pdf_list or cfg.input.pdf_dir
+    print(
+        f"[pdfsys] input:   {source}"
+        + (f" (rooted at {cfg.input.path_root})" if cfg.input.path_root else "")
+        + (f" (limit {cfg.input.limit})" if cfg.input.limit else "")
+    )
+    if cfg.resume:
+        print("[pdfsys] resume:  appending to an existing results.jsonl")
     print(f"[pdfsys] output:  {cfg.jsonl_path}")
     if cfg.markdown_path:
         print(f"[pdfsys] markdown: {cfg.markdown_path}")
@@ -280,10 +329,62 @@ def cmd_run(args: argparse.Namespace) -> int:
     print()
 
     # Run pipeline.
-    summary = run(cfg)
+    from .runner import CorruptResultsError
+
+    try:
+        summary = run(cfg)
+    except CorruptResultsError as e:
+        print(f"[pdfsys] error: {e}", file=sys.stderr)
+        return 1
 
     # Print summary.
     print()
+    disc = summary.get("discovery", {})
+    if disc.get("by_magic"):
+        print(
+            f"[pdfsys] discovered: {disc['by_suffix']} by extension, "
+            f"{disc['by_magic']} extensionless (recognised by %PDF- header)"
+        )
+    if disc.get("missing"):
+        print(
+            f"[pdfsys] warning: {disc['missing']}/{disc['entries']} listed paths "
+            f"do not exist, e.g. {disc.get('missing_examples', [])[:3]}",
+            file=sys.stderr,
+        )
+    if disc.get("duplicates"):
+        print(
+            f"[pdfsys] warning: {disc['duplicates']}/{disc['entries']} listed paths "
+            f"are repeats, processed once, e.g. "
+            f"{disc.get('duplicate_examples', [])[:3]}",
+            file=sys.stderr,
+        )
+    if summary.get("resumed_rows"):
+        print(
+            f"[pdfsys] resumed:  {summary['resumed_rows']} rows already on disk, "
+            f"{summary['num_skipped_as_done']} inputs skipped as done"
+        )
+        if summary["num_skipped_as_done"] == 0:
+            print(
+                "[pdfsys] warning: carried rows but skipped nothing — the paths on "
+                "disk do not match the paths being processed, so this leg is "
+                "redoing work. Check --pdf-dir / --path-root against the earlier leg.",
+                file=sys.stderr,
+            )
+    if summary.get("repaired_tail_bytes"):
+        print(
+            f"[pdfsys] repaired: dropped {summary['repaired_tail_bytes']} bytes of "
+            f"an interrupted final line from results.jsonl",
+            file=sys.stderr,
+        )
+    if summary.get("resumed_stage_mismatch"):
+        print(
+            f"[pdfsys] warning: resuming a run that was started with stages "
+            f"{' → '.join(summary['resumed_stage_mismatch'])}, now running "
+            f"{' → '.join(cfg.stages)}. Resume skips whole documents, not "
+            f"stages — the {summary['resumed_rows']} rows already on disk keep "
+            f"the old depth. Re-run without --resume to redo them.",
+            file=sys.stderr,
+        )
     print(f"[pdfsys] processed {summary['num_pdfs']} PDFs in {summary['wall_seconds']:.1f}s")
     print(f"[pdfsys] backends:  {summary['by_backend']}")
     if summary.get("by_stage_b"):
@@ -300,12 +401,19 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"[pdfsys] jsonl:     {cfg.jsonl_path}")
     print(f"[pdfsys] summary:   {summary.get('summary_path', '')}")
 
-    if summary["num_pdfs"] == 0:
-        # An empty run is almost always a wrong --pdf-dir or a glob that missed
-        # (rglob("*.pdf") is case-sensitive). Exiting 0 lets a fleet script march
-        # on through every shard reporting success and produce nothing.
+    # Gate on what this invocation *selected*, not on num_pdfs — that counter
+    # includes rows carried in from earlier legs, so a resumed run pointed at
+    # the wrong path would inherit a healthy-looking count and exit 0.
+    if disc.get("selected", summary["num_pdfs"]) == 0:
+        # Almost always a wrong path, or a worklist naming files this machine
+        # did not mount. Exiting 0 lets a fleet script march on through every
+        # bucket reporting success and produce nothing.
+        print(f"[pdfsys] error: no PDFs to process from {source}", file=sys.stderr)
+        return 1
+    if disc.get("entries") and disc.get("missing") == disc.get("entries"):
         print(
-            f"[pdfsys] error: no PDFs found under {cfg.input.pdf_dir}",
+            f"[pdfsys] error: not one of the {disc['entries']} listed paths exists "
+            f"— wrong --path-root?",
             file=sys.stderr,
         )
         return 1
@@ -602,10 +710,11 @@ def _index_pdfs_by_sha256(pdf_dir) -> dict:
     it came from; filenames are not stable across ingest.
     """
     import hashlib
-    from pathlib import Path
+
+    from pdfsys_core import iter_pdf_paths
 
     index: dict = {}
-    for path in sorted(Path(pdf_dir).rglob("*.pdf")):
+    for path in iter_pdf_paths(pdf_dir):
         try:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError as e:

@@ -117,6 +117,37 @@ python -m pdfsys_bench \
   --markdown-dir ./extracted
 ```
 
+### Option 3b: Split the run across machines that share no disk
+
+The CPU work and the GPU work do not have to happen on the same box, or at the
+same time. Running only `router,extract` extracts the text-ok documents in
+place and leaves the rest as a list of paths — the layout stage is what unlocks
+the OCR backends, so without it they are recorded and skipped rather than run.
+
+```bash
+# CPU box: extract what mupdf can, queue the rest. No GPU, no MinerU.
+pdfsys run --pdf-dir /data/corpus --out-dir ./p1 \
+           --stages router,extract --markdown-dir markdown --resume
+
+# The queue. Paths relative to the corpus root travel between machines.
+jq -r 'select(.skip_reason != null) | .pdf_path' ./p1/results.jsonl \
+  | sed 's|^/data/corpus/||' > gpu_lane.txt
+
+# Ship the PDFs the list names, then the list itself.
+rsync -a --partial --files-from=gpu_lane.txt /data/corpus/ gpu01:/mnt/lane/
+scp gpu_lane.txt gpu01:/mnt/lane.txt
+
+# GPU box: the same list, against wherever this machine mounted it.
+pdfsys run --pdf-list /mnt/lane.txt --path-root /mnt/lane --out-dir ./p2 \
+           --stages router,layout,extract --resume
+```
+
+`--resume` appends to `results.jsonl` and skips the documents already in it, so
+a machine that dies at hour six restarts where it stopped — and does not
+destroy the worklist the other machine is waiting on. `--limit` names the same
+slice of the corpus on every invocation, so it composes with resume. Splitting
+a list file (`split -n l/8 gpu_lane.txt`) is all fleet sharding needs.
+
 ### Option 4: Package a run into the L2 dataset
 
 The pipeline's own output (`results.jsonl` + MinerU sidecars) is L1 telemetry.
