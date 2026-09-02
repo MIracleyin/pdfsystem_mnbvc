@@ -123,6 +123,13 @@ class RunConfig:
     #: Why each of those went, keyed by stage — several flags can drop one.
     drop_reasons: dict[str, str] = field(default_factory=dict)
 
+    #: Which extraction backends this process is willing to run. ``None`` means
+    #: all of them. This is how one binary is a CPU lane on one machine and a
+    #: GPU lane on another: the CPU box runs ``mupdf`` and records the rest as
+    #: someone else's work, the GPU box runs ``pipeline``/``vlm`` and skips what
+    #: the CPU box already did.
+    extract_backends: list[str] | None = None
+
     #: Continue a run that already wrote rows: append to results.jsonl and skip
     #: the documents already in it. Without this the runner truncates on every
     #: start, so a crash at hour six of a 218k-document run erases everything it
@@ -176,7 +183,10 @@ def load_config(path: str | Path) -> RunConfig:
     stages = raw.get("stages", list(VALID_STAGES))
     _validate_stages(stages)
 
+    backends = _normalize_backends(raw.get("extract_backends"))
+
     return RunConfig(
+        extract_backends=backends,
         stages=_normalize_stages(stages),
         input=_fill_dataclass(InputConfig, raw.get("input")),
         output=_fill_dataclass(OutputConfig, raw.get("output")),
@@ -206,6 +216,8 @@ def apply_cli_overrides(cfg: RunConfig, **overrides: Any) -> RunConfig:
 
     if overrides.get("pdf_dir") is not None:
         cfg.input.pdf_dir = str(overrides["pdf_dir"])
+    if overrides.get("extract_backends") is not None:
+        cfg.extract_backends = _normalize_backends(overrides["extract_backends"])
     if overrides.get("pdf_list") is not None:
         cfg.input.pdf_list = str(overrides["pdf_list"])
     if overrides.get("path_root") is not None:
@@ -270,6 +282,43 @@ def _drop_stage(cfg: RunConfig, stage: str, reason: str) -> None:
     cfg.drop_reasons[stage] = reason
 
 
+#: Backends a lane can be asked to run. ``deferred`` is stage-B declining, not
+#: something a process performs, so it is not selectable.
+RUNNABLE_BACKENDS = ("mupdf", "pipeline", "vlm")
+
+
+def _normalize_backends(value: Any) -> list[str] | None:
+    """Accept a lane as a comma string or a list, from CLI or YAML alike.
+
+    One normalizer for both entry points, because they were diverging: the CLI
+    split ``"mupdf,vlm"`` on commas while YAML fed the same scalar to ``list()``
+    and got ``['m','u','p','d','f']``, reporting an unknown backend ``'m'``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        backends = [s for s in (p.strip() for p in value.split(",")) if s]
+    elif isinstance(value, (list, tuple)):
+        backends = [str(s).strip() for s in value]
+    else:
+        raise ValueError(
+            f"extract_backends must be a list or a comma-separated string, "
+            f"got {type(value).__name__}"
+        )
+    if not backends:
+        raise ValueError(
+            "extract_backends needs at least one of "
+            f"{', '.join(RUNNABLE_BACKENDS)}; an empty lane extracts nothing"
+        )
+    for b in backends:
+        if b not in RUNNABLE_BACKENDS:
+            raise ValueError(
+                f"Unknown extract backend {b!r}. "
+                f"Valid backends: {', '.join(RUNNABLE_BACKENDS)}"
+            )
+    return backends
+
+
 def _validate_stages(stages: list[str]) -> None:
     for s in stages:
         if s not in VALID_STAGES:
@@ -325,6 +374,12 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
                                     # this, so one worklist works on a box that
                                     # mounted the corpus elsewhere
       limit: null                   # max PDFs to process; null = no cap
+
+    # Which extraction backends THIS machine runs. Omit (or null) to run all.
+    # The CPU box takes [mupdf] and records the rest as another box's work;
+    # the GPU box takes [pipeline] (add vlm with `layout` in stages + vlm.enabled).
+    # A document filtered out here is reported as skip_reason=lane-filter.
+    extract_backends: null
 
     # Append to an existing results.jsonl and skip what is already in it,
     # instead of truncating. Also settable with --resume.

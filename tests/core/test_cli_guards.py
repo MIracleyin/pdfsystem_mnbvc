@@ -126,6 +126,57 @@ def test_a_resumed_leg_that_matched_nothing_warns(tmp_path, capsys):
     assert "skipped nothing" in capsys.readouterr().err
 
 
+def test_an_unknown_backend_exits_1_without_a_traceback(tmp_path, capsys):
+    corpus = tmp_path / "corpus"
+    _pdf(corpus / "a.pdf")
+    rc = main([
+        "run", "--pdf-dir", str(corpus), "--out-dir", str(tmp_path / "out"),
+        "--stages", "router", "--extract-backends", "tesseract",
+    ])
+    assert rc == 1
+    assert "Unknown extract backend" in capsys.readouterr().err
+
+
+def test_an_unknown_backend_in_a_config_file_also_exits_1(tmp_path, capsys):
+    """The YAML path raises the same ValueError and must read the same way."""
+    corpus = tmp_path / "corpus"
+    _pdf(corpus / "a.pdf")
+    conf = tmp_path / "c.yaml"
+    conf.write_text(
+        f"stages: [router]\ninput:\n  pdf_dir: {corpus}\n"
+        f"output:\n  dir: {tmp_path / 'out'}\nextract_backends: [tesseract]\n",
+        encoding="utf-8",
+    )
+
+    rc = main(["run", "-c", str(conf)])
+
+    assert rc == 1
+    assert "Unknown extract backend" in capsys.readouterr().err
+
+
+def test_a_scalar_lane_in_yaml_is_read_as_one_backend(tmp_path):
+    """`extract_backends: mupdf` used to become ['m','u','p','d','f']."""
+    from pdfsys_cli.config import load_config
+
+    conf = tmp_path / "c.yaml"
+    conf.write_text("extract_backends: mupdf\n", encoding="utf-8")
+    assert load_config(conf).extract_backends == ["mupdf"]
+
+
+def test_an_empty_vlm_lane_is_flagged_before_any_work(tmp_path, capsys):
+    """Only stage-B says `vlm`, and only when vlm.enabled — otherwise the lane
+    is empty by construction and the run would filter the whole corpus."""
+    corpus = tmp_path / "corpus"
+    _pdf(corpus / "a.pdf")
+
+    main([
+        "run", "--pdf-dir", str(corpus), "--out-dir", str(tmp_path / "out"),
+        "--stages", "router,extract", "--extract-backends", "vlm",
+    ])
+
+    assert "vlm.enabled is false" in capsys.readouterr().err
+
+
 def test_run_that_found_pdfs_still_exits_zero(tmp_path):
     src = tmp_path / "pdfs"
     _pdf(src / "a.pdf")

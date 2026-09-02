@@ -208,11 +208,34 @@ def run(cfg: RunConfig) -> dict[str, Any]:
     done_keys: set[str] = set()
     if cfg.resume and cfg.jsonl_path.exists():
 
+        conflicts: list[str] = []
+
         def _carry(row: dict[str, Any]) -> None:
             _tally(summary, row)
             done_keys.update(_path_keys(row.get("pdf_path")))
+            # A row another lane filtered out is not "done" — it was handed to
+            # whoever runs that backend. If that is us, resume is about to skip
+            # the very documents we were started to extract.
+            if row.get("skip_reason") == "lane-filter" and _in_lane(
+                row.get("extract_backend"), cfg
+            ):
+                conflicts.append(row.get("pdf_path") or "")
 
         n_carried, good_bytes = _scan_completed(cfg.jsonl_path, _carry)
+        if conflicts:
+            # Raise here, before the summary is written or a single document is
+            # touched. Detected up front but reported at the end, this would
+            # run the whole leg and overwrite the other lane's summary.json on
+            # the way to exiting non-zero.
+            raise LaneConflictError(
+                f"{len(conflicts)} documents in {cfg.jsonl_path} were filtered out "
+                f"by an earlier lane and belong to this one "
+                f"({', '.join(cfg.extract_backends or RUNNABLE_BACKENDS)}), but "
+                f"--resume treats any row as done and would skip them "
+                f"(e.g. {conflicts[0]}). Give each lane its own --out-dir; "
+                f"results.jsonl is append-only, so one directory cannot hold two "
+                f"passes over the same document."
+            )
         size = cfg.jsonl_path.stat().st_size
         if good_bytes < size:
             # An interrupted write leaves a partial final line. Appending after
@@ -310,8 +333,17 @@ def _process_one(
         _stage_router(row, pdf_path, comps)
 
     # ---- layout ----
+    # Skipped when no OCR backend is in this lane: layout exists to produce the
+    # stage-B decision between pipeline and vlm, and if we run neither, that
+    # decision cannot change what happens to the document. Running it anyway
+    # means a CPU box paying DocLayout-YOLO for every document it is about to
+    # hand away — precisely the documents it is not extracting.
     layout = None
-    if cfg.has_stage("layout") and _needs_ocr(row):
+    if (
+        cfg.has_stage("layout")
+        and _needs_ocr(row)
+        and any(_in_lane(b, cfg) for b in ("pipeline", "vlm"))
+    ):
         layout = _stage_layout(row, pdf_path, comps, cfg)
 
     # ---- extract ----
@@ -324,6 +356,27 @@ def _process_one(
         _stage_quality(row, extracted, comps)
 
     return row, extracted
+
+
+#: Backends a process can actually be asked to run. ``deferred`` is not one of
+#: them — it is stage-B declining, and labelling that a lane filter would hide
+#: the reason the document was held back.
+RUNNABLE_BACKENDS = ("mupdf", "pipeline", "vlm")
+_RUNNABLE_BACKENDS = frozenset(RUNNABLE_BACKENDS)
+
+
+def _in_lane(backend: str | None, cfg: RunConfig) -> bool:
+    """Does this process run *backend*?
+
+    ``extract_backends is None`` means every backend — which makes it the
+    *widest* lane, not an absent one. Reading it as "no lane configured, so
+    nothing to check" gets the resume conflict test exactly backwards: the
+    process willing to run everything is the one most certain to own a document
+    an earlier lane handed away.
+    """
+    if cfg.extract_backends is None:
+        return True
+    return backend in cfg.extract_backends
 
 
 def _needs_ocr(row: DocResult) -> bool:
@@ -403,6 +456,35 @@ def _stage_extract(
     backend = row.stage_b_backend or row.backend
     extracted = None
 
+    # An earlier stage already failed — the router could not read the file, or
+    # the layout model died. Nothing after this is a routing decision, so the
+    # row keeps its error and gets no skip label: the two counters stay
+    # disjoint, and the hand-off worklist (built from skip_reason) does not
+    # queue a broken document onto another machine as routine work.
+    if row.error_class is not None:
+        row.extract_backend = backend
+        return None
+
+    # Lane filter. This process runs only the backends it was told to; the rest
+    # belong to another machine, or already ran on one. Saying so explicitly is
+    # what lets the OCR branches below drop their `layout is not None` guard —
+    # a guard that filtered lanes only by accident, and could not mean "mupdf
+    # only" on one box and "MinerU only" on another.
+    if backend in _RUNNABLE_BACKENDS and not _in_lane(backend, cfg):
+        row.extract_backend = backend
+        row.skip_reason = "lane-filter"
+        return None
+
+    # Layout was asked for and did not deliver, without raising. Do not extract
+    # on top of a layout stage that produced nothing.
+    if (
+        cfg.has_stage("layout")
+        and layout is None
+        and backend in (Backend.PIPELINE.value, Backend.VLM.value)
+    ):
+        row.extract_backend = backend
+        return None
+
     # MUPDF fast path.
     if backend == Backend.MUPDF.value or backend is None:
         try:
@@ -420,8 +502,10 @@ def _stage_extract(
             _set_error(row, "extract_mupdf", e)
             return None
 
-    # Pipeline OCR path.
-    elif backend == Backend.PIPELINE.value and layout is not None:
+    # Pipeline OCR path. No layout requirement: MinerU does its own layout
+    # analysis internally and is handed only the PDF bytes, so a box that runs
+    # MinerU does not need to have run ours.
+    elif backend == Backend.PIPELINE.value:
         try:
             t0 = time.perf_counter()
             extracted = comps.pipeline_parser.extract(pdf_path)
@@ -435,8 +519,9 @@ def _stage_extract(
             _set_error(row, "extract_pipeline", e)
             return None
 
-    # VLM path.
-    elif backend == Backend.VLM.value and layout is not None:
+    # VLM path. Only stage-B ever says "vlm", so reaching here already implies
+    # the layout stage ran — but the branch no longer depends on that.
+    elif backend == Backend.VLM.value:
         try:
             t0 = time.perf_counter()
             extracted = comps.vlm_parser.extract(pdf_path)
@@ -462,22 +547,12 @@ def _stage_extract(
             _set_error(row, "extract_vlm", e)
             return None
 
-    # DEFERRED or no layout — skip extraction. Say which: "the layout stage was
-    # not run so the OCR branches were unreachable" and "stage-B held this back
-    # for a later batch" are different facts, and both used to arrive here as a
-    # silent no-op that the summary counted as a success.
+    # Stage-B held this document back, or named a backend we do not have. Say
+    # which — both used to arrive here as a silent no-op that the summary
+    # counted as a success.
     else:
         row.extract_backend = backend
-        if row.error_class is not None:
-            # An earlier stage already failed — the router could not read the
-            # file, or the layout model died. That is not a routing decision,
-            # and labelling it as one would queue a broken document onto the
-            # GPU worklist as a routine deferral. Leaving skip_reason None also
-            # keeps the skip and error counters disjoint.
-            return None
-        if backend in (Backend.PIPELINE.value, Backend.VLM.value):
-            row.skip_reason = "no-layout"
-        elif backend == Backend.DEFERRED.value:
+        if backend == Backend.DEFERRED.value:
             row.skip_reason = "deferred"
         else:
             row.skip_reason = f"unknown-backend:{backend}"
@@ -584,6 +659,10 @@ class CorruptResultsError(RuntimeError):
     """results.jsonl has damage that cannot be attributed to an interrupted write."""
 
 
+class LaneConflictError(RuntimeError):
+    """Resuming here would skip documents an earlier lane handed to this one."""
+
+
 def _scan_completed(
     path: Path, on_row: Callable[[dict[str, Any]], None]
 ) -> tuple[int, int]:
@@ -664,6 +743,13 @@ def _tally(summary: dict[str, Any], row: dict[str, Any]) -> None:
         summary["num_skipped"] += 1
         by_sr = summary["by_skip_reason"]
         by_sr[row["skip_reason"]] = by_sr.get(row["skip_reason"], 0) + 1
+        if row["skip_reason"] == "lane-filter":
+            # Which lane the document went to, so the caller can tell a normal
+            # hand-off (this box filtering out OCR work) from a document this
+            # box thinks is already done but was sent here to be OCR'd.
+            by_lane = summary.setdefault("by_filtered_backend", {})
+            be = row.get("extract_backend") or "unknown"
+            by_lane[be] = by_lane.get(be, 0) + 1
     if row.get("quality_score") is not None:
         summary["num_scored"] += 1
         summary["sum_quality"] += row["quality_score"]

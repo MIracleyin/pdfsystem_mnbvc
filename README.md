@@ -120,14 +120,15 @@ python -m pdfsys_bench \
 ### Option 3b: Split the run across machines that share no disk
 
 The CPU work and the GPU work do not have to happen on the same box, or at the
-same time. Running only `router,extract` extracts the text-ok documents in
-place and leaves the rest as a list of paths — the layout stage is what unlocks
-the OCR backends, so without it they are recorded and skipped rather than run.
+same time. `--extract-backends` says which backends *this* machine runs;
+anything else is recorded as another machine's work
+(`skip_reason=lane-filter`) with the path needed to hand it over.
 
 ```bash
 # CPU box: extract what mupdf can, queue the rest. No GPU, no MinerU.
 pdfsys run --pdf-dir /data/corpus --out-dir ./p1 \
-           --stages router,extract --markdown-dir markdown --resume
+           --stages router,extract --extract-backends mupdf \
+           --markdown-dir markdown --resume
 
 # The queue. Paths relative to the corpus root travel between machines.
 jq -r 'select(.skip_reason != null) | .pdf_path' ./p1/results.jsonl \
@@ -138,9 +139,21 @@ rsync -a --partial --files-from=gpu_lane.txt /data/corpus/ gpu01:/mnt/lane/
 scp gpu_lane.txt gpu01:/mnt/lane.txt
 
 # GPU box: the same list, against wherever this machine mounted it.
+# No layout stage — MinerU does its own internally and is handed only the PDF.
 pdfsys run --pdf-list /mnt/lane.txt --path-root /mnt/lane --out-dir ./p2 \
-           --stages router,layout,extract --resume
+           --stages router,extract --extract-backends pipeline \
+           --ocr-threshold 0.05 --resume
+
+# For the VLM lane, layout IS load-bearing — only stage-B ever says "vlm":
+#   --stages router,layout,extract --vlm --extract-backends pipeline,vlm
 ```
+
+Use the same `--ocr-threshold` on both boxes. Phase 2 re-runs stage-A (asking
+for `extract` pulls in `router`), so a different threshold can re-classify a
+document as `mupdf` on the GPU box, where the lane filter then skips it — and
+the CPU box had already handed it away. It would fall out of both lanes. That
+shows up as a nonzero `lane-filter` count on the GPU box, which the run warns
+about; expect zero.
 
 `--resume` appends to `results.jsonl` and skips the documents already in it, so
 a machine that dies at hour six restarts where it stopped — and does not

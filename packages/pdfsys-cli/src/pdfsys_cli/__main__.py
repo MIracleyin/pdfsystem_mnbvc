@@ -15,8 +15,10 @@ Usage::
     # Override config from CLI
     pdfsys run -c pdfsys.yaml --pdf-dir ./other --limit 10
 
-    # Quick run without config file
-    pdfsys run --pdf-dir ./data/pdfs --out-dir ./out --stages router,extract
+    # Quick run without config file. --extract-backends names which backends
+    # THIS machine runs; without it, OCR-routed documents go to MinerU.
+    pdfsys run --pdf-dir ./data/pdfs --out-dir ./out \
+               --stages router,extract --extract-backends mupdf
 
     # Launch annotation UI
     pdfsys annotate
@@ -85,6 +87,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Directory that relative entries in --pdf-list are resolved "
                         "against. Lets one worklist be read on a machine that mounted "
                         "the corpus somewhere else. Absolute entries are left alone.")
+    p.add_argument("--extract-backends", type=str, default=None,
+                   help="Comma-separated backends THIS machine runs: mupdf, "
+                        "pipeline, vlm. Default: all of them. The CPU box takes "
+                        "`mupdf` and records the OCR-bound documents as another "
+                        "box's work (skip_reason=lane-filter); the GPU box takes "
+                        "`pipeline` and skips what the CPU box already did. Use "
+                        "the same --ocr-threshold on both, or a document can be "
+                        "filtered out of BOTH lanes — that shows up as a nonzero "
+                        "lane-filter count on the GPU box.")
     p.add_argument("--resume", action="store_true", default=False,
                    help="Append to an existing results.jsonl and skip the documents "
                         "already in it, instead of truncating it. The summary is "
@@ -250,27 +261,35 @@ def cmd_init_config() -> int:
 def cmd_run(args: argparse.Namespace) -> int:
     from pathlib import Path
 
-    # Load config: YAML file → defaults → CLI overrides.
-    cfg = load_config(args.config) if args.config else default_config()
-
-    cfg = apply_cli_overrides(
-        cfg,
-        stages=args.stages,
-        pdf_dir=args.pdf_dir,
-        pdf_list=args.pdf_list,
-        path_root=args.path_root,
-        resume=args.resume,
-        out_dir=args.out_dir,
-        limit=args.limit,
-        markdown_dir=args.markdown_dir,
-        cache_dir=args.cache_dir,
-        ocr_threshold=args.ocr_threshold,
-        router_weights=args.router_weights,
-        vlm_enabled=args.vlm_enabled,
-        vlm_engine=args.vlm_engine,
-        no_quality=args.no_quality,
-        quality_model=args.quality_model,
-    )
+    # Load config: YAML file → defaults → CLI overrides. Both raise ValueError
+    # on the same class of typo (an unknown stage or backend), so both are
+    # inside the handler — a traceback from a config file reads like a crash.
+    try:
+        cfg = load_config(args.config) if args.config else default_config()
+        cfg = apply_cli_overrides(
+            cfg,
+            stages=args.stages,
+            pdf_dir=args.pdf_dir,
+            pdf_list=args.pdf_list,
+            path_root=args.path_root,
+            extract_backends=args.extract_backends,
+            resume=args.resume,
+            out_dir=args.out_dir,
+            limit=args.limit,
+            markdown_dir=args.markdown_dir,
+            cache_dir=args.cache_dir,
+            ocr_threshold=args.ocr_threshold,
+            router_weights=args.router_weights,
+            vlm_enabled=args.vlm_enabled,
+            vlm_engine=args.vlm_engine,
+            no_quality=args.no_quality,
+            quality_model=args.quality_model,
+        )
+    except ValueError as e:
+        # Unknown --stages or --extract-backends value. A traceback here reads
+        # like a crash rather than a typo.
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     if not cfg.input.pdf_dir and not cfg.input.pdf_list:
         print(
@@ -317,6 +336,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         + (f" (rooted at {cfg.input.path_root})" if cfg.input.path_root else "")
         + (f" (limit {cfg.input.limit})" if cfg.input.limit else "")
     )
+    if cfg.extract_backends is not None:
+        print(f"[pdfsys] lane:    {', '.join(cfg.extract_backends)}")
+        if "vlm" in cfg.extract_backends and not cfg.vlm.enabled:
+            # Only stage-B ever says "vlm", and it only says it when
+            # vlm_enabled is set. Without that the lane is empty by
+            # construction — knowable before a single PDF is opened.
+            print(
+                "[pdfsys] warning: lane includes `vlm` but vlm.enabled is false, "
+                "so stage-B can never route anything to it. Add --vlm (and the "
+                "`layout` stage, which is what produces the stage-B decision).",
+                file=sys.stderr,
+            )
     if cfg.resume:
         print("[pdfsys] resume:  appending to an existing results.jsonl")
     print(f"[pdfsys] output:  {cfg.jsonl_path}")
@@ -329,11 +360,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     print()
 
     # Run pipeline.
-    from .runner import CorruptResultsError
+    from .runner import CorruptResultsError, LaneConflictError
 
     try:
         summary = run(cfg)
-    except CorruptResultsError as e:
+    except (CorruptResultsError, LaneConflictError) as e:
+        # Both are raised before any document is touched, so nothing in the
+        # out-dir has been written by this leg.
         print(f"[pdfsys] error: {e}", file=sys.stderr)
         return 1
 
@@ -396,6 +429,20 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     if summary.get("by_skip_reason"):
         print(f"[pdfsys] skipped:   {summary['by_skip_reason']}")
+    # Filtering OCR work out of a mupdf lane is the normal hand-off. Filtering
+    # *mupdf* work out of an OCR lane is not: it means this box decided the
+    # document needs no OCR, while the box that queued it decided the opposite
+    # and has already handed it away. It is then in no lane at all.
+    lane = cfg.extract_backends or []
+    stranded = summary.get("by_filtered_backend", {}).get("mupdf", 0)
+    if stranded and lane and "mupdf" not in lane:
+        print(
+            f"[pdfsys] warning: {stranded} documents were routed to mupdf here but "
+            f"queued for lane {', '.join(lane)} by the box that sent them — this "
+            f"box's router disagrees, so they are in NO lane. Check that "
+            f"--ocr-threshold matches ({cfg.router.ocr_threshold}).",
+            file=sys.stderr,
+        )
     if summary.get("avg_quality") is not None:
         print(f"[pdfsys] avg_quality={summary['avg_quality']:.3f}")
     print(f"[pdfsys] jsonl:     {cfg.jsonl_path}")

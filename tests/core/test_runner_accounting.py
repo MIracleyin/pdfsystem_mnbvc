@@ -93,14 +93,12 @@ def test_sha256_of_file_matches_whole_file_hash(tmp_path):
 @pytest.mark.parametrize(
     ("backend", "want_reason"),
     [
-        ("pipeline", "no-layout"),
-        ("vlm", "no-layout"),
         ("deferred", "deferred"),
         ("mineru-next", "unknown-backend:mineru-next"),
     ],
 )
 def test_unreached_backends_record_why(backend, want_reason, tmp_path):
-    """Three different intents used to collapse into one indistinguishable no-op."""
+    """Different intents used to collapse into one indistinguishable no-op."""
     row = DocResult(pdf_path="x.pdf", backend=backend)
     cfg = RunConfig()
 
@@ -113,6 +111,174 @@ def test_unreached_backends_record_why(backend, want_reason, tmp_path):
     assert row.extract_backend == backend
     # Not an error: nothing failed. It was a routing decision.
     assert row.error_class is None
+
+
+@pytest.mark.parametrize("backend", ["pipeline", "vlm"])
+def test_an_ocr_backend_no_longer_needs_our_layout(backend, tmp_path):
+    """MinerU runs its own layout analysis and is handed only the PDF bytes, so
+    a box that runs MinerU need not have run ours. The old `layout is not None`
+    guard made the OCR lane unreachable without a layout stage — which is
+    exactly what a GPU box doing extraction-only wants to run."""
+    calls: list[str] = []
+
+    class _Recording:
+        def extract(self, path):
+            calls.append(str(path))
+            raise RuntimeError("reached the parser, which is the point")
+
+    class _Comps:
+        pipeline_parser = _Recording()
+        vlm_parser = _Recording()
+
+    row = DocResult(pdf_path="x.pdf", backend=backend)
+    cfg = RunConfig(stages=["router", "extract"])
+
+    _stage_extract(row, Path("x.pdf"), None, _Comps(), cfg)
+
+    assert calls == ["x.pdf"]
+    assert row.skip_reason is None
+
+
+class _RecordingComponents:
+    """Records parser calls instead of running them."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+        class _P:
+            def extract(_self, path):
+                self.calls.append(str(path))
+                raise RuntimeError("reached the parser")
+
+        self.pipeline_parser = _P()
+        self.vlm_parser = _P()
+
+
+@pytest.mark.parametrize("backend", ["pipeline", "vlm"])
+def test_a_failed_layout_stage_still_blocks_extraction(backend, tmp_path):
+    """Removing the guard must not mean extracting on top of a layout that
+    crashed: that would report success for a document whose run went wrong."""
+    row = DocResult(pdf_path="x.pdf", backend=backend)
+    row.error_class = "layout"
+    row.error_message = "RuntimeError: CUDA out of memory"
+    cfg = RunConfig(stages=["router", "layout", "extract"])
+    comps = _RecordingComponents()
+
+    assert _stage_extract(row, Path("x.pdf"), None, comps, cfg) is None
+
+    assert comps.calls == [], "the parser must not be reached"
+    assert row.skip_reason is None, "a crash is an error, not a hand-off"
+    assert row.error_class == "layout", "the original failure is preserved"
+
+
+@pytest.mark.parametrize("backend", ["pipeline", "vlm"])
+def test_a_layout_stage_that_returned_nothing_blocks_extraction(backend):
+    """The other half: layout ran, produced no document, and did not raise."""
+    row = DocResult(pdf_path="x.pdf", backend=backend)
+    cfg = RunConfig(stages=["router", "layout", "extract"])
+    comps = _RecordingComponents()
+
+    assert _stage_extract(row, Path("x.pdf"), None, comps, cfg) is None
+    assert comps.calls == []
+
+
+def test_a_failed_document_is_never_labelled_a_lane_hand_off():
+    """The hand-off worklist is built from skip_reason, so a document whose
+    layout crashed must not be queued to another machine as routine work."""
+    row = DocResult(pdf_path="x.pdf", backend="pipeline")
+    row.error_class = "layout"
+    cfg = RunConfig(stages=["router", "layout", "extract"], extract_backends=["mupdf"])
+    comps = _RecordingComponents()
+
+    _stage_extract(row, Path("x.pdf"), None, comps, cfg)
+
+    assert row.skip_reason is None
+    assert comps.calls == []
+
+
+def test_layout_is_not_paid_for_on_documents_the_lane_will_drop(tmp_path, monkeypatch):
+    """A CPU box on the mupdf lane would otherwise run DocLayout-YOLO on every
+    document it is about to hand away."""
+    from pdfsys_core import Backend
+    from pdfsys_router import RouterDecision
+
+    src = tmp_path / "pdfs"
+    _pdf(src / "a.pdf")
+
+    class _Router:
+        def classify(self, path):
+            return RouterDecision(
+                backend=Backend.PIPELINE, ocr_prob=0.9, num_pages=1,
+                is_form=False, garbled_text_ratio=0.0, is_encrypted=False,
+                needs_password=False,
+            )
+
+    class _Analyser:
+        def analyse(self, path):  # pragma: no cover - must not be reached
+            raise AssertionError("layout ran for a document outside the lane")
+
+    monkeypatch.setattr(Components, "router", property(lambda self: _Router()))
+    monkeypatch.setattr(Components, "analyser", property(lambda self: _Analyser()))
+
+    summary = run(apply_cli_overrides(
+        RunConfig(), stages="router,layout,extract", pdf_dir=str(src),
+        out_dir=str(tmp_path / "out"), extract_backends="mupdf",
+    ))
+
+    assert summary["by_skip_reason"] == {"lane-filter": 1}
+
+
+# ---------------------------------------------------------------------------
+# lane filter
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("lane", "backend", "runs"),
+    [
+        (["mupdf"], "pipeline", False),
+        (["mupdf"], "vlm", False),
+        (["pipeline"], "pipeline", True),
+        (["pipeline", "vlm"], "vlm", True),
+        (["pipeline"], "mupdf", False),
+    ],
+)
+def test_the_lane_filter_decides_which_backends_this_box_runs(lane, backend, runs):
+    calls: list[str] = []
+
+    class _Recording:
+        def extract(self, path):
+            calls.append(str(path))
+            raise RuntimeError("reached the parser")
+
+    class _Comps:
+        pipeline_parser = _Recording()
+        vlm_parser = _Recording()
+
+    row = DocResult(pdf_path="x.pdf", backend=backend)
+    cfg = RunConfig(stages=["router", "extract"], extract_backends=lane)
+
+    _stage_extract(row, Path("x.pdf"), None, _Comps(), cfg)
+
+    assert bool(calls) is runs
+    if runs:
+        assert row.skip_reason is None
+    else:
+        assert row.skip_reason == "lane-filter"
+        # The filtered row still names the lane it belongs to, so the other
+        # machine's worklist can be built from it.
+        assert row.extract_backend == backend
+
+
+def test_a_deferred_document_is_reported_as_deferred_not_filtered():
+    """Stage-B declining is a different fact from this box not owning the lane,
+    and the more informative one."""
+    row = DocResult(pdf_path="x.pdf", backend="deferred")
+    cfg = RunConfig(stages=["router", "extract"], extract_backends=["mupdf"])
+
+    _stage_extract(row, Path("x.pdf"), None, _ExplodingComponents(cfg), cfg)
+
+    assert row.skip_reason == "deferred"
 
 
 def _run_with_backends(tmp_path, backends: list[str], monkeypatch, **over):
@@ -139,7 +305,11 @@ def _run_with_backends(tmp_path, backends: list[str], monkeypatch, **over):
     )
     cfg = apply_cli_overrides(
         RunConfig(), stages="router,extract", pdf_dir=str(src),
-        out_dir=str(tmp_path / "out"), **over,
+        out_dir=str(tmp_path / "out"),
+        # The CPU lane, stated explicitly. Without it this would reach for
+        # MinerU on every OCR-routed document.
+        extract_backends="mupdf",
+        **over,
     )
     return run(cfg)
 
@@ -161,7 +331,7 @@ def test_a_document_left_for_the_gpu_is_counted_as_skipped(tmp_path, monkeypatch
 
     assert summary["num_extracted"] == 0
     assert summary["num_skipped"] == 1
-    assert summary["by_skip_reason"] == {"no-layout": 1}
+    assert summary["by_skip_reason"] == {"lane-filter": 1}
 
 
 def test_the_two_counters_partition_a_mixed_corpus(tmp_path, monkeypatch):
@@ -173,7 +343,7 @@ def test_the_two_counters_partition_a_mixed_corpus(tmp_path, monkeypatch):
     assert summary["num_pdfs"] == 4
     assert summary["num_extracted"] == 2
     assert summary["num_skipped"] == 2
-    assert summary["by_skip_reason"] == {"no-layout": 1, "deferred": 1}
+    assert summary["by_skip_reason"] == {"lane-filter": 1, "deferred": 1}
     assert summary["num_errors"] == 0
 
 
