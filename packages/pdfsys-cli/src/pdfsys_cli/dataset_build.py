@@ -246,6 +246,12 @@ def build_from_mineru_dir(
     pages = split_pages(
         blocks,
         n_pages=len(page_sizes),
+        # A bbox:// marker is only resolvable against a page raster, and only
+        # the "pages" mode stores one. Under "none" the same marker would point
+        # at pixels the shard does not contain — dataset-validate rejects it,
+        # and rightly so. The bbox stays on the block, so the crop is still
+        # reconstructible from the source PDF.
+        region_refs=(images == "pages"),
         doc_id=doc_id or stem,
         extractor=extractor or backend,
         **page_fields,

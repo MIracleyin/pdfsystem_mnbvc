@@ -161,6 +161,10 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--render-dpi", type=int, default=200,
                    help="DPI for page rasters (default: 200, matching the resolution MinerU "
                         "crops at, so a derived crop is pixel-equivalent to a stored one).")
+    d.add_argument("--overwrite", action="store_true", default=False,
+                   help="Replace pages/<shard>.parquet if it already exists. Without this "
+                        "a name collision is an error, because several lanes write their "
+                        "shards into one dataset directory and the writer truncates.")
 
     # ---- dataset-validate ----
     dv = sub.add_parser(
@@ -284,20 +288,39 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"[pdfsys] backends:  {summary['by_backend']}")
     if summary.get("by_stage_b"):
         print(f"[pdfsys] stage-b:   {summary['by_stage_b']}")
-    print(f"[pdfsys] extracted={summary['num_extracted']} scored={summary['num_scored']} errors={summary['num_errors']}")
+    print(
+        f"[pdfsys] extracted={summary['num_extracted']} "
+        f"skipped={summary['num_skipped']} "
+        f"scored={summary['num_scored']} errors={summary['num_errors']}"
+    )
+    if summary.get("by_skip_reason"):
+        print(f"[pdfsys] skipped:   {summary['by_skip_reason']}")
     if summary.get("avg_quality") is not None:
         print(f"[pdfsys] avg_quality={summary['avg_quality']:.3f}")
     print(f"[pdfsys] jsonl:     {cfg.jsonl_path}")
     print(f"[pdfsys] summary:   {summary.get('summary_path', '')}")
+
+    if summary["num_pdfs"] == 0:
+        # An empty run is almost always a wrong --pdf-dir or a glob that missed
+        # (rglob("*.pdf") is case-sensitive). Exiting 0 lets a fleet script march
+        # on through every shard reporting success and produce nothing.
+        print(
+            f"[pdfsys] error: no PDFs found under {cfg.input.pdf_dir}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
 def cmd_dataset(args: argparse.Namespace) -> int:
+    import dataclasses
     import json
     from functools import partial
     from pathlib import Path
 
     import pyarrow.parquet as pq
+
+    from pdfsys_core import render_markdown
 
     from .dataset_build import (
         build_from_mineru_dir,
@@ -389,6 +412,33 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     meta = _load_run_meta(Path(args.meta)) if args.meta else {}
     out_dir = Path(args.to_dir)
     lane = "mupdf" if from_pdfs else "mineru"
+
+    # Two lanes write into one shard directory, so the shard name is the only
+    # thing keeping them apart. pq.ParquetWriter truncates without asking, so
+    # reusing a name silently replaces the other lane's work with this one's.
+    #
+    # A shard is up to four parquets plus a descriptor, and the media writers
+    # are opened lazily — a rebuild with a different --images mode would
+    # truncate pages/ and leave the previous build's images/ and page_images/
+    # in place, splicing two builds into one shard. So the whole set is both
+    # the collision check and what --overwrite clears.
+    shard_files = [
+        out_dir / sub / f"{args.shard}.parquet"
+        for sub in ("pages", "images", "page_images", "pairs")
+    ] + [out_dir / f"{args.shard}.meta.json"]
+    clashes = [p for p in shard_files if p.exists()]
+    if clashes and not args.overwrite:
+        for p in clashes:
+            print(f"Error: {p} 已存在", file=sys.stderr)
+        print(
+            f"Error: shard 名 {args.shard!r} 已被占用。换一个 --shard 名字，"
+            f"或加 --overwrite 覆盖（会删掉上面这些文件）。",
+            file=sys.stderr,
+        )
+        return 1
+    for p in clashes:
+        p.unlink()
+
     print(f"[pdfsys dataset] lane={lane} images={images} "
           f"{len(work)} documents → {out_dir}"
           + (f"（去重丢弃 {len(dropped)} 份）" if dropped else ""))
@@ -396,6 +446,8 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     docs: list = []
     failures = 0
     missing_pdfs = 0
+    meta_hits = meta_misses = 0
+    empty_builds = 0
     with DatasetWriter(
         out_dir,
         shard=args.shard,
@@ -410,6 +462,11 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 print(f"  ! {label}: {type(e).__name__}: {e}", file=sys.stderr)
                 continue
 
+            if pages and meta:
+                if meta.get(pages[0].doc_id):
+                    meta_hits += 1
+                else:
+                    meta_misses += 1
             pages = tuple(
                 _apply_run_meta(p, meta.get(p.doc_id)) for p in pages
             )
@@ -423,6 +480,16 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 )
                 if pdf_path is None:
                     missing_pdfs += 1
+                    # No raster for this document, so its bbox:// markers point
+                    # into pixels the shard does not have. Re-render its text
+                    # without them — the same thing --images none does, decided
+                    # per document because that is where the raster is decided.
+                    pages = tuple(
+                        dataclasses.replace(
+                            p, text=render_markdown(p.blocks, region_refs=False)
+                        )
+                        for p in pages
+                    )
                 else:
                     rasters = render_page_images(
                         pdf_path, pages, dpi=args.render_dpi
@@ -431,6 +498,11 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                     # id; those are the rows that must be written.
                     pages = tuple(p for p, _ in rasters)
 
+            if not pages:
+                # Built fine, produced nothing. DatasetWriter deliberately does
+                # not count this as a document, so without a counter here it
+                # would appear in neither `documents` nor `failed`.
+                empty_builds += 1
             writer.write(pages, blobs, [(p, b) for p, b in rasters])
             if args.pairs:
                 docs.append(pages)
@@ -445,8 +517,28 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     n_docs, n_pages, n_images, n_page_images = stats
     print(
         f"[pdfsys dataset] documents={n_docs} pages={n_pages} "
-        f"images={n_images} page_images={n_page_images} failed={failures}"
+        f"images={n_images} page_images={n_page_images} "
+        f"empty={empty_builds} failed={failures}"
     )
+    # documents + empty + failed == len(work), so a shortfall is arithmetic
+    # rather than something you have to notice.
+    unaccounted = len(work) - (n_docs + empty_builds + failures)
+    if unaccounted:
+        print(
+            f"[pdfsys dataset] warning: {unaccounted} 份输入既没写进 shard，"
+            f"也没记进 empty/failed —— 这是个 bug，请报告",
+            file=sys.stderr,
+        )
+    if meta:
+        # A shard whose quality columns are all null looks the same whether the
+        # scorer never ran or the --meta file simply covers a different corpus.
+        print(f"[pdfsys dataset] meta matched {meta_hits}/{meta_hits + meta_misses}")
+        if meta_misses:
+            print(
+                f"[pdfsys dataset] warning: {meta_misses} 份文档在 --meta 里没有对应行，"
+                f"质量分等列为空",
+                file=sys.stderr,
+            )
     if missing_pdfs:
         print(
             f"[pdfsys dataset] warning: {missing_pdfs} documents had no matching "
@@ -478,6 +570,9 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 "render_dpi": args.render_dpi if want_rasters else None,
                 "has_blocks": not args.no_blocks,
                 "failed": failures,
+                "empty": empty_builds,
+                "missing_pdfs": missing_pdfs,
+                "inputs": len(work),
                 "lane": lane,
                 "source": str(src),
             },
@@ -486,6 +581,16 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         ),
         encoding="utf-8",
     )
+
+    if n_docs == 0:
+        # Same reasoning as cmd_run's empty-corpus guard: a per-bucket fleet job
+        # that packages nothing must not report success.
+        print(
+            f"[pdfsys dataset] error: 没有写出任何文档"
+            f"（输入 {len(work)} 份，失败 {failures}，空 {empty_builds}）",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -511,10 +616,17 @@ def _index_pdfs_by_sha256(pdf_dir) -> dict:
 
 
 def _load_run_meta(path) -> dict:
-    """Index a run's results.jsonl by sha256 so dataset rows inherit its columns."""
+    """Index a run's results.jsonl by sha256 so dataset rows inherit its columns.
+
+    Reports what it drops. A results.jsonl from a resumed or re-run job can
+    carry the same sha256 twice (last wins), and rows that never reached a
+    stage that hashes the file have no key at all — both used to be silent,
+    which is how a shard ends up with null quality columns nobody can explain.
+    """
     import json
 
     out: dict = {}
+    n_lines = n_dup = n_nokey = 0
     if not path.exists():
         print(f"Warning: --meta file not found: {path}", file=sys.stderr)
         return out
@@ -527,9 +639,24 @@ def _load_run_meta(path) -> dict:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            n_lines += 1
             sha = row.get("sha256")
-            if sha:
-                out[sha] = row
+            if not sha:
+                n_nokey += 1
+                continue
+            if sha in out:
+                n_dup += 1
+            out[sha] = row
+    if n_dup:
+        print(
+            f"Warning: --meta {path.name} 有 {n_dup} 个重复 sha256（保留最后一条）",
+            file=sys.stderr,
+        )
+    if n_nokey:
+        print(
+            f"Warning: --meta {path.name} 有 {n_nokey}/{n_lines} 行没有 sha256，已跳过",
+            file=sys.stderr,
+        )
     return out
 
 
@@ -548,11 +675,15 @@ def _apply_run_meta(page, row):
     return dataclasses.replace(
         page,
         source_uri=page.source_uri or (row.get("pdf_path") or ""),
-        extractor=row.get("extract_backend") or page.extractor,
+        # Additive, not overriding: the builder read the extractor out of the
+        # document's own middle.json, which is what actually produced these
+        # pages. The run row is a second opinion and only fills a blank.
+        extractor=page.extractor or (row.get("extract_backend") or ""),
         doc_n_pages=page.doc_n_pages or int(row.get("num_pages") or 0),
         doc_quality_score=row.get("quality_score"),
         quality_model=row.get("quality_model") or "",
         router_ocr_prob=row.get("ocr_prob"),
+        layout_model=page.layout_model or (row.get("layout_model") or ""),
     )
 
 
