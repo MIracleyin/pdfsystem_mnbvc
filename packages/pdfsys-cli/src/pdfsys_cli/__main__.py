@@ -166,6 +166,27 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--overwrite", action="store_true", default=False,
                     help="Replace an existing --out rather than refusing.")
 
+    # ---- smoke ----
+    sm = sub.add_parser(
+        "smoke",
+        help="Run the whole split pipeline over a tiny generated corpus.",
+    )
+    sm.add_argument("--workdir", default=None,
+                    help="Where to build the corpus and outputs. A temporary "
+                         "directory is used and deleted when this is omitted; "
+                         "give one to keep the artifacts and look at them.")
+    sm.add_argument("--mineru-url", default=None,
+                    help="Validate against a real mineru-api instead of the "
+                         "in-process stub, e.g. http://gpu01:8000.")
+    sm.add_argument("--quality-url", default=None,
+                    help="Validate against a real quality server instead of the "
+                         "in-process stub, e.g. http://gpu01:8765. Note the model "
+                         "check is skipped when you supply one, since a real "
+                         "server serves a real model.")
+    sm.add_argument("-v", "--verbose", action="store_true", default=False,
+                    help="Show what each sub-command printed. Otherwise it is "
+                         "kept and shown only if a check fails.")
+
     # ---- visualize ----
     v = sub.add_parser(
         "visualize",
@@ -1213,6 +1234,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "score":
         from .score import cmd_score
         return cmd_score(args)
+    elif args.command == "smoke":
+        from .smoke import cmd_smoke
+        return cmd_smoke(args)
     elif args.command == "dataset":
         return cmd_dataset(args)
     elif args.command == "dataset-validate":

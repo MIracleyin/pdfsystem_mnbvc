@@ -69,6 +69,7 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 | **Unified CLI** | ✅ Ready | `pdfsys run -c config.yaml --stages ...` |
 | **Annotation UI** | ✅ Ready | `pdfsys annotate` — PDF labeling + layout overlay |
 | **L2 Dataset Format** | ✅ Ready | `pdfsys.page/v2` — one row per page, interleaved image-text ([spec](docs/superpowers/specs/2026-08-22-page-level-parquet-dataset-design.md), [sample](docs/schema/doc_dataset.v2.sample.md)) |
+| **Smoke check** | ✅ Ready | `pdfsys smoke` — the whole split over a generated corpus in ~3s, no GPU; point it at real services to validate a deployment |
 | **Split runs** | ✅ Ready | `--extract-backends` / `--pdf-list` / `--resume` — CPU and GPU lanes on machines that share no disk |
 | **Standalone scoring** | ✅ Ready | `pdfsys score` — score a finished run's markdown against one remote scorer, without re-extracting |
 | **L2 Packaging** | ✅ Ready | `pdfsys dataset` — both lanes reach L2: `--from-mineru` (pipeline/vlm sidecars), `--from-pdf-dir` (mupdf, re-extracted) |
@@ -117,6 +118,33 @@ python -m pdfsys_bench \
   --pdf-dir /path/to/pdfs \
   --out results.jsonl \
   --markdown-dir ./extracted
+```
+
+### Option 3a: Check the whole split works, in three seconds
+
+```bash
+pdfsys smoke                 # generated corpus, in-process stubs, no GPU
+pdfsys smoke --workdir ./s   # keep the artifacts and look at them
+pdfsys smoke --mineru-url http://gpu01:8000 --quality-url http://gpu01:8765
+```
+
+Generates ten tiny PDFs — born-digital, image-only, an uppercase `.PDF`, one
+with no extension, an encrypted one, a byte-identical duplicate — and runs all
+four phases over them, asserting that every document lands in exactly one lane,
+that the merged dataset validates, and that no doc_id appears in two shards.
+With URLs it runs the same check against a real deployment, which is the
+fastest way to tell whether a GPU box is wired up correctly.
+
+```
+  ✓ phase 1 (CPU lane) — 8 discovered, 5 extracted, 2 handed over
+  ✓ discovery finds .PDF and extensionless
+  ✓ phase 2 (GPU lane) — 2/2 extracted
+  ✓ MinerU sidecars persisted — 2 content lists
+  ✓ phase 3 (score CPU lane) — 5 scored
+  ✓ phase 4 (package both lanes)
+  ✓ scanning the whole corpus is refused
+  ✓ merged dataset validates
+  ✓ no document in two shards — 6 distinct of 6 rows
 ```
 
 ### Option 3b: Split the run across machines that share no disk
