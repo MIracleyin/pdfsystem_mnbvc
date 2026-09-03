@@ -34,6 +34,7 @@ __all__ = [
     "PdfInventory",
     "Worklist",
     "iter_pdf_paths",
+    "looks_like_pdf",
     "read_pdf_list",
     "take_inventory",
 ]
@@ -67,6 +68,22 @@ class PdfInventory:
         if self.unreadable_dirs:
             parts.append(f"{len(self.unreadable_dirs)} 个目录读不进去")
         return parts[0] + ("（" + "，".join(parts[1:]) + "）" if len(parts) > 1 else "")
+
+
+def looks_like_pdf(path: str | Path) -> bool:
+    """Apply the module's rule to one path already in hand.
+
+    The scan decides what to yield; this decides whether something a caller was
+    handed — a worklist entry — qualifies. Both have to be the same rule, or a
+    list-driven shard covers a different corpus than a scan-driven one.
+    """
+    path = Path(path)
+    suffix = os.path.splitext(path.name)[1].strip()
+    if suffix.lower() == ".pdf":
+        return path.is_file()
+    if suffix:
+        return False
+    return path.is_file() and _looks_like_pdf(path)
 
 
 def _looks_like_pdf(path: Path) -> bool:

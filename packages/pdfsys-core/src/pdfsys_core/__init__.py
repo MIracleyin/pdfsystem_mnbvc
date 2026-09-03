@@ -65,6 +65,7 @@ from .discovery import (
     PdfInventory,
     Worklist,
     iter_pdf_paths,
+    looks_like_pdf,
     read_pdf_list,
     take_inventory,
 )
@@ -124,6 +125,7 @@ __all__ = [
     "PdfInventory",
     "Worklist",
     "iter_pdf_paths",
+    "looks_like_pdf",
     "read_pdf_list",
     "take_inventory",
     # config

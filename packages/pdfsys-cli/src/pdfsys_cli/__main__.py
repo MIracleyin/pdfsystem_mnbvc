@@ -36,6 +36,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 
 from .config import (
@@ -200,7 +201,20 @@ def build_parser() -> argparse.ArgumentParser:
                             "lane. This is the route for text-ok documents the router "
                             "never sent to MinerU — they leave no *_content_list.json "
                             "behind. Extraction is re-run here (~10ms/page) because a "
-                            "run persists only merged markdown, with no page boundaries.")
+                            "run persists only merged markdown, with no page boundaries. "
+                            "Packages EVERY PDF under the directory, including any the "
+                            "OCR lane owns — use --from-pdf-list to package one lane.")
+    d_src.add_argument("--from-pdf-list", dest="from_pdf_list",
+                       help="File of PDF paths, one per line, packaged through the mupdf "
+                            "lane instead of scanning a directory. This is how the CPU "
+                            "lane packages exactly what it extracted: scanning the corpus "
+                            "root would also mupdf-extract the documents the GPU lane "
+                            "owns, and those doc_ids collide with the GPU shard's. "
+                            "Derive it from the run: "
+                            "jq -r 'select(.extract_backend==\"mupdf\" and .skip_reason==null "
+                            "and .error_class==null) | .pdf_path' results.jsonl")
+    d.add_argument("--path-root", dest="dataset_path_root", default=None,
+                   help="Directory that relative --from-pdf-list entries resolve against.")
     d.add_argument("--to", required=True, dest="to_dir",
                    help="Output dataset directory (pages/ + images/ are created inside).")
     d.add_argument("--shard", default="shard-00000", help="Shard name (default: shard-00000).")
@@ -234,6 +248,11 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--render-dpi", type=int, default=200,
                    help="DPI for page rasters (default: 200, matching the resolution MinerU "
                         "crops at, so a derived crop is pixel-equivalent to a stored one).")
+    d.add_argument("--allow-other-lanes", action="store_true", default=False,
+                   help="Package documents that --meta says a different lane "
+                        "extracted. Normally an error: the same doc_id would end "
+                        "up in two shards, and (doc_id, page_index) is the "
+                        "primary key.")
     d.add_argument("--allow-missing-crops", action="store_true", default=False,
                    help="Proceed with --images crops even when the MinerU output "
                         "has no images/ directories. Normally that means the run "
@@ -569,21 +588,32 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     )
     from .dataset_writer import DatasetWriter, pairs_table
 
-    from_pdfs = args.from_pdf_dir is not None
-    src = Path(args.from_pdf_dir if from_pdfs else args.from_mineru)
-    if not src.is_dir():
+    from_list = args.from_pdf_list is not None
+    from_pdfs = from_list or args.from_pdf_dir is not None
+    src = Path(args.from_pdf_list or args.from_pdf_dir or args.from_mineru)
+    if from_list:
+        if not src.is_file():
+            print(f"Error: --from-pdf-list not found: {src}", file=sys.stderr)
+            return 1
+    elif not src.is_dir():
         print(f"Error: not a directory: {src}", file=sys.stderr)
         return 1
+    if args.dataset_path_root and not from_list:
+        print(
+            "[pdfsys dataset] note: --path-root only applies to --from-pdf-list; "
+            "ignoring it",
+            file=sys.stderr,
+        )
 
     # MinerU hands us crops. The mupdf lane rasterises nothing at all, so the
     # only pixels it could ever store are whole-page renders.
     images = args.images or ("pages" if from_pdfs else "crops")
     if from_pdfs and images == "crops":
         print(
-            "Error: --images crops is impossible with --from-pdf-dir — the mupdf "
-            "lane reads the PDF's text layer and never cuts figures out of the "
-            "page. Use --images pages (whole-page rasters, figures addressed by "
-            "bbox) or --images none.",
+            "Error: --images crops is impossible with the mupdf lane — it reads "
+            "the PDF's text layer and never cuts figures out of the page. Use "
+            "--images pages (whole-page rasters, figures addressed by bbox) or "
+            "--images none.",
             file=sys.stderr,
         )
         return 1
@@ -594,12 +624,70 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     # it. Everything downstream is lane-agnostic.
     work: list = []
     pdf_index: dict[str, Path] = {}
+    #: doc_id -> path for the mupdf lane. select_pdfs already hashed every file
+    #: to dedupe by content, so the cross-lane check below reuses that rather
+    #: than reading the whole corpus a second time.
+    lane_doc_ids: dict[str, Path] = {}
+    #: (entries, missing, duplicates) when the input was a worklist.
+    list_stats: tuple[int, int, int] | None = None
 
     if from_pdfs:
-        selected, dropped = select_pdfs(iter_pdfs(src))
+        if from_list:
+            from pdfsys_core import read_pdf_list
+
+            worklist = read_pdf_list(src, path_root=args.dataset_path_root)
+            if worklist.missing:
+                print(
+                    f"[pdfsys dataset] warning: {len(worklist.missing)}/"
+                    f"{worklist.entries} listed paths do not exist, e.g. "
+                    f"{list(worklist.missing[:3])} — wrong --path-root?",
+                    file=sys.stderr,
+                )
+            if worklist.duplicates:
+                print(
+                    f"[pdfsys dataset] warning: {len(worklist.duplicates)}/"
+                    f"{worklist.entries} listed paths are repeats, packaged once",
+                    file=sys.stderr,
+                )
+            list_stats = (
+                worklist.entries, len(worklist.missing), len(worklist.duplicates)
+            )
+            candidates = list(worklist.paths)
+            if not candidates:
+                print(
+                    f"Error: no readable PDF in {src} "
+                    f"({worklist.entries} entries)",
+                    file=sys.stderr,
+                )
+                return 1
+        else:
+            candidates = list(iter_pdfs(src))
+            if not candidates:
+                print(f"Error: no PDF found under {src}", file=sys.stderr)
+                return 1
+        # A list can name anything; the scan already applied the shared rule.
+        # Letting a non-PDF through would package a "document" whose extraction
+        # is whatever mupdf makes of a text file.
+        if from_list:
+            from pdfsys_core import looks_like_pdf
+
+            not_pdfs = [p for p in candidates if not looks_like_pdf(p)]
+            if not_pdfs:
+                print(
+                    f"[pdfsys dataset] warning: {len(not_pdfs)} listed entries are "
+                    f"not PDFs and were skipped, e.g. "
+                    f"{[str(p) for p in not_pdfs[:3]]}",
+                    file=sys.stderr,
+                )
+                candidates = [p for p in candidates if looks_like_pdf(p)]
+
+        selected, dropped = select_pdfs(candidates)
         if not selected:
-            print(f"Error: no *.pdf found under {src}", file=sys.stderr)
+            # Post-dedup: candidates can be non-empty and still leave nothing —
+            # every file unreadable, or every entry a duplicate of one that was.
+            print(f"Error: no readable PDF from {src}", file=sys.stderr)
             return 1
+        lane_doc_ids = dict(selected)
         work = [(str(p), partial(build_from_pdf, p), p) for _, p in selected]
     else:
         if want_rasters:
@@ -636,6 +724,9 @@ def cmd_dataset(args: argparse.Namespace) -> int:
             return 1
 
         doc_dirs, dropped = select_documents(doc_dirs)
+        # The directory name IS the sha256 our parsers uploaded under, so the
+        # same cross-lane check costs no hashing at all on this side.
+        lane_doc_ids = {d.name: d for d in doc_dirs if _SHA256_NAME.match(d.name)}
         work = [
             (
                 str(doc_dir),
@@ -666,6 +757,38 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     meta = _load_run_meta(Path(args.meta)) if args.meta else {}
     out_dir = Path(args.to_dir)
     lane = "mupdf" if from_pdfs else "mineru"
+
+    # The run knows which lane each document belongs to. Packaging one this lane
+    # did not extract means the other lane's shard holds the same doc_id, and
+    # (doc_id, page_index) is the primary key — the merged dataset is invalid.
+    # Scanning a corpus root with --from-pdf-dir does exactly that, silently,
+    # because mupdf will happily re-extract a scanned PDF into empty pages.
+    if meta and lane_doc_ids:
+        intruders = [
+            (str(path), row)
+            for doc_id, path in lane_doc_ids.items()
+            for row in (meta.get(doc_id),)
+            if row and _owned_by_another_lane(row, lane)
+        ]
+        if intruders and not args.allow_other_lanes:
+            for label, row in intruders[:5]:
+                print(f"Error: {label} — {_lane_conflict_reason(row, lane)}",
+                      file=sys.stderr)
+            print(
+                f"Error: {len(intruders)}/{len(work)} documents are already in "
+                f"another lane's shard according to {args.meta}. Packaging them "
+                f"here puts the same doc_id in two shards, and "
+                f"(doc_id, page_index) is the primary key. Package each lane "
+                f"from its own list, or pass --allow-other-lanes if you meant it.",
+                file=sys.stderr,
+            )
+            return 1
+        if intruders:
+            print(
+                f"[pdfsys dataset] warning: packaging {len(intruders)} documents "
+                f"another lane extracted (--allow-other-lanes)",
+                file=sys.stderr,
+            )
 
     # Two lanes write into one shard directory, so the shard name is the only
     # thing keeping them apart. pq.ParquetWriter truncates without asking, so
@@ -827,8 +950,21 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 "empty": empty_builds,
                 "missing_pdfs": missing_pdfs,
                 "inputs": len(work),
+                "deduped": len(dropped),
                 "lane": lane,
                 "source": str(src),
+                # What the worklist asked for versus what it resolved to. On
+                # disk a shard built from a half-resolved list is otherwise
+                # indistinguishable from one built from a complete short list.
+                **(
+                    {
+                        "list_entries": list_stats[0],
+                        "list_missing": list_stats[1],
+                        "list_duplicates": list_stats[2],
+                    }
+                    if list_stats
+                    else {}
+                ),
             },
             ensure_ascii=False,
             indent=2,
@@ -846,6 +982,43 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         )
         return 1
     return 0
+
+
+#: Which packaging lane each extraction backend's output belongs to.
+_LANE_OF = {"mupdf": "mupdf", "pipeline": "mineru", "vlm": "mineru"}
+
+#: A MinerU output directory is named for the document's sha256.
+_SHA256_NAME = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _owned_by_another_lane(row: dict, lane: str) -> bool:
+    """Is this document already in a *different* lane's shard?
+
+    Only a rival shard is a conflict. A document nobody extracted — deferred by
+    stage-B, a backend we do not recognise, an encrypted file the router could
+    not open — appears in no shard at all, so packaging it here collides with
+    nothing. Treating those as another lane's would abort a whole 218k-document
+    packaging run over documents it was never going to write, and an encrypted
+    PDF is a certainty at that scale.
+    """
+    if row.get("error_class"):
+        return False  # nothing was produced, so nothing to collide with
+    if row.get("skip_reason") == "lane-filter":
+        # Handed to the lane that runs this backend; it will package it.
+        return _LANE_OF.get(row.get("extract_backend") or "") not in (None, lane)
+    if row.get("skip_reason"):
+        return False  # deferred, unknown-backend: no shard holds it
+    return _LANE_OF.get(row.get("extract_backend") or "", lane) != lane
+
+
+def _lane_conflict_reason(row: dict, lane: str) -> str:
+    backend = row.get("extract_backend") or "unknown"
+    if row.get("skip_reason") == "lane-filter":
+        return (
+            f"was handed to the {_LANE_OF.get(backend, backend)} lane "
+            f"(routed to {backend}), which packages it"
+        )
+    return f"was extracted by {backend}, i.e. the {_LANE_OF.get(backend, backend)} lane"
 
 
 def _index_pdfs_by_sha256(pdf_dir) -> dict:

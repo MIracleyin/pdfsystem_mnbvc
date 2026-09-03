@@ -162,9 +162,20 @@ QUALITY_URL=http://127.0.0.1:8765 pdfsys score \
   --results ./p2/results.jsonl --markdown-dir ./p2/markdown \
   --out ./p2/results.scored.jsonl --resume      # on the GPU box
 
-# …then package. This is the --from-mineru lane.
+# Package each lane into the same dataset directory, under its own --shard.
+# The CPU lane packages BY LIST, not by scanning: the corpus root also holds
+# the documents the GPU lane owns, and mupdf would re-extract those into empty
+# pages carrying doc_ids the GPU shard already used. --meta is checked against
+# that, so scanning the root here is an error rather than a broken shard.
+jq -r 'select(.extract_backend=="mupdf" and .skip_reason==null and .error_class==null)
+       | .pdf_path' ./p1/results.scored.jsonl > cpu_lane.txt
+
+pdfsys dataset --from-pdf-list cpu_lane.txt --to ./dataset/v2 --shard cpu-00 \
+               --meta ./p1/results.scored.jsonl
 pdfsys dataset --from-mineru ./p2/mineru --to ./dataset/v2 --shard gpu-00 \
                --meta ./p2/results.scored.jsonl
+
+pdfsys dataset-validate --shard ./dataset/v2
 
 # For the VLM lane, layout IS load-bearing — only stage-B ever says "vlm":
 #   --stages router,layout,extract --vlm --extract-backends pipeline,vlm
@@ -203,8 +214,15 @@ pdfsys dataset --from-mineru ./out --to ./dataset/v2 \
 # Package those straight from the PDFs. This re-runs mupdf (~10ms/page),
 # because a run persists only merged markdown with no page boundaries.
 # Whole-page rasters are the default here — mupdf has no crops to store.
-# Same --to as above, different --shard: the two lanes coexist in one dataset.
-pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2 --shard mupdf-00 \
+#
+# BY LIST, not by scanning ./data/pdfs: the corpus also holds the documents
+# MinerU handled, and mupdf would re-extract those into pages carrying doc_ids
+# the shard above already used. --meta is checked against exactly that, so
+# scanning the whole corpus here is an error rather than a broken shard.
+jq -r 'select(.extract_backend=="mupdf" and .skip_reason==null and .error_class==null)
+       | .pdf_path' ./out/results.jsonl > mupdf_lane.txt
+
+pdfsys dataset --from-pdf-list mupdf_lane.txt --to ./dataset/v2 --shard mupdf-00 \
                --meta ./out/results.jsonl
 
 # Contract check. Run this before anything leaves the machine.
