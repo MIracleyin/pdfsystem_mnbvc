@@ -69,6 +69,8 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 | **Unified CLI** | ✅ Ready | `pdfsys run -c config.yaml --stages ...` |
 | **Annotation UI** | ✅ Ready | `pdfsys annotate` — PDF labeling + layout overlay |
 | **L2 Dataset Format** | ✅ Ready | `pdfsys.page/v2` — one row per page, interleaved image-text ([spec](docs/superpowers/specs/2026-08-22-page-level-parquet-dataset-design.md), [sample](docs/schema/doc_dataset.v2.sample.md)) |
+| **Split runs** | ✅ Ready | `--extract-backends` / `--pdf-list` / `--resume` — CPU and GPU lanes on machines that share no disk |
+| **Standalone scoring** | ✅ Ready | `pdfsys score` — score a finished run's markdown against one remote scorer, without re-extracting |
 | **L2 Packaging** | ✅ Ready | `pdfsys dataset` — both lanes reach L2: `--from-mineru` (pipeline/vlm sidecars), `--from-pdf-dir` (mupdf, re-extracted) |
 | **Format Validator** | ✅ Ready | `pdfsys dataset-validate` — contract check before publishing |
 | **MNBVC Export** | ✅ Ready | `pdfsys mnbvc-export` — → MNBVC multimodal block format ([mapping](docs/schema/mnbvc-mm-compat.md)) |
@@ -144,12 +146,25 @@ scp gpu_lane.txt gpu01:/mnt/lane.txt
 # copy of the sidecars is garbage-collected, and no volume is mounted for it.
 pdfsys run --pdf-list /mnt/lane.txt --path-root /mnt/lane --out-dir ./p2 \
            --stages router,extract --extract-backends pipeline \
-           --parser-output-dir ./p2/mineru \
+           --parser-output-dir ./p2/mineru --markdown-dir markdown \
            --ocr-threshold 0.05 --resume
 
-# …then package that directory. This is the --from-mineru lane.
+# One CUDA scorer on the GPU box serves both lanes. Nothing is re-extracted
+# and no markdown ships: only the text crosses, clipped to the 40k the server
+# truncates at anyway (~40 KB/doc).
+CUDA_VISIBLE_DEVICES=0 python -m pdfsys_bench._quality_server \
+  --host 0.0.0.0 --port 8765 --device cuda &
+
+QUALITY_URL=http://gpu01:8765 pdfsys score \
+  --results ./p1/results.jsonl --markdown-dir ./p1/markdown \
+  --out ./p1/results.scored.jsonl --resume      # from the CPU box
+QUALITY_URL=http://127.0.0.1:8765 pdfsys score \
+  --results ./p2/results.jsonl --markdown-dir ./p2/markdown \
+  --out ./p2/results.scored.jsonl --resume      # on the GPU box
+
+# …then package. This is the --from-mineru lane.
 pdfsys dataset --from-mineru ./p2/mineru --to ./dataset/v2 --shard gpu-00 \
-               --meta ./p2/results.jsonl
+               --meta ./p2/results.scored.jsonl
 
 # For the VLM lane, layout IS load-bearing — only stage-B ever says "vlm":
 #   --stages router,layout,extract --vlm --extract-backends pipeline,vlm

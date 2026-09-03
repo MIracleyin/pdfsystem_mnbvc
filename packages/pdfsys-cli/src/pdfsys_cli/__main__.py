@@ -131,6 +131,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-quality", action="store_true", default=False, help="Skip quality scoring.")
     p.add_argument("--quality-model", type=str, default=None, help="HuggingFace quality model.")
 
+    # ---- score ----
+    sc = sub.add_parser(
+        "score",
+        help="Quality-score a finished run's markdown, without re-extracting.",
+    )
+    sc.add_argument("--results", required=True,
+                    help="results.jsonl from a run. Rows are matched to markdown "
+                         "by sha256 and written back with the quality columns "
+                         "filled; every input row reaches the output.")
+    sc.add_argument("--markdown-dir", required=True,
+                    help="Directory of <sha256>.md, i.e. the run's --markdown-dir.")
+    sc.add_argument("--out", required=True, help="Where to write the scored jsonl.")
+    sc.add_argument("--model", default=None,
+                    help="The model the scorer is expected to be serving. Checked "
+                         "against GET /health before any work: two lanes scored by "
+                         "two different models put two scales in one column, and "
+                         "nothing in the data would say so.")
+    sc.add_argument("--workers", type=int, default=4,
+                    help="Concurrent requests (default: 4). The server holds one "
+                         "model and scores one document per request, so past a few "
+                         "workers you are filling its socket queue.")
+    sc.add_argument("--max-chars", type=int, default=40_000,
+                    help="Clip each document before sending (default: 40000, which "
+                         "is where the server truncates anyway — so the difference "
+                         "never crosses the wire).")
+    sc.add_argument("--resume", action="store_true", default=False,
+                    help="Continue from the checkpoint left by an interrupted run "
+                         "instead of re-scoring what it already did.")
+    sc.add_argument("--rescore", action="store_true", default=False,
+                    help="Score rows that already carry a quality_score, e.g. after "
+                         "changing the model.")
+    sc.add_argument("--overwrite", action="store_true", default=False,
+                    help="Replace an existing --out rather than refusing.")
+
     # ---- visualize ----
     v = sub.add_parser(
         "visualize",
@@ -1003,6 +1037,9 @@ def main(argv: list[str] | None = None) -> int:
             *(("-o", args.out_dir) if args.out_dir else ()),
             *(("--preview-source", args.preview_source) if args.preview_source else ()),
         ])
+    elif args.command == "score":
+        from .score import cmd_score
+        return cmd_score(args)
     elif args.command == "dataset":
         return cmd_dataset(args)
     elif args.command == "dataset-validate":

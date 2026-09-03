@@ -272,7 +272,7 @@ def run(cfg: RunConfig) -> dict[str, Any]:
             ):
                 conflicts.append(row.get("pdf_path") or "")
 
-        n_carried, good_bytes = _scan_completed(cfg.jsonl_path, _carry)
+        n_carried, good_bytes = scan_jsonl(cfg.jsonl_path, _carry)
         if conflicts:
             # Raise here, before the summary is written or a single document is
             # touched. Detected up front but reported at the end, this would
@@ -318,11 +318,16 @@ def run(cfg: RunConfig) -> dict[str, Any]:
     # carries is what a later --resume compares against, and the case that
     # comparison exists for is precisely the leg that was killed and never
     # reached the end.
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+    _write_summary(summary_path, summary)
 
     mode = "a" if cfg.resume else "w"
     try:
-        with cfg.jsonl_path.open(mode, encoding="utf-8") as out_f:
+        # surrogatepass: POSIX filenames are bytes, and one the locale cannot
+        # decode reaches `pdf_path` as a lone surrogate. A strict encoder would
+        # kill the run mid-write on a file it had already processed.
+        with cfg.jsonl_path.open(
+            mode, encoding="utf-8", errors="surrogatepass"
+        ) as out_f:
             for pdf_path in paths:
                 row, extracted = _process_one(pdf_path, cfg, comps)
                 out_f.write(row.to_json_line() + "\n")
@@ -348,7 +353,7 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         summary["sum_quality"] / summary["num_scored"] if summary["num_scored"] else None
     )
 
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+    _write_summary(summary_path, summary)
     summary["summary_path"] = str(summary_path)
 
     return summary
@@ -696,6 +701,16 @@ def _path_keys(path: str | None) -> set[str]:
     return keys
 
 
+def _write_summary(path: Path, summary: dict[str, Any]) -> None:
+    """The summary quotes filenames (pdf_dir, the missing-path examples), so it
+    needs the same surrogate tolerance results.jsonl does."""
+    path.write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+        errors="surrogatepass",
+    )
+
+
 def _previous_stages(summary_path: Path) -> list[str] | None:
     """The stage list the run being resumed was started with, if recorded."""
     try:
@@ -718,7 +733,7 @@ class ParserOutputDirError(RuntimeError):
     """The configured sidecar directory cannot be written to."""
 
 
-def _scan_completed(
+def scan_jsonl(
     path: Path, on_row: Callable[[dict[str, Any]], None]
 ) -> tuple[int, int]:
     """Stream an existing results.jsonl. Returns (rows, bytes of intact prefix).
