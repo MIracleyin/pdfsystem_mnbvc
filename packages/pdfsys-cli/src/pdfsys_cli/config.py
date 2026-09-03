@@ -62,6 +62,15 @@ class PipelineCfg:
     formula_enable: bool = True
     table_enable: bool = True
     p_lang: str = "ch"
+    #: Where MinerU's sidecars land: ``<dir>/<sha256>/<sha256>_middle.json``,
+    #: ``_content_list.json`` and ``images/``. ``None`` throws them away —
+    #: the markdown survives in the run, but nothing that
+    #: ``pdfsys dataset --from-mineru`` can read does.
+    output_dir: str | None = None
+    #: Ask the server for figure crops. Only worth the bandwidth when the
+    #: shard will store them (``--images crops``); with ``--images pages`` the
+    #: rasters are rendered locally from the PDF and the crops are dead weight.
+    return_images: bool = True
 
 
 @dataclass(slots=True)
@@ -71,6 +80,8 @@ class VlmCfg:
     formula_enable: bool = True
     table_enable: bool = True
     p_lang: str = "ch"
+    output_dir: str | None = None
+    return_images: bool = True
 
 
 @dataclass(slots=True)
@@ -218,6 +229,18 @@ def apply_cli_overrides(cfg: RunConfig, **overrides: Any) -> RunConfig:
         cfg.input.pdf_dir = str(overrides["pdf_dir"])
     if overrides.get("extract_backends") is not None:
         cfg.extract_backends = _normalize_backends(overrides["extract_backends"])
+    if overrides.get("parser_output_dir") is not None:
+        # One flag for both OCR parsers. Safe within a run because stage-B
+        # sends each document to exactly one of them. NOT safe across runs:
+        # the layout is <dir>/<sha256>/<sha256>_middle.json with no backend in
+        # the path, so re-parsing the same document with the other backend into
+        # the same directory overwrites the first result rather than sitting
+        # beside it. Give separate runs separate directories.
+        cfg.pipeline.output_dir = str(overrides["parser_output_dir"])
+        cfg.vlm.output_dir = str(overrides["parser_output_dir"])
+    if overrides.get("no_parser_images") is True:
+        cfg.pipeline.return_images = False
+        cfg.vlm.return_images = False
     if overrides.get("pdf_list") is not None:
         cfg.input.pdf_list = str(overrides["pdf_list"])
     if overrides.get("path_root") is not None:
@@ -407,6 +430,16 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
       formula_enable: true
       table_enable: true
       p_lang: ch
+      output_dir: null              # keep MinerU's sidecars here:
+                                    #   <dir>/<sha256>/<sha256>_middle.json
+                                    #   <dir>/<sha256>/<sha256>_content_list.json
+                                    #   <dir>/<sha256>/images/
+                                    # null discards them — the markdown survives,
+                                    # but `pdfsys dataset --from-mineru` has
+                                    # nothing to read. Also --parser-output-dir.
+      return_images: true           # fetch figure crops back. Set false when the
+                                    # shard uses --images pages/none; the crops
+                                    # are ~90 KiB/page of wire, then discarded.
 
     vlm:
       engine: transformers          # transformers | mlx-engine | vllm-engine
@@ -414,6 +447,8 @@ EXAMPLE_CONFIG = textwrap.dedent("""\
       formula_enable: true
       table_enable: true
       p_lang: ch
+      output_dir: null
+      return_images: true
 
     quality:
       enabled: true

@@ -116,6 +116,18 @@ def build_parser() -> argparse.ArgumentParser:
              "Apple Silicon; vllm-engine needs NVIDIA GPU; transformers is "
              "the portable default.",
     )
+    p.add_argument("--parser-output-dir", type=str, default=None,
+                   help="Where MinerU's sidecars are kept: <dir>/<sha256>/ with "
+                        "_middle.json, _content_list.json and images/. This is the "
+                        "only durable copy — mineru-api's own output tree is "
+                        "garbage-collected — and it is exactly what "
+                        "`pdfsys dataset --from-mineru` reads. Without it the "
+                        "markdown survives but nothing packageable does.")
+    p.add_argument("--no-parser-images", action="store_true", default=False,
+                   help="Do not ask the parser for figure crops. Worth it when the "
+                        "shard will use --images pages or none, where the crops are "
+                        "downloaded and then thrown away (~90 KiB/page over the "
+                        "wire, which on a remote mineru-api is the wire).")
     p.add_argument("--no-quality", action="store_true", default=False, help="Skip quality scoring.")
     p.add_argument("--quality-model", type=str, default=None, help="HuggingFace quality model.")
 
@@ -188,6 +200,12 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--render-dpi", type=int, default=200,
                    help="DPI for page rasters (default: 200, matching the resolution MinerU "
                         "crops at, so a derived crop is pixel-equivalent to a stored one).")
+    d.add_argument("--allow-missing-crops", action="store_true", default=False,
+                   help="Proceed with --images crops even when the MinerU output "
+                        "has no images/ directories. Normally that means the run "
+                        "used --no-parser-images and the crops were never fetched, "
+                        "so the shard would come out with zero images rather than "
+                        "the figures it advertises.")
     d.add_argument("--overwrite", action="store_true", default=False,
                    help="Replace pages/<shard>.parquet if it already exists. Without this "
                         "a name collision is an error, because several lanes write their "
@@ -284,6 +302,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             vlm_engine=args.vlm_engine,
             no_quality=args.no_quality,
             quality_model=args.quality_model,
+            parser_output_dir=args.parser_output_dir,
+            no_parser_images=args.no_parser_images,
         )
     except ValueError as e:
         # Unknown --stages or --extract-backends value. A traceback here reads
@@ -336,6 +356,29 @@ def cmd_run(args: argparse.Namespace) -> int:
         + (f" (rooted at {cfg.input.path_root})" if cfg.input.path_root else "")
         + (f" (limit {cfg.input.limit})" if cfg.input.limit else "")
     )
+    # Per backend, because pipeline and vlm are configured independently in
+    # YAML — reading only `pipeline` gives a VLM lane a false all-clear.
+    from .runner import parser_output_dirs
+
+    sidecar_dirs = parser_output_dirs(cfg)
+    unset = sorted(b for b, d in sidecar_dirs.items() if not d)
+    if unset:
+        # mineru-api writes its own copy under a task-uuid directory and
+        # garbage-collects it, and the containerised deployment mounts no
+        # volume for it. So without --parser-output-dir the sidecars are gone
+        # by the time anyone goes to package them, and `pdfsys dataset
+        # --from-mineru` reports an empty directory rather than a lost one.
+        print(
+            f"[pdfsys] warning: no output_dir for {', '.join(unset)}, so MinerU's "
+            f"middle.json, content_list.json and figure crops are discarded as "
+            f"they arrive. The markdown survives; nothing `pdfsys dataset "
+            f"--from-mineru` can read does. Set --parser-output-dir.",
+            file=sys.stderr,
+        )
+    for backend, where in sorted(sidecar_dirs.items()):
+        if where:
+            print(f"[pdfsys] sidecars: {where} ({backend})")
+
     if cfg.extract_backends is not None:
         print(f"[pdfsys] lane:    {', '.join(cfg.extract_backends)}")
         if "vlm" in cfg.extract_backends and not cfg.vlm.enabled:
@@ -360,11 +403,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     print()
 
     # Run pipeline.
-    from .runner import CorruptResultsError, LaneConflictError
+    from .runner import (
+        CorruptResultsError,
+        LaneConflictError,
+        ParserOutputDirError,
+    )
 
     try:
         summary = run(cfg)
-    except (CorruptResultsError, LaneConflictError) as e:
+    except (CorruptResultsError, LaneConflictError, ParserOutputDirError) as e:
         # Both are raised before any document is touched, so nothing in the
         # out-dir has been written by this leg.
         print(f"[pdfsys] error: {e}", file=sys.stderr)
@@ -536,6 +583,24 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         if not doc_dirs:
             print(f"Error: no *_content_list.json found under {src}", file=sys.stderr)
             return 1
+        # A run with --no-parser-images never fetched them, so the source tree
+        # has no images/ at all. Building `crops` from it produces a shard whose
+        # text points at figures and whose images table is empty — valid, and
+        # completely unlike what was asked for.
+        if (
+            images == "crops"
+            and not args.allow_missing_crops
+            and not any((d / "images").is_dir() for d in doc_dirs)
+        ):
+            print(
+                f"Error: --images crops but no images/ directory anywhere "
+                f"under {src}. The run that produced it likely used "
+                f"--no-parser-images. Use --images pages or none, or pass "
+                f"--allow-missing-crops to build an image-less crops shard.",
+                file=sys.stderr,
+            )
+            return 1
+
         doc_dirs, dropped = select_documents(doc_dirs)
         work = [
             (

@@ -112,19 +112,36 @@ blocks until both backends are alive.
 # Release manifest verification (no HTTP traffic)
 docker compose run --rm cli release verify
 
+# Mount /data/in and /data/out by their exact paths, not the parent /data.
+# cli.Dockerfile declares VOLUME ["/data/in", "/data/out"], and Docker matches
+# those destinations exactly: a bind at /data does NOT cover them, so the
+# daemon creates anonymous volumes over the top and `--rm` deletes everything
+# written there.
+
 # 150-PDF bench against the live stack
 mkdir -p data/in data/out
 # (drop your PDFs into data/in/)
 docker compose run --rm \
-  -v "$(pwd)/data:/data" \
+  -v "$(pwd)/data/in:/data/in" -v "$(pwd)/data/out:/data/out" \
   cli -m pdfsys_bench \
     --pdf-dir /data/in \
     --out /data/out/results.jsonl \
     --cascade --vlm
 
+# A run whose MinerU output survives the container. --parser-output-dir has to
+# land inside a real bind mount: the sidecars are what
+# `pdfsys dataset --from-mineru` packages, and mineru-api's own copy lives in
+# its own container and is garbage-collected.
+docker compose run --rm \
+  -v "$(pwd)/data/in:/data/in" -v "$(pwd)/data/out:/data/out" \
+  cli run \
+    --pdf-dir /data/in --out-dir /data/out \
+    --stages router,extract --extract-backends pipeline \
+    --parser-output-dir /data/out/mineru
+
 # Generate the quality-scorer handoff JSON from the results
 docker compose run --rm \
-  -v "$(pwd)/data:/data" \
+  -v "$(pwd)/data/in:/data/in" -v "$(pwd)/data/out:/data/out" \
   --entrypoint python cli \
   scripts/emit_quality_handoff.py /data/out/results.jsonl
 ```

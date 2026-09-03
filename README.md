@@ -140,9 +140,16 @@ scp gpu_lane.txt gpu01:/mnt/lane.txt
 
 # GPU box: the same list, against wherever this machine mounted it.
 # No layout stage — MinerU does its own internally and is handed only the PDF.
+# --parser-output-dir is what makes the result packageable: mineru-api's own
+# copy of the sidecars is garbage-collected, and no volume is mounted for it.
 pdfsys run --pdf-list /mnt/lane.txt --path-root /mnt/lane --out-dir ./p2 \
            --stages router,extract --extract-backends pipeline \
+           --parser-output-dir ./p2/mineru \
            --ocr-threshold 0.05 --resume
+
+# …then package that directory. This is the --from-mineru lane.
+pdfsys dataset --from-mineru ./p2/mineru --to ./dataset/v2 --shard gpu-00 \
+               --meta ./p2/results.jsonl
 
 # For the VLM lane, layout IS load-bearing — only stage-B ever says "vlm":
 #   --stages router,layout,extract --vlm --extract-backends pipeline,vlm

@@ -72,6 +72,52 @@ class DocResult:
         return json.dumps(asdict(self), ensure_ascii=False)
 
 
+def _as_path(value: str | None) -> Path | None:
+    """Config carries paths as strings; the parser configs want Path or None."""
+    return Path(value) if value else None
+
+
+def parser_output_dirs(cfg: RunConfig) -> dict[str, str | None]:
+    """Where each OCR backend this run can reach would keep its sidecars.
+
+    Keyed by backend, because the two are configured independently in YAML —
+    checking only ``pipeline`` gives a VLM lane a false all-clear.
+    """
+    return {
+        b: getattr(cfg, b).output_dir
+        for b in ("pipeline", "vlm")
+        if cfg.has_stage("extract") and _in_lane(b, cfg)
+    }
+
+
+def _check_parser_output_dirs(cfg: RunConfig) -> None:
+    """Make the sidecar directories now, so a bad path costs nothing.
+
+    Persisting happens inside ``extract()``, after the PDF has been through
+    MinerU. An unwritable path therefore raises *per document*, after the GPU
+    work is done, and ``_stage_extract`` turns that into an error row — which
+    also skips the markdown dump below it. So a mistyped flag would burn the
+    whole run's GPU budget and produce nothing, not even the markdown that used
+    to survive unconditionally. One mkdir up front turns that into one message.
+    """
+    for backend, raw in parser_output_dirs(cfg).items():
+        if not raw:
+            continue
+        path = Path(raw)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / ".pdfsys-write-probe"
+            probe.write_bytes(b"")
+            probe.unlink()
+        except OSError as e:
+            raise ParserOutputDirError(
+                f"{backend} sidecar directory {path} is not usable: {e}. "
+                f"Sidecars are written after each document is parsed, so this "
+                f"would fail once per document — after the OCR work — and take "
+                f"the markdown with it."
+            ) from e
+
+
 class Components:
     """Lazy container for all pipeline components. Loads only what's needed."""
 
@@ -121,6 +167,8 @@ class Components:
                 formula_enable=self.cfg.pipeline.formula_enable,
                 table_enable=self.cfg.pipeline.table_enable,
                 p_lang=self.cfg.pipeline.p_lang,
+                output_dir=_as_path(self.cfg.pipeline.output_dir),
+                return_images=self.cfg.pipeline.return_images,
             )
             self._pipeline = PipelineParser(config=pc)
         return self._pipeline
@@ -136,6 +184,8 @@ class Components:
                 formula_enable=self.cfg.vlm.formula_enable,
                 table_enable=self.cfg.vlm.table_enable,
                 p_lang=self.cfg.vlm.p_lang,
+                output_dir=_as_path(self.cfg.vlm.output_dir),
+                return_images=self.cfg.vlm.return_images,
             )
             self._vlm = VlmParser(config=vc)
         return self._vlm
@@ -171,6 +221,7 @@ def run(cfg: RunConfig) -> dict[str, Any]:
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
     if cfg.markdown_path:
         cfg.markdown_path.mkdir(parents=True, exist_ok=True)
+    _check_parser_output_dirs(cfg)
 
     comps = Components(cfg)
     inputs, discovery = resolve_inputs(cfg)
@@ -661,6 +712,10 @@ class CorruptResultsError(RuntimeError):
 
 class LaneConflictError(RuntimeError):
     """Resuming here would skip documents an earlier lane handed to this one."""
+
+
+class ParserOutputDirError(RuntimeError):
+    """The configured sidecar directory cannot be written to."""
 
 
 def _scan_completed(
