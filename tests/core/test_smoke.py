@@ -33,6 +33,51 @@ def test_the_corpus_covers_both_lanes_and_the_awkward_shapes(tmp_path):
     assert made["duplicate"].read_bytes() == made["text_a"].read_bytes()
 
 
+def test_the_scanned_pages_carry_real_glyphs(tmp_path):
+    """A page of grey bars also routes to OCR — the router only sees the absent
+    text layer — but a real MinerU returns nothing for it, and the check would
+    then be measuring the stub rather than the service. Found by running the
+    smoke against the live GPU box: 0/2 extracted, "empty markdown"."""
+    import pymupdf
+
+    made = build_corpus(tmp_path / "corpus")
+    doc = pymupdf.open(made["scan_a"])
+    page = doc[0]
+
+    assert not page.get_text().strip(), "a text layer would route it to mupdf"
+    pix = page.get_pixmap(dpi=72, colorspace=pymupdf.csGRAY)
+    ink = sum(1 for b in pix.samples if b < 128) / len(pix.samples)
+    doc.close()
+    assert 0.005 < ink < 0.5, f"ink fraction {ink:.4f} — blank page or solid block"
+
+
+def test_a_real_scorer_is_not_asked_to_be_the_stub(tmp_path, monkeypatch):
+    """--model is asserted only when we know the answer. Against a real server
+    it would demand the stub's name and fail every scoring pass."""
+    import pdfsys_cli.smoke as smoke_mod
+
+    seen: list[list[str]] = []
+
+    def _spy(argv):
+        seen.append(argv)
+        return 0
+
+    monkeypatch.setattr(smoke_mod, "build_corpus", lambda root: {})
+    monkeypatch.setattr(
+        smoke_mod, "stub_services",
+        lambda m, q: __import__("contextlib").nullcontext(
+            (m or "http://stub-m", q or "http://stub-q")
+        ),
+    )
+    monkeypatch.setattr(smoke_mod, "_phases", lambda *a, **kw: seen.append(kw))
+
+    run_smoke(tmp_path / "w1", quality_url="http://real:8765")
+    run_smoke(tmp_path / "w2")
+
+    assert seen[0]["expect_model"] is None, "a real server serves a real model"
+    assert seen[1]["expect_model"] == smoke_mod.SMOKE_MODEL
+
+
 def test_the_corpus_is_small(tmp_path):
     """The whole point is that this is free to run. The real bench corpus is
     17 MB; if this creeps toward that, nobody runs it every time either."""
@@ -68,7 +113,11 @@ def test_a_broken_phase_is_reported_not_swallowed(tmp_path, monkeypatch):
     result = run_smoke(tmp_path / "work")
 
     assert not result.ok
-    assert any(not ok for name, ok, _ in result.steps if "phase 1" in name or "phase 2" in name)
+    by_name = {name: ok for name, ok, _ in result.steps}
+    assert not by_name["phase 2 (GPU lane)"]
+    # Nothing extracted means nothing to have persisted, so `0 == 0` must not
+    # read as a pass — that is how a dead GPU lane looks green.
+    assert not by_name["MinerU sidecars persisted"]
 
 
 def test_the_workdir_is_cleaned_up_unless_asked_to_keep(tmp_path):

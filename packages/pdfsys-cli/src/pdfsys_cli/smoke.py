@@ -67,15 +67,31 @@ def build_corpus(root: Path) -> dict[str, Path]:
         doc.close()
         return path
 
-    def _scan_pdf(path: Path) -> Path:
-        """Image only, no text layer — the router sends this to OCR."""
+    def _scan_pdf(path: Path, seed: str) -> Path:
+        """Real words, rendered to pixels, with no text layer left behind.
+
+        A page of grey bars also routes to OCR — the router only sees the
+        absent text layer — but a real MinerU correctly returns nothing for it,
+        and the check would then be measuring the stub rather than the service.
+        So the glyphs have to actually be there.
+        """
+        src = pymupdf.open()
+        page = src.new_page(width=420, height=560)
+        for i, line in enumerate([
+            f"SCANNED {seed.upper()}",
+            "",
+            "This page has no text layer.",
+            "The words exist only as pixels,",
+            "which is what OCR is for.",
+        ]):
+            page.insert_text((40, 60 + i * 30), line, fontsize=15)
+        pix = page.get_pixmap(dpi=110, colorspace=pymupdf.csGRAY)
+        src.close()
+
         doc = pymupdf.open()
-        page = doc.new_page()
-        pix = pymupdf.Pixmap(pymupdf.csGRAY, pymupdf.IRect(0, 0, 80, 110))
-        pix.set_rect(pix.irect, (220,))
-        for y in range(10, 100, 14):
-            pix.set_rect(pymupdf.IRect(8, y, 72, y + 4), (60,))
-        page.insert_image(page.rect, pixmap=pix)
+        doc.new_page(width=420, height=560).insert_image(
+            pymupdf.Rect(0, 0, 420, 560), pixmap=pix
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         doc.save(path, deflate=True)
         doc.close()
@@ -85,8 +101,8 @@ def build_corpus(root: Path) -> dict[str, Path]:
     made["text_b"] = _text_pdf(root / "nested" / "b.pdf", "beta")
     made["text_upper"] = _text_pdf(root / "UPPER.PDF", "gamma")
     made["text_noext"] = _text_pdf(root / "extensionless", "delta")
-    made["scan_a"] = _scan_pdf(root / "scan-a.pdf")
-    made["scan_b"] = _scan_pdf(root / "nested" / "scan-b.pdf")
+    made["scan_a"] = _scan_pdf(root / "scan-a.pdf", "epsilon")
+    made["scan_b"] = _scan_pdf(root / "nested" / "scan-b.pdf", "zeta")
 
     # A byte-identical copy under another name: one doc_id, two paths.
     made["duplicate"] = root / "copy-of-a.pdf"
@@ -257,7 +273,10 @@ def run_smoke(
             NO_PROXY="*", no_proxy="*",
         )
         try:
-            _phases(workdir, corpus, res, validate_shard, main)
+            _phases(
+                workdir, corpus, res, validate_shard, main,
+                expect_model=None if quality_url else SMOKE_MODEL,
+            )
         finally:
             os.environ.clear()
             os.environ.update(env)
@@ -278,7 +297,10 @@ def _rows(path: Path) -> list[dict]:
     ]
 
 
-def _phases(workdir: Path, corpus: Path, res: SmokeResult, validate_shard, main) -> None:
+def _phases(
+    workdir: Path, corpus: Path, res: SmokeResult, validate_shard, main,
+    expect_model: str | None = None,
+) -> None:
     p1, p2, ds = workdir / "p1", workdir / "p2", workdir / "dataset"
 
     # -- Phase 1: CPU lane -------------------------------------------------
@@ -329,8 +351,10 @@ def _phases(workdir: Path, corpus: Path, res: SmokeResult, validate_shard, main)
     )
     sidecars = list((p2 / "mineru").glob("*/*_content_list.json"))
     res.record(
-        "MinerU sidecars persisted", len(sidecars) == len(got),
-        f"{len(sidecars)} content lists",
+        # `0 == 0` is not a pass: with nothing extracted there is nothing to
+        # have persisted, and the check would be vacuously green.
+        "MinerU sidecars persisted", bool(got) and len(sidecars) == len(got),
+        f"{len(sidecars)} content lists for {len(got)} extractions",
     )
 
     # -- Phase 3: score both lanes ----------------------------------------
@@ -339,7 +363,10 @@ def _phases(workdir: Path, corpus: Path, res: SmokeResult, validate_shard, main)
         rc = main([
             "score", "--results", str(out_dir / "results.jsonl"),
             "--markdown-dir", str(out_dir / "markdown"),
-            "--out", str(out_dir / "results.scored.jsonl"), "--model", SMOKE_MODEL,
+            "--out", str(out_dir / "results.scored.jsonl"),
+            # Only assert a model name when we know it: a real server serves a
+            # real model, and demanding the stub's would fail every time.
+            *(("--model", expect_model) if expect_model else ()),
         ])
         n = sum(1 for r in _rows(out_dir / "results.scored.jsonl")
                 if r.get("quality_score") is not None) if rc == 0 else 0
