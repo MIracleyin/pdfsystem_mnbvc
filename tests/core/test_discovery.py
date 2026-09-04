@@ -58,16 +58,34 @@ def test_an_extensionless_pdf_is_found_by_its_header(corpus):
 
 
 def test_a_non_pdf_is_not_picked_up_however_it_is_named(corpus):
+    """Content decides. `decoy` has no suffix and `notes.txt` has one, and
+    neither begins with %PDF-."""
     names = {p.name for p in iter_pdf_paths(corpus)}
     assert "decoy" not in names
     assert "notes.txt" not in names
 
 
-def test_a_file_with_a_suffix_is_taken_at_its_word(tmp_path):
-    """Sniffing is confined to extensionless files: a .txt holding PDF bytes is
-    not silently reinterpreted, and we do not read every file in the tree."""
-    (tmp_path / "x.txt").write_bytes(PDF_MAGIC + b"1.4 rest")
-    assert list(iter_pdf_paths(tmp_path)) == []
+def test_a_pdf_saved_under_a_web_extension_is_found(tmp_path):
+    """A scraper saving `download.ashx?id=1` keeps the last path segment as the
+    filename. On the real cmn_Hani corpus that is two thirds of the 18,005
+    documents a suffix-only rule drops — 4.4% of it."""
+    for name in ("download.ashx", "get.php", "view.aspx", "doc.cgi"):
+        (tmp_path / name).write_bytes(PDF_MAGIC + b"1.4 rest")
+    (tmp_path / "readme.md").write_text("not a pdf", encoding="utf-8")
+
+    found = {p.name for p in iter_pdf_paths(tmp_path)}
+
+    assert found == {"download.ashx", "get.php", "view.aspx", "doc.cgi"}
+
+
+def test_sniffing_can_be_declined_for_speed(tmp_path):
+    """Reading every non-.pdf file costs 286 s on a 218k-file corpus. Worth it
+    there; the escape hatch exists for a tree that is mostly not documents."""
+    (tmp_path / "real.pdf").write_bytes(PDF_MAGIC + b"1.4")
+    (tmp_path / "download.ashx").write_bytes(PDF_MAGIC + b"1.4")
+
+    assert {p.name for p in iter_pdf_paths(tmp_path)} == {"real.pdf", "download.ashx"}
+    assert {p.name for p in iter_pdf_paths(tmp_path, sniff=False)} == {"real.pdf"}
 
 
 def test_the_inventory_says_how_each_file_was_recognised(corpus):
@@ -78,8 +96,8 @@ def test_the_inventory_says_how_each_file_was_recognised(corpus):
     assert inv.paths == tuple(sorted(inv.paths)), "callers rely on a stable order"
 
 
-def test_sniffing_can_be_turned_off(corpus):
-    inv = take_inventory(corpus, sniff_extensionless=False)
+def test_sniffing_off_falls_back_to_suffixes_alone(corpus):
+    inv = take_inventory(corpus, sniff=False)
     assert inv.by_magic == ()
     assert len(inv) == 4
 

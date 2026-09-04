@@ -4,15 +4,25 @@ Every entry point that takes ``--pdf-dir`` has to agree on what counts as a
 PDF, or a shard silently covers a different corpus than the run it claims to
 come from. So the rule lives here, once.
 
-The rule is: a file whose suffix is ``.pdf`` in any case, plus a file with no
-suffix at all whose first bytes are ``%PDF-``. The plain ``rglob("*.pdf")``
-this replaces matched case-sensitively on Linux and macOS, and real corpora
-carry both ``.PDF`` and extensionless files — neither was processed, and
-neither was reported, so the loss was invisible.
+The rule is: a ``.pdf`` suffix in any case is taken at its word, and every
+other file is judged by whether it begins with ``%PDF-``. The plain
+``rglob("*.pdf")`` this replaces matched case-sensitively on Linux and macOS,
+and never looked inside anything — so the loss was both large and invisible.
 
-Sniffing is confined to files with no suffix. A file named ``notes.txt`` is
-taken at its word however it begins, and the cost of the rule is five bytes
-per extensionless file rather than a read of everything in the tree.
+Sniffing everything else, rather than only extensionless files, is a decision
+made against a real corpus. Measured on 218,297 files of cmn_Hani:
+
+    .pdf by suffix     199,992
+    by %PDF- header     18,005     ← 8.3% of the corpus
+    genuinely not PDF      300
+
+Two thirds of that 18,005 carry a suffix — ``.ashx``, ``.php``, ``.aspx``,
+``.cgi``, ``.jsp`` — because a scraper saved them under the last path segment
+of a URL like ``download.ashx?id=123``. Trusting those suffixes drops 4.4% of
+the corpus; trusting only extensionless files still drops it. The scan costs
+286 s cold on that corpus against 0.5 s for the walk alone, which is noise
+beside the days of extraction it precedes, and a run that skips 18,000
+documents is not cheaper — it is wrong.
 """
 
 from __future__ import annotations
@@ -63,7 +73,7 @@ class PdfInventory:
         if self.by_magic:
             parts.append(
                 f"{len(self.by_suffix)} 个按后缀，"
-                f"{len(self.by_magic)} 个无后缀、按 %PDF- 头识别"
+                f"{len(self.by_magic)} 个按 %PDF- 文件头识别"
             )
         if self.unreadable_dirs:
             parts.append(f"{len(self.unreadable_dirs)} 个目录读不进去")
@@ -78,12 +88,11 @@ def looks_like_pdf(path: str | Path) -> bool:
     list-driven shard covers a different corpus than a scan-driven one.
     """
     path = Path(path)
-    suffix = os.path.splitext(path.name)[1].strip()
-    if suffix.lower() == ".pdf":
-        return path.is_file()
-    if suffix:
+    if not path.is_file():
         return False
-    return path.is_file() and _looks_like_pdf(path)
+    if os.path.splitext(path.name)[1].strip().lower() == ".pdf":
+        return True
+    return _looks_like_pdf(path)
 
 
 def _looks_like_pdf(path: Path) -> bool:
@@ -95,16 +104,18 @@ def _looks_like_pdf(path: Path) -> bool:
         return False
 
 
-def take_inventory(root: str | Path, *, sniff_extensionless: bool = True) -> PdfInventory:
+def take_inventory(root: str | Path, *, sniff: bool = True) -> PdfInventory:
     """Scan *root* recursively and report what was found, and how.
 
-    Walks with :func:`os.walk` rather than ``rglob("*")`` for two reasons. It
-    filters on the name before touching the filesystem, so a corpus directory
-    holding a million non-PDF siblings costs a readdir rather than a stat and a
-    Path allocation per entry. And it can see the errors: ``rglob`` swallows the
-    ``PermissionError`` from descending into an unreadable directory and simply
-    yields nothing, which turns "1000 documents you cannot read" into "1000
-    documents that do not exist".
+    Walks with :func:`os.walk` rather than ``rglob("*")`` because rglob swallows
+    the ``PermissionError`` from descending into an unreadable directory and
+    simply yields nothing, which turns "1000 documents you cannot read" into
+    "1000 documents that do not exist".
+
+    ``sniff=False`` trusts suffixes and reads nothing. It is much faster on a
+    tree that is mostly not PDFs, and on a scraped corpus it silently drops
+    every document whose URL ended in ``.ashx`` — see the module docstring for
+    what that cost on a real one.
     """
     by_suffix: list[Path] = []
     by_magic: list[Path] = []
@@ -125,12 +136,7 @@ def take_inventory(root: str | Path, *, sniff_extensionless: bool = True) -> Pdf
             if suffix.lower() == ".pdf":
                 if path.is_file():
                     by_suffix.append(path)
-            elif (
-                not suffix
-                and sniff_extensionless
-                and path.is_file()
-                and _looks_like_pdf(path)
-            ):
+            elif sniff and path.is_file() and _looks_like_pdf(path):
                 by_magic.append(path)
 
     return PdfInventory(
@@ -138,11 +144,9 @@ def take_inventory(root: str | Path, *, sniff_extensionless: bool = True) -> Pdf
     )
 
 
-def iter_pdf_paths(
-    root: str | Path, *, sniff_extensionless: bool = True
-) -> Iterator[Path]:
+def iter_pdf_paths(root: str | Path, *, sniff: bool = True) -> Iterator[Path]:
     """Yield every PDF under *root*, sorted. See the module docstring for what counts."""
-    yield from take_inventory(root, sniff_extensionless=sniff_extensionless).paths
+    yield from take_inventory(root, sniff=sniff).paths
 
 
 @dataclass(frozen=True, slots=True)

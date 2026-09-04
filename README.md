@@ -154,6 +154,12 @@ same time. `--extract-backends` says which backends *this* machine runs;
 anything else is recorded as another machine's work
 (`skip_reason=lane-filter`) with the path needed to hand it over.
 
+A PDF is any file whose suffix is `.pdf` in any case, plus any other file
+that begins with `%PDF-`. That second clause is not hypothetical: on the
+218k-file `cmn_Hani` corpus it finds **18,005 documents (8.3%)** that a
+suffix-only scan drops — two thirds of them saved by a scraper as
+`download.ashx`, `get.php`, `view.aspx`. The run prints the split.
+
 ```bash
 # CPU box: extract what mupdf can, queue the rest. No GPU, no MinerU.
 pdfsys run --pdf-dir /data/corpus --out-dir ./p1 \
