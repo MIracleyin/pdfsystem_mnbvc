@@ -128,7 +128,7 @@ pdfsys smoke --workdir ./s   # keep the artifacts and look at them
 pdfsys smoke --mineru-url http://gpu01:8000 --quality-url http://gpu01:8765
 ```
 
-Generates ten tiny PDFs — born-digital, image-only, an uppercase `.PDF`, one
+Generates eight tiny PDFs — born-digital, image-only, an uppercase `.PDF`, one
 with no extension, an encrypted one, a byte-identical duplicate — and runs all
 four phases over them, asserting that every document lands in exactly one lane,
 that the merged dataset validates, and that no doc_id appears in two shards.
@@ -148,6 +148,9 @@ fastest way to tell whether a GPU box is wired up correctly.
 ```
 
 ### Option 3b: Split the run across machines that share no disk
+
+> Full operator runbook, with every flag, every error message and what to do
+> about it: [`docs/deployment/split-run.md`](docs/deployment/split-run.md).
 
 The CPU work and the GPU work do not have to happen on the same box, or at the
 same time. `--extract-backends` says which backends *this* machine runs;

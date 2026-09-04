@@ -150,9 +150,11 @@ def build_parser() -> argparse.ArgumentParser:
                          "two different models put two scales in one column, and "
                          "nothing in the data would say so.")
     sc.add_argument("--workers", type=int, default=4,
-                    help="Concurrent requests (default: 4). The server holds one "
-                         "model and scores one document per request, so past a few "
-                         "workers you are filling its socket queue.")
+                    help="Concurrent requests (default: 4). The server is "
+                         "threaded and takes them in parallel, but they share one "
+                         "model on one GPU, so the return flattens somewhere — "
+                         "where depends on the box, so measure rather than assume "
+                         "this default is the ceiling.")
     sc.add_argument("--max-chars", type=int, default=40_000,
                     help="Clip each document before sending (default: 40000, which "
                          "is where the server truncates anyway — so the difference "

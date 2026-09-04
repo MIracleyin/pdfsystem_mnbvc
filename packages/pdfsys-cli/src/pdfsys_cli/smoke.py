@@ -6,7 +6,7 @@ mostly "produced nothing and said nothing". Doing that against a real corpus
 costs minutes and a GPU; doing it against 50 real PDFs still costs enough that
 nobody does it every time.
 
-So this generates a corpus of about ten tiny PDFs — a few born-digital, a few
+So this generates a corpus of eight tiny PDFs — a few born-digital, a few
 image-only, plus the shapes that have actually broken things here (an uppercase
 suffix, no suffix at all, an encrypted file, a byte-identical duplicate) — and
 runs the whole four-phase flow over it. With no URLs it stands up in-process
