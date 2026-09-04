@@ -35,6 +35,63 @@ def test_only_stages_that_were_actually_requested_are_reported():
     assert cfg.dropped_stages == []
 
 
+def test_a_lane_is_validated_against_the_backends_that_exist():
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown extract backend"):
+        apply_cli_overrides(default_config(), extract_backends="mupdf,tesseract")
+
+
+def test_deferred_is_not_a_selectable_lane():
+    """It is stage-B declining, not something a process performs."""
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown extract backend"):
+        apply_cli_overrides(default_config(), extract_backends="deferred")
+
+
+def test_an_empty_lane_is_refused():
+    import pytest
+
+    with pytest.raises(ValueError, match="at least one"):
+        apply_cli_overrides(default_config(), extract_backends="")
+
+
+def test_a_lane_is_parsed_from_a_comma_list():
+    cfg = apply_cli_overrides(default_config(), extract_backends="pipeline, vlm")
+    assert cfg.extract_backends == ["pipeline", "vlm"]
+
+
+def test_no_lane_means_every_backend():
+    assert default_config().extract_backends is None
+
+
+def test_resume_drops_parquet_because_parquet_cannot_be_appended_to():
+    """pq.ParquetWriter truncates on open, so a resumed leg would leave
+    dataset.parquet describing only that leg while results.jsonl describes the
+    whole run — two artifacts of one run silently disagreeing."""
+    cfg = apply_cli_overrides(default_config(), resume=True)
+
+    assert "parquet" not in cfg.stages
+    assert cfg.dropped_stages == ["parquet"]
+    assert "not appendable" in cfg.drop_reasons["parquet"]
+
+
+def test_a_resumed_run_that_never_wanted_parquet_says_nothing():
+    cfg = apply_cli_overrides(
+        default_config(), stages="router,extract", resume=True
+    )
+
+    assert cfg.dropped_stages == []
+
+
+def test_every_dropped_stage_carries_its_reason():
+    cfg = apply_cli_overrides(default_config(), no_quality=True, resume=True)
+
+    assert set(cfg.drop_reasons) == set(cfg.dropped_stages)
+    assert all(cfg.drop_reasons[s] for s in cfg.dropped_stages)
+
+
 def test_asking_for_parquet_and_then_disabling_quality_reports_both():
     """``parquet`` auto-includes ``quality`` as a dependency, so ``--no-quality``
     takes out a stage that was never typed. That is exactly the combination

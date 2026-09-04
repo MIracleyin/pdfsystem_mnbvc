@@ -193,7 +193,7 @@ def test_cli_refuses_a_directory_with_no_pdfs(tmp_path, capsys):
     empty.mkdir()
 
     assert main(["dataset", "--from-pdf-dir", str(empty), "--to", str(tmp_path / "s")]) == 1
-    assert "no *.pdf" in capsys.readouterr().err
+    assert "no PDF found" in capsys.readouterr().err
 
 
 def test_the_two_source_flags_are_mutually_exclusive(tmp_path):

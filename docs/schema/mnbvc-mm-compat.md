@@ -30,6 +30,11 @@ pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2-mupdf
 pdfsys mnbvc-export --from-shard ./dataset/v2-mupdf --to ./mnbvc/chinaxiv_1.parquet
 ```
 
+注意这里扫的是整个语料目录,所以走 MinerU 的那批文档也会被 mupdf 再抽一遍 ——
+两个 `--to` 不同,不会撞主键,但那份 mupdf 产物是多余的。要只打包 mupdf 那条道
+的文档,用 `--from-pdf-list` 加一份从 `results.jsonl` 里筛出来的清单;两条道写进
+**同一个** `--to` 时这是必须的。
+
 `--dialect` 默认 `v2`（上游当前格式）；要合并前那份形态用 `--dialect legacy`。
 
 ---

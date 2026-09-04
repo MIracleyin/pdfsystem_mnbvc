@@ -69,6 +69,9 @@ short_description: "PDF to Markdown pipeline with ML-powered routing"
 | **Unified CLI** | ✅ Ready | `pdfsys run -c config.yaml --stages ...` |
 | **Annotation UI** | ✅ Ready | `pdfsys annotate` — PDF labeling + layout overlay |
 | **L2 Dataset Format** | ✅ Ready | `pdfsys.page/v2` — one row per page, interleaved image-text ([spec](docs/superpowers/specs/2026-08-22-page-level-parquet-dataset-design.md), [sample](docs/schema/doc_dataset.v2.sample.md)) |
+| **Smoke check** | ✅ Ready | `pdfsys smoke` — the whole split over a generated corpus in ~3s, no GPU; point it at real services to validate a deployment |
+| **Split runs** | ✅ Ready | `--extract-backends` / `--pdf-list` / `--resume` — CPU and GPU lanes on machines that share no disk |
+| **Standalone scoring** | ✅ Ready | `pdfsys score` — score a finished run's markdown against one remote scorer, without re-extracting |
 | **L2 Packaging** | ✅ Ready | `pdfsys dataset` — both lanes reach L2: `--from-mineru` (pipeline/vlm sidecars), `--from-pdf-dir` (mupdf, re-extracted) |
 | **Format Validator** | ✅ Ready | `pdfsys dataset-validate` — contract check before publishing |
 | **MNBVC Export** | ✅ Ready | `pdfsys mnbvc-export` — → MNBVC multimodal block format ([mapping](docs/schema/mnbvc-mm-compat.md)) |
@@ -117,6 +120,117 @@ python -m pdfsys_bench \
   --markdown-dir ./extracted
 ```
 
+### Option 3a: Check the whole split works, in three seconds
+
+```bash
+pdfsys smoke                 # generated corpus, in-process stubs, no GPU
+pdfsys smoke --workdir ./s   # keep the artifacts and look at them
+pdfsys smoke --mineru-url http://gpu01:8000 --quality-url http://gpu01:8765
+```
+
+Generates eight tiny PDFs — born-digital, image-only, an uppercase `.PDF`, one
+with no extension, an encrypted one, a byte-identical duplicate — and runs all
+four phases over them, asserting that every document lands in exactly one lane,
+that the merged dataset validates, and that no doc_id appears in two shards.
+With URLs it runs the same check against a real deployment, which is the
+fastest way to tell whether a GPU box is wired up correctly.
+
+```
+  ✓ phase 1 (CPU lane) — 8 discovered, 5 extracted, 2 handed over
+  ✓ discovery finds .PDF and extensionless
+  ✓ phase 2 (GPU lane) — 2/2 extracted
+  ✓ MinerU sidecars persisted — 2 content lists
+  ✓ phase 3 (score CPU lane) — 5 scored
+  ✓ phase 4 (package both lanes)
+  ✓ scanning the whole corpus is refused
+  ✓ merged dataset validates
+  ✓ no document in two shards — 6 distinct of 6 rows
+```
+
+### Option 3b: Split the run across machines that share no disk
+
+> Full operator runbook, with every flag, every error message and what to do
+> about it: [`docs/deployment/split-run.md`](docs/deployment/split-run.md).
+
+The CPU work and the GPU work do not have to happen on the same box, or at the
+same time. `--extract-backends` says which backends *this* machine runs;
+anything else is recorded as another machine's work
+(`skip_reason=lane-filter`) with the path needed to hand it over.
+
+A PDF is any file whose suffix is `.pdf` in any case, plus any other file
+that begins with `%PDF-`. That second clause is not hypothetical: on the
+218k-file `cmn_Hani` corpus it finds **18,005 documents (8.3%)** that a
+suffix-only scan drops — two thirds of them saved by a scraper as
+`download.ashx`, `get.php`, `view.aspx`. The run prints the split.
+
+```bash
+# CPU box: extract what mupdf can, queue the rest. No GPU, no MinerU.
+pdfsys run --pdf-dir /data/corpus --out-dir ./p1 \
+           --stages router,extract --extract-backends mupdf \
+           --markdown-dir markdown --resume
+
+# The queue. Paths relative to the corpus root travel between machines.
+jq -r 'select(.skip_reason != null) | .pdf_path' ./p1/results.jsonl \
+  | sed 's|^/data/corpus/||' > gpu_lane.txt
+
+# Ship the PDFs the list names, then the list itself.
+rsync -a --partial --files-from=gpu_lane.txt /data/corpus/ gpu01:/mnt/lane/
+scp gpu_lane.txt gpu01:/mnt/lane.txt
+
+# GPU box: the same list, against wherever this machine mounted it.
+# No layout stage — MinerU does its own internally and is handed only the PDF.
+# --parser-output-dir is what makes the result packageable: mineru-api's own
+# copy of the sidecars is garbage-collected, and no volume is mounted for it.
+pdfsys run --pdf-list /mnt/lane.txt --path-root /mnt/lane --out-dir ./p2 \
+           --stages router,extract --extract-backends pipeline \
+           --parser-output-dir ./p2/mineru --markdown-dir markdown \
+           --ocr-threshold 0.05 --resume
+
+# One CUDA scorer on the GPU box serves both lanes. Nothing is re-extracted
+# and no markdown ships: only the text crosses, clipped to the 40k the server
+# truncates at anyway (~40 KB/doc).
+CUDA_VISIBLE_DEVICES=0 python -m pdfsys_bench._quality_server \
+  --host 0.0.0.0 --port 8765 --device cuda &
+
+QUALITY_URL=http://gpu01:8765 pdfsys score \
+  --results ./p1/results.jsonl --markdown-dir ./p1/markdown \
+  --out ./p1/results.scored.jsonl --resume      # from the CPU box
+QUALITY_URL=http://127.0.0.1:8765 pdfsys score \
+  --results ./p2/results.jsonl --markdown-dir ./p2/markdown \
+  --out ./p2/results.scored.jsonl --resume      # on the GPU box
+
+# Package each lane into the same dataset directory, under its own --shard.
+# The CPU lane packages BY LIST, not by scanning: the corpus root also holds
+# the documents the GPU lane owns, and mupdf would re-extract those into empty
+# pages carrying doc_ids the GPU shard already used. --meta is checked against
+# that, so scanning the root here is an error rather than a broken shard.
+jq -r 'select(.extract_backend=="mupdf" and .skip_reason==null and .error_class==null)
+       | .pdf_path' ./p1/results.scored.jsonl > cpu_lane.txt
+
+pdfsys dataset --from-pdf-list cpu_lane.txt --to ./dataset/v2 --shard cpu-00 \
+               --meta ./p1/results.scored.jsonl
+pdfsys dataset --from-mineru ./p2/mineru --to ./dataset/v2 --shard gpu-00 \
+               --meta ./p2/results.scored.jsonl
+
+pdfsys dataset-validate --shard ./dataset/v2
+
+# For the VLM lane, layout IS load-bearing — only stage-B ever says "vlm":
+#   --stages router,layout,extract --vlm --extract-backends pipeline,vlm
+```
+
+Use the same `--ocr-threshold` on both boxes. Phase 2 re-runs stage-A (asking
+for `extract` pulls in `router`), so a different threshold can re-classify a
+document as `mupdf` on the GPU box, where the lane filter then skips it — and
+the CPU box had already handed it away. It would fall out of both lanes. That
+shows up as a nonzero `lane-filter` count on the GPU box, which the run warns
+about; expect zero.
+
+`--resume` appends to `results.jsonl` and skips the documents already in it, so
+a machine that dies at hour six restarts where it stopped — and does not
+destroy the worklist the other machine is waiting on. `--limit` names the same
+slice of the corpus on every invocation, so it composes with resume. Splitting
+a list file (`split -n l/8 gpu_lane.txt`) is all fleet sharding needs.
+
 ### Option 4: Package a run into the L2 dataset
 
 The pipeline's own output (`results.jsonl` + MinerU sidecars) is L1 telemetry.
@@ -137,7 +251,15 @@ pdfsys dataset --from-mineru ./out --to ./dataset/v2 \
 # Package those straight from the PDFs. This re-runs mupdf (~10ms/page),
 # because a run persists only merged markdown with no page boundaries.
 # Whole-page rasters are the default here — mupdf has no crops to store.
-pdfsys dataset --from-pdf-dir ./data/pdfs --to ./dataset/v2-mupdf \
+#
+# BY LIST, not by scanning ./data/pdfs: the corpus also holds the documents
+# MinerU handled, and mupdf would re-extract those into pages carrying doc_ids
+# the shard above already used. --meta is checked against exactly that, so
+# scanning the whole corpus here is an error rather than a broken shard.
+jq -r 'select(.extract_backend=="mupdf" and .skip_reason==null and .error_class==null)
+       | .pdf_path' ./out/results.jsonl > mupdf_lane.txt
+
+pdfsys dataset --from-pdf-list mupdf_lane.txt --to ./dataset/v2 --shard mupdf-00 \
                --meta ./out/results.jsonl
 
 # Contract check. Run this before anything leaves the machine.
@@ -147,8 +269,12 @@ pdfsys dataset-validate --shard ./dataset/v2
 pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet --dialect v2
 ```
 
-The two lanes write separate shards on purpose: rows within a shard are sorted
-by `doc_id`, so one shard cannot be fed from two sources without merging first.
+The two lanes write separate *shards* — one parquet each — into the same
+dataset directory. Sortedness is a per-file promise, because a reader
+reassembles a document by scanning one file; the two lanes' doc_id ranges are
+free to interleave. What the shards may not do is overlap: a document belongs
+to exactly one lane, and `pdfsys dataset` refuses to reuse a shard name without
+`--overwrite` rather than truncate the other lane's work.
 
 Worked example of one real page:
 [`docs/schema/doc_dataset.v2.sample.md`](docs/schema/doc_dataset.v2.sample.md).

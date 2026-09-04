@@ -673,7 +673,12 @@ def _canon_label(match: re.Match[str]) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def render_markdown(blocks: Sequence[Block], *, drop_furniture: bool = True) -> str:
+def render_markdown(
+    blocks: Sequence[Block],
+    *,
+    drop_furniture: bool = True,
+    region_refs: bool = True,
+) -> str:
     """Render one page's blocks to Markdown.
 
     Images become ``![](img://<image_id>)`` with the caption following as its
@@ -682,16 +687,23 @@ def render_markdown(blocks: Sequence[Block], *, drop_furniture: bool = True) -> 
     consumer stripping markers loses it entirely. ``Block.alt`` is
     model-generated and is never rendered — this string carries human/OCR
     content only.
+
+    ``region_refs=False`` suppresses ``![](bbox://…)`` markers. A region
+    reference addresses pixels inside a page raster, so it only resolves when
+    the shard stores one; emit it without and every such marker dangles. The
+    bbox stays on the block either way, so the pixels remain reconstructible
+    from the source PDF.
     """
     parts = [
         chunk
         for b in blocks
-        if not (drop_furniture and b.is_furniture) and (chunk := _render_block(b))
+        if not (drop_furniture and b.is_furniture)
+        and (chunk := _render_block(b, region_refs=region_refs))
     ]
     return "\n\n".join(parts)
 
 
-def _render_block(b: Block) -> str:
+def _render_block(b: Block, *, region_refs: bool = True) -> str:
     if b.type is BlockType.TITLE:
         level = min(max(b.level or 1, 1), 6)
         return f"{'#' * level} {b.text}".strip() if b.text else ""
@@ -701,13 +713,16 @@ def _render_block(b: Block) -> str:
         # Blob reference when a crop was stored, region reference when the
         # pixels are to be cut out of the page raster instead. No mode flag
         # needed — which one applies is visible on the block itself.
+        # No marker at all when there is nothing to address. An empty `![]()`
+        # is not matched by IMAGE_REF_RE, so strip_image_refs cannot remove it
+        # and every consumer inherits a literal that resolves to nothing. The
+        # caption and footnote are real text and stay either way.
         if b.image_id:
-            marker = image_ref(b.image_id)
-        elif b.bbox is not None:
-            marker = bbox_ref(b.bbox)
+            lines = [image_ref(b.image_id)]
+        elif b.bbox is not None and region_refs:
+            lines = [bbox_ref(b.bbox)]
         else:
-            marker = "![]()"
-        lines = [marker]
+            lines = []
         if b.caption:
             lines.append(b.caption)
         if b.footnote:
@@ -724,6 +739,7 @@ def split_pages(
     *,
     n_pages: int = 0,
     drop_furniture: bool = True,
+    region_refs: bool = True,
     **page_fields: object,
 ) -> tuple[PageRecord, ...]:
     """Group document-scoped blocks into one :class:`PageRecord` per page.
@@ -746,7 +762,9 @@ def split_pages(
     pages = []
     for index in range(total):
         page_blocks = tuple(by_page.get(index, ()))
-        text = render_markdown(page_blocks, drop_furniture=drop_furniture)
+        text = render_markdown(
+            page_blocks, drop_furniture=drop_furniture, region_refs=region_refs
+        )
         pages.append(
             PageRecord(
                 page_index=index,

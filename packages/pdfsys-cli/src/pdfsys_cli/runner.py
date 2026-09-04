@@ -9,10 +9,12 @@ All heavy dependencies are imported lazily at first use.
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import json
 import os
 import time
-from collections.abc import Iterable
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,11 @@ class DocResult:
     extract_backend: str | None = None
     extract_stats: dict[str, Any] = field(default_factory=dict)
     markdown_chars: int = 0
+    #: Why this row produced no text, when that was a decision rather than a
+    #: failure. ``None`` on every row that actually extracted. Without it a
+    #: deferred document and a document whose backend was never reached are
+    #: indistinguishable from a successful extraction of an empty PDF.
+    skip_reason: str | None = None
     # quality
     quality_score: float | None = None
     quality_num_chars: int | None = None
@@ -63,6 +70,79 @@ class DocResult:
 
     def to_json_line(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
+
+
+def _as_path(value: str | None) -> Path | None:
+    """Config carries paths as strings; the parser configs want Path or None."""
+    return Path(value) if value else None
+
+
+def parser_output_dirs(cfg: RunConfig) -> dict[str, str | None]:
+    """Where each OCR backend this run can reach would keep its sidecars.
+
+    Keyed by backend, because the two are configured independently in YAML —
+    checking only ``pipeline`` gives a VLM lane a false all-clear.
+    """
+    return {
+        b: getattr(cfg, b).output_dir
+        for b in ("pipeline", "vlm")
+        if cfg.has_stage("extract") and _in_lane(b, cfg)
+    }
+
+
+def _check_parser_output_dirs(cfg: RunConfig) -> None:
+    """Make the sidecar directories now, so a bad path costs nothing.
+
+    Persisting happens inside ``extract()``, after the PDF has been through
+    MinerU. An unwritable path therefore raises *per document*, after the GPU
+    work is done, and ``_stage_extract`` turns that into an error row — which
+    also skips the markdown dump below it. So a mistyped flag would burn the
+    whole run's GPU budget and produce nothing, not even the markdown that used
+    to survive unconditionally. One mkdir up front turns that into one message.
+    """
+    for backend, raw in parser_output_dirs(cfg).items():
+        if not raw:
+            continue
+        path = Path(raw)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            probe = path / ".pdfsys-write-probe"
+            probe.write_bytes(b"")
+            probe.unlink()
+        except OSError as e:
+            raise ParserOutputDirError(
+                f"{backend} sidecar directory {path} is not usable: {e}. "
+                f"Sidecars are written after each document is parsed, so this "
+                f"would fail once per document — after the OCR work — and take "
+                f"the markdown with it."
+            ) from e
+
+
+def _check_router_weights(cfg: RunConfig, comps: Components) -> None:
+    """Load the router's weights before document 1, not lazily at document 1.
+
+    ``classify()`` promises never to raise, so a weights file that is missing
+    or unreadable does not stop anything: it comes back as ``decision.error``
+    on every document, each row is counted as an error, every backend reads
+    ``deferred``, and the run exits 0. A whole corpus can go through that and
+    report success having extracted nothing.
+
+    Which would be a rare enough accident if the weights shipped with the
+    code. They do not — they are FinePDFs' to distribute, so ``models/`` is
+    gitignored and *every fresh checkout starts in exactly this state*. The
+    first thing a new colleague runs is the thing this catches.
+    """
+    if "router" not in cfg.stages:
+        return
+    model = getattr(comps.router, "_model", None)
+    if model is None:
+        # A router that keeps its weights somewhere else is not something to
+        # guess about; the per-document error path still reports it.
+        return
+    try:
+        model.model  # noqa: B018 — resolving the lazy property IS the check
+    except Exception as e:
+        raise RouterWeightsError(str(e)) from e
 
 
 class Components:
@@ -114,6 +194,8 @@ class Components:
                 formula_enable=self.cfg.pipeline.formula_enable,
                 table_enable=self.cfg.pipeline.table_enable,
                 p_lang=self.cfg.pipeline.p_lang,
+                output_dir=_as_path(self.cfg.pipeline.output_dir),
+                return_images=self.cfg.pipeline.return_images,
             )
             self._pipeline = PipelineParser(config=pc)
         return self._pipeline
@@ -129,6 +211,8 @@ class Components:
                 formula_enable=self.cfg.vlm.formula_enable,
                 table_enable=self.cfg.vlm.table_enable,
                 p_lang=self.cfg.vlm.p_lang,
+                output_dir=_as_path(self.cfg.vlm.output_dir),
+                return_images=self.cfg.vlm.return_images,
             )
             self._vlm = VlmParser(config=vc)
         return self._vlm
@@ -164,18 +248,27 @@ def run(cfg: RunConfig) -> dict[str, Any]:
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
     if cfg.markdown_path:
         cfg.markdown_path.mkdir(parents=True, exist_ok=True)
+    _check_parser_output_dirs(cfg)
 
     comps = Components(cfg)
+    _check_router_weights(cfg, comps)
+    inputs, discovery = resolve_inputs(cfg)
 
     summary: dict[str, Any] = {
         "config_stages": cfg.stages,
         "pdf_dir": cfg.input.pdf_dir,
+        "pdf_list": cfg.input.pdf_list,
+        "path_root": cfg.input.path_root,
+        "resume": cfg.resume,
+        "discovery": discovery,
         "num_pdfs": 0,
         "by_backend": {},
         "by_stage_b": {},
         "num_extracted": 0,
         "num_scored": 0,
         "num_errors": 0,
+        "num_skipped": 0,
+        "by_skip_reason": {},
         "sum_quality": 0.0,
         "started_at": time.time(),
     }
@@ -190,9 +283,80 @@ def run(cfg: RunConfig) -> dict[str, Any]:
             include_markdown=cfg.parquet.include_markdown,
         )
 
+    # ---- resume: carry the existing rows into the summary, skip their PDFs ----
+    done_keys: set[str] = set()
+    if cfg.resume and cfg.jsonl_path.exists():
+
+        conflicts: list[str] = []
+
+        def _carry(row: dict[str, Any]) -> None:
+            _tally(summary, row)
+            done_keys.update(_path_keys(row.get("pdf_path")))
+            # A row another lane filtered out is not "done" — it was handed to
+            # whoever runs that backend. If that is us, resume is about to skip
+            # the very documents we were started to extract.
+            if row.get("skip_reason") == "lane-filter" and _in_lane(
+                row.get("extract_backend"), cfg
+            ):
+                conflicts.append(row.get("pdf_path") or "")
+
+        n_carried, good_bytes = scan_jsonl(cfg.jsonl_path, _carry)
+        if conflicts:
+            # Raise here, before the summary is written or a single document is
+            # touched. Detected up front but reported at the end, this would
+            # run the whole leg and overwrite the other lane's summary.json on
+            # the way to exiting non-zero.
+            raise LaneConflictError(
+                f"{len(conflicts)} documents in {cfg.jsonl_path} were filtered out "
+                f"by an earlier lane and belong to this one "
+                f"({', '.join(cfg.extract_backends or RUNNABLE_BACKENDS)}), but "
+                f"--resume treats any row as done and would skip them "
+                f"(e.g. {conflicts[0]}). Give each lane its own --out-dir; "
+                f"results.jsonl is append-only, so one directory cannot hold two "
+                f"passes over the same document."
+            )
+        size = cfg.jsonl_path.stat().st_size
+        if good_bytes < size:
+            # An interrupted write leaves a partial final line. Appending after
+            # it would splice two records; truncating to the last complete one
+            # costs at most the row we were mid-write on. _scan_completed has
+            # already refused anything that is not tail damage.
+            os.truncate(cfg.jsonl_path, good_bytes)
+            summary["repaired_tail_bytes"] = size - good_bytes
+        summary["resumed_rows"] = n_carried
+
+        # Resume is per document, not per stage: a document already in the file
+        # is skipped whole. So resuming with a longer stage list does not go
+        # back and fill the earlier rows in, and the shard would silently mix
+        # two depths of processing. Stages this invocation dropped are excluded
+        # from the comparison — --resume drops `parquet` itself, and warning
+        # about our own removal on every single resume would train the operator
+        # to ignore the message.
+        previous = _previous_stages(cfg.jsonl_path.with_suffix(".summary.json"))
+        if previous is not None:
+            before = [s for s in previous if s not in cfg.dropped_stages]
+            if before != cfg.stages:
+                summary["resumed_stage_mismatch"] = before
+
+    paths = [p for p in inputs if not _path_keys(str(p)) & done_keys]
+    summary["num_skipped_as_done"] = len(inputs) - len(paths)
+
+    summary_path = cfg.jsonl_path.with_suffix(".summary.json")
+    # Write it once before any work, not only on a clean exit. The stage list it
+    # carries is what a later --resume compares against, and the case that
+    # comparison exists for is precisely the leg that was killed and never
+    # reached the end.
+    _write_summary(summary_path, summary)
+
+    mode = "a" if cfg.resume else "w"
     try:
-        with cfg.jsonl_path.open("w", encoding="utf-8") as out_f:
-            for pdf_path in _iter_pdfs(Path(cfg.input.pdf_dir), cfg.input.limit):
+        # surrogatepass: POSIX filenames are bytes, and one the locale cannot
+        # decode reaches `pdf_path` as a lone surrogate. A strict encoder would
+        # kill the run mid-write on a file it had already processed.
+        with cfg.jsonl_path.open(
+            mode, encoding="utf-8", errors="surrogatepass"
+        ) as out_f:
+            for pdf_path in paths:
                 row, extracted = _process_one(pdf_path, cfg, comps)
                 out_f.write(row.to_json_line() + "\n")
                 out_f.flush()
@@ -201,21 +365,7 @@ def run(cfg: RunConfig) -> dict[str, Any]:
                     md = extracted.markdown if extracted is not None else None
                     parquet_sink.write_row(row, md)
 
-                summary["num_pdfs"] += 1
-                if row.backend:
-                    by_b = summary["by_backend"]
-                    final = row.extract_backend or row.backend
-                    by_b[final] = by_b.get(final, 0) + 1
-                if row.stage_b_backend:
-                    by_sb = summary["by_stage_b"]
-                    by_sb[row.stage_b_backend] = by_sb.get(row.stage_b_backend, 0) + 1
-                if row.error_class is None and row.sha256 is not None:
-                    summary["num_extracted"] += 1
-                if row.quality_score is not None:
-                    summary["num_scored"] += 1
-                    summary["sum_quality"] += row.quality_score
-                if row.error_class is not None:
-                    summary["num_errors"] += 1
+                _tally(summary, asdict(row))
     finally:
         if parquet_sink is not None:
             parquet_sink.close()
@@ -223,13 +373,15 @@ def run(cfg: RunConfig) -> dict[str, Any]:
             summary["parquet_path"] = str(cfg.parquet_path)
 
     summary["finished_at"] = time.time()
+    # This leg only — num_pdfs spans every leg of a resumed run, so pairing the
+    # two would read as a throughput they never achieved.
     summary["wall_seconds"] = summary["finished_at"] - summary["started_at"]
+    summary["leg_num_pdfs"] = len(paths)
     summary["avg_quality"] = (
         summary["sum_quality"] / summary["num_scored"] if summary["num_scored"] else None
     )
 
-    summary_path = cfg.jsonl_path.with_suffix(".summary.json")
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+    _write_summary(summary_path, summary)
     summary["summary_path"] = str(summary_path)
 
     return summary
@@ -265,8 +417,17 @@ def _process_one(
         _stage_router(row, pdf_path, comps)
 
     # ---- layout ----
+    # Skipped when no OCR backend is in this lane: layout exists to produce the
+    # stage-B decision between pipeline and vlm, and if we run neither, that
+    # decision cannot change what happens to the document. Running it anyway
+    # means a CPU box paying DocLayout-YOLO for every document it is about to
+    # hand away — precisely the documents it is not extracting.
     layout = None
-    if cfg.has_stage("layout") and _needs_ocr(row):
+    if (
+        cfg.has_stage("layout")
+        and _needs_ocr(row)
+        and any(_in_lane(b, cfg) for b in ("pipeline", "vlm"))
+    ):
         layout = _stage_layout(row, pdf_path, comps, cfg)
 
     # ---- extract ----
@@ -281,6 +442,27 @@ def _process_one(
     return row, extracted
 
 
+#: Backends a process can actually be asked to run. ``deferred`` is not one of
+#: them — it is stage-B declining, and labelling that a lane filter would hide
+#: the reason the document was held back.
+RUNNABLE_BACKENDS = ("mupdf", "pipeline", "vlm")
+_RUNNABLE_BACKENDS = frozenset(RUNNABLE_BACKENDS)
+
+
+def _in_lane(backend: str | None, cfg: RunConfig) -> bool:
+    """Does this process run *backend*?
+
+    ``extract_backends is None`` means every backend — which makes it the
+    *widest* lane, not an absent one. Reading it as "no lane configured, so
+    nothing to check" gets the resume conflict test exactly backwards: the
+    process willing to run everything is the one most certain to own a document
+    an earlier lane handed away.
+    """
+    if cfg.extract_backends is None:
+        return True
+    return backend in cfg.extract_backends
+
+
 def _needs_ocr(row: DocResult) -> bool:
     from pdfsys_core import Backend
 
@@ -293,6 +475,19 @@ def _stage_router(row: DocResult, pdf_path: Path, comps: Components) -> None:
     t0 = time.perf_counter()
     decision = comps.router.classify(pdf_path)
     t1 = time.perf_counter()
+
+    # doc_id for every routed document, not just the ones that go on to layout
+    # or extraction. It is the primary key of pdfsys.page/v2, so a row without
+    # it cannot be joined to anything — which is exactly what a worklist row
+    # for a document handed to another machine needs to be. The later stages
+    # recompute the identical value and overwrite it.
+    try:
+        row.sha256 = _sha256_of_file(pdf_path)
+    except OSError as e:
+        # classify() reports unreadable files through decision.error rather
+        # than raising, so this is the one place a dead file would otherwise
+        # take the whole run down.
+        _set_error(row, "router", e)
 
     row.backend = decision.backend.value
     row.ocr_prob = decision.ocr_prob
@@ -345,6 +540,35 @@ def _stage_extract(
     backend = row.stage_b_backend or row.backend
     extracted = None
 
+    # An earlier stage already failed — the router could not read the file, or
+    # the layout model died. Nothing after this is a routing decision, so the
+    # row keeps its error and gets no skip label: the two counters stay
+    # disjoint, and the hand-off worklist (built from skip_reason) does not
+    # queue a broken document onto another machine as routine work.
+    if row.error_class is not None:
+        row.extract_backend = backend
+        return None
+
+    # Lane filter. This process runs only the backends it was told to; the rest
+    # belong to another machine, or already ran on one. Saying so explicitly is
+    # what lets the OCR branches below drop their `layout is not None` guard —
+    # a guard that filtered lanes only by accident, and could not mean "mupdf
+    # only" on one box and "MinerU only" on another.
+    if backend in _RUNNABLE_BACKENDS and not _in_lane(backend, cfg):
+        row.extract_backend = backend
+        row.skip_reason = "lane-filter"
+        return None
+
+    # Layout was asked for and did not deliver, without raising. Do not extract
+    # on top of a layout stage that produced nothing.
+    if (
+        cfg.has_stage("layout")
+        and layout is None
+        and backend in (Backend.PIPELINE.value, Backend.VLM.value)
+    ):
+        row.extract_backend = backend
+        return None
+
     # MUPDF fast path.
     if backend == Backend.MUPDF.value or backend is None:
         try:
@@ -362,8 +586,10 @@ def _stage_extract(
             _set_error(row, "extract_mupdf", e)
             return None
 
-    # Pipeline OCR path.
-    elif backend == Backend.PIPELINE.value and layout is not None:
+    # Pipeline OCR path. No layout requirement: MinerU does its own layout
+    # analysis internally and is handed only the PDF bytes, so a box that runs
+    # MinerU does not need to have run ours.
+    elif backend == Backend.PIPELINE.value:
         try:
             t0 = time.perf_counter()
             extracted = comps.pipeline_parser.extract(pdf_path)
@@ -377,8 +603,9 @@ def _stage_extract(
             _set_error(row, "extract_pipeline", e)
             return None
 
-    # VLM path.
-    elif backend == Backend.VLM.value and layout is not None:
+    # VLM path. Only stage-B ever says "vlm", so reaching here already implies
+    # the layout stage ran — but the branch no longer depends on that.
+    elif backend == Backend.VLM.value:
         try:
             t0 = time.perf_counter()
             extracted = comps.vlm_parser.extract(pdf_path)
@@ -404,9 +631,15 @@ def _stage_extract(
             _set_error(row, "extract_vlm", e)
             return None
 
-    # DEFERRED or no layout — skip extraction.
+    # Stage-B held this document back, or named a backend we do not have. Say
+    # which — both used to arrive here as a silent no-op that the summary
+    # counted as a success.
     else:
         row.extract_backend = backend
+        if backend == Backend.DEFERRED.value:
+            row.skip_reason = "deferred"
+        else:
+            row.skip_reason = f"unknown-backend:{backend}"
         return None
 
     # Dump markdown.
@@ -433,10 +666,210 @@ def _stage_quality(row: DocResult, extracted: Any, comps: Components) -> None:
         _set_error(row, "quality", e)
 
 
+# ---------------------------------------------------------------- inputs
+
+def resolve_inputs(cfg: RunConfig) -> tuple[list[Path], dict[str, Any]]:
+    """Work out which PDFs this run covers, and say how it decided.
+
+    Either a worklist (``input.pdf_list``) or a directory scan
+    (``input.pdf_dir``) — the worklist wins when both are set, because it is
+    the more specific instruction. The returned dict goes into the run summary
+    so a shard can be traced back to the exact corpus it covers.
+    """
+    from pdfsys_core import read_pdf_list, take_inventory
+
+    info: dict[str, Any] = {}
+    if cfg.input.pdf_list:
+        worklist = read_pdf_list(cfg.input.pdf_list, path_root=cfg.input.path_root)
+        paths = list(worklist.paths)
+        info["source"] = "list"
+        info["entries"] = worklist.entries
+        info["missing"] = len(worklist.missing)
+        info["missing_examples"] = list(worklist.missing[:5])
+        info["duplicates"] = len(worklist.duplicates)
+        info["duplicate_examples"] = list(worklist.duplicates[:5])
+    else:
+        inventory = take_inventory(cfg.input.pdf_dir)
+        paths = list(inventory.paths)
+        info["source"] = "scan"
+        info["by_suffix"] = len(inventory.by_suffix)
+        info["by_magic"] = len(inventory.by_magic)
+
+    if cfg.input.limit is not None:
+        # Applied before the resume filter, so --limit names the same slice of
+        # the corpus on every invocation rather than "N more each time".
+        paths = paths[: cfg.input.limit]
+
+    # Absolute, always. `pdf_path` in results.jsonl is what --resume matches on
+    # and what another machine reads as a worklist, and a relative path means
+    # something different from a different working directory — a supervisor
+    # restarting the job from elsewhere would silently reprocess the whole
+    # corpus. Resolving here is the one place both input routes pass through.
+    paths = [p.resolve() for p in paths]
+
+    info["selected"] = len(paths)
+    return paths, info
+
+
+def _path_keys(path: str | None) -> set[str]:
+    """The strings that could name this same file in results.jsonl.
+
+    ``resolve_inputs`` records absolute paths, so new files match on the string
+    alone. The resolved form is kept as a second key so a results.jsonl written
+    before that — holding paths relative to whatever directory the run started
+    in — still matches when resumed from that same directory. It cannot rescue
+    a relative path resumed from elsewhere; nothing can, which is why the paths
+    are absolute now.
+    """
+    if not path:
+        return set()
+    keys = {str(path)}
+    with contextlib.suppress(OSError):
+        keys.add(str(Path(path).resolve()))
+    return keys
+
+
+def _write_summary(path: Path, summary: dict[str, Any]) -> None:
+    """The summary quotes filenames (pdf_dir, the missing-path examples), so it
+    needs the same surrogate tolerance results.jsonl does."""
+    path.write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+        errors="surrogatepass",
+    )
+
+
+def _previous_stages(summary_path: Path) -> list[str] | None:
+    """The stage list the run being resumed was started with, if recorded."""
+    try:
+        data = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    stages = data.get("config_stages")
+    return stages if isinstance(stages, list) else None
+
+
+class CorruptResultsError(RuntimeError):
+    """results.jsonl has damage that cannot be attributed to an interrupted write."""
+
+
+class LaneConflictError(RuntimeError):
+    """Resuming here would skip documents an earlier lane handed to this one."""
+
+
+class ParserOutputDirError(RuntimeError):
+    """The configured sidecar directory cannot be written to."""
+
+
+class RouterWeightsError(RuntimeError):
+    """The router's weights are missing or will not load."""
+
+
+def scan_jsonl(
+    path: Path, on_row: Callable[[dict[str, Any]], None]
+) -> tuple[int, int]:
+    """Stream an existing results.jsonl. Returns (rows, bytes of intact prefix).
+
+    Rows are handed to *on_row* and dropped, never accumulated: a 218k-document
+    results.jsonl is hundreds of megabytes, and resume needs a tally and a set
+    of keys, not the corpus.
+
+    A line counts as complete only when it is newline-terminated *and* parses.
+    Requiring the newline is what makes the byte count land on a record
+    boundary — a final line that is valid JSON but lost its terminator would
+    otherwise be counted as intact, and the next append would splice the two
+    records into one.
+
+    Damage in the *tail* is an interrupted write, which is expected and
+    recoverable. Damage anywhere else is not explicable that way, and this
+    raises rather than guessing: JSONL records are framed independently, so a
+    bad line in the middle says nothing about the intact rows after it, and
+    truncating to the prefix would delete work that was really done.
+    """
+    n_rows = 0
+    good = 0
+    bad_at: int | None = None
+    trailing = 0
+    with path.open("rb") as f:
+        for lineno, raw in enumerate(f, start=1):
+            ok = raw.endswith(b"\n")
+            if ok:
+                try:
+                    row = json.loads(raw.decode("utf-8"))
+                except (ValueError, UnicodeDecodeError):
+                    ok = False
+                else:
+                    ok = isinstance(row, dict)
+            if not ok:
+                if bad_at is None:
+                    bad_at = lineno
+                trailing += len(raw)
+                continue
+            if bad_at is not None:
+                raise CorruptResultsError(
+                    f"{path} 第 {bad_at} 行损坏，但后面还有完好的记录"
+                    f"（例如第 {lineno} 行）。中间的坏行无法用“写到一半被中断”解释，"
+                    f"自动截断会删掉真的做过的工作。请人工检查后再用 --resume。"
+                )
+            on_row(row)
+            n_rows += 1
+            good += len(raw)
+    return n_rows, good
+
+
+def _tally(summary: dict[str, Any], row: dict[str, Any]) -> None:
+    """Fold one result row into the summary counters.
+
+    Takes a dict rather than a DocResult so a run being resumed can replay the
+    rows it already wrote through the identical arithmetic — otherwise the
+    summary would describe only the last leg of a restarted run.
+    """
+    summary["num_pdfs"] += 1
+    if row.get("backend"):
+        by_b = summary["by_backend"]
+        final = row.get("extract_backend") or row["backend"]
+        by_b[final] = by_b.get(final, 0) + 1
+    if row.get("stage_b_backend"):
+        by_sb = summary["by_stage_b"]
+        by_sb[row["stage_b_backend"]] = by_sb.get(row["stage_b_backend"], 0) + 1
+    # Extracted means text came back — not merely "was routed". sha256 is set
+    # for every routed document now, so it no longer distinguishes anything;
+    # extract_backend plus the absence of a skip does.
+    if (
+        row.get("error_class") is None
+        and row.get("skip_reason") is None
+        and row.get("extract_backend") is not None
+    ):
+        summary["num_extracted"] += 1
+    if row.get("skip_reason") is not None:
+        summary["num_skipped"] += 1
+        by_sr = summary["by_skip_reason"]
+        by_sr[row["skip_reason"]] = by_sr.get(row["skip_reason"], 0) + 1
+        if row["skip_reason"] == "lane-filter":
+            # Which lane the document went to, so the caller can tell a normal
+            # hand-off (this box filtering out OCR work) from a document this
+            # box thinks is already done but was sent here to be OCR'd.
+            by_lane = summary.setdefault("by_filtered_backend", {})
+            be = row.get("extract_backend") or "unknown"
+            by_lane[be] = by_lane.get(be, 0) + 1
+    if row.get("quality_score") is not None:
+        summary["num_scored"] += 1
+        summary["sum_quality"] += row["quality_score"]
+    if row.get("error_class") is not None:
+        summary["num_errors"] += 1
+
+
 # ---------------------------------------------------------------- util
 
-def _iter_pdfs(root: Path, limit: int | None) -> Iterable[Path]:
-    pdfs = sorted(p for p in root.rglob("*.pdf") if p.is_file())
-    if limit is not None:
-        pdfs = pdfs[:limit]
-    yield from pdfs
+def _sha256_of_file(path: Path) -> str:
+    """Hash a file in 1 MiB chunks. Same value pdfsys_parser_mupdf computes."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+# Discovery lives in pdfsys_core.discovery so that `pdfsys run`,
+# `pdfsys dataset` and pdfsys-bench cannot drift apart about what a PDF is.
+# See resolve_inputs above.

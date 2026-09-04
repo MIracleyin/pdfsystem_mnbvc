@@ -36,7 +36,8 @@ if [ -z "$PDF_DIR" ]; then
   cat <<EOF
 usage: bash scripts/batch_process.sh <pdf-dir> [out-dir] [args...]
 
-  pdf-dir   directory of PDFs (rglob *.pdf)
+  pdf-dir   directory of PDFs (recursive; *.pdf in any case, plus
+            extensionless files whose header is %PDF-)
   out-dir   default: out/batch-YYYYMMDD-HHMMSS
 
 passes any additional flags to scripts/extract_matrix.py

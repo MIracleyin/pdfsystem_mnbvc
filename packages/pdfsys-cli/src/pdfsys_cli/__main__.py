@@ -15,8 +15,10 @@ Usage::
     # Override config from CLI
     pdfsys run -c pdfsys.yaml --pdf-dir ./other --limit 10
 
-    # Quick run without config file
-    pdfsys run --pdf-dir ./data/pdfs --out-dir ./out --stages router,extract
+    # Quick run without config file. --extract-backends names which backends
+    # THIS machine runs; without it, OCR-routed documents go to MinerU.
+    pdfsys run --pdf-dir ./data/pdfs --out-dir ./out \
+               --stages router,extract --extract-backends mupdf
 
     # Launch annotation UI
     pdfsys annotate
@@ -34,6 +36,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 
 from .config import (
@@ -74,6 +77,31 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Comma-separated stages to run: {','.join(VALID_STAGES)}",
     )
     p.add_argument("--pdf-dir", type=str, default=None, help="Input PDF directory.")
+    p.add_argument("--pdf-list", type=str, default=None,
+                   help="File of PDF paths, one per line, processed instead of "
+                        "scanning --pdf-dir. This is how a box works on a slice it "
+                        "was handed — the documents another machine routed to it, or "
+                        "one bucket of a fleet split (`split -n l/8` on the list). "
+                        "Order is preserved; duplicates and missing files are "
+                        "reported, not silently dropped.")
+    p.add_argument("--path-root", type=str, default=None,
+                   help="Directory that relative entries in --pdf-list are resolved "
+                        "against. Lets one worklist be read on a machine that mounted "
+                        "the corpus somewhere else. Absolute entries are left alone.")
+    p.add_argument("--extract-backends", type=str, default=None,
+                   help="Comma-separated backends THIS machine runs: mupdf, "
+                        "pipeline, vlm. Default: all of them. The CPU box takes "
+                        "`mupdf` and records the OCR-bound documents as another "
+                        "box's work (skip_reason=lane-filter); the GPU box takes "
+                        "`pipeline` and skips what the CPU box already did. Use "
+                        "the same --ocr-threshold on both, or a document can be "
+                        "filtered out of BOTH lanes — that shows up as a nonzero "
+                        "lane-filter count on the GPU box.")
+    p.add_argument("--resume", action="store_true", default=False,
+                   help="Append to an existing results.jsonl and skip the documents "
+                        "already in it, instead of truncating it. The summary is "
+                        "recomputed over the whole file, so it describes the run and "
+                        "not just this leg of it.")
     p.add_argument("--out-dir", type=str, default=None, help="Output directory.")
     p.add_argument("--limit", type=int, default=None, help="Max PDFs to process.")
     p.add_argument("--markdown-dir", type=str, default=None, help="Dump markdown here.")
@@ -89,8 +117,77 @@ def build_parser() -> argparse.ArgumentParser:
              "Apple Silicon; vllm-engine needs NVIDIA GPU; transformers is "
              "the portable default.",
     )
+    p.add_argument("--parser-output-dir", type=str, default=None,
+                   help="Where MinerU's sidecars are kept: <dir>/<sha256>/ with "
+                        "_middle.json, _content_list.json and images/. This is the "
+                        "only durable copy — mineru-api's own output tree is "
+                        "garbage-collected — and it is exactly what "
+                        "`pdfsys dataset --from-mineru` reads. Without it the "
+                        "markdown survives but nothing packageable does.")
+    p.add_argument("--no-parser-images", action="store_true", default=False,
+                   help="Do not ask the parser for figure crops. Worth it when the "
+                        "shard will use --images pages or none, where the crops are "
+                        "downloaded and then thrown away (~90 KiB/page over the "
+                        "wire, which on a remote mineru-api is the wire).")
     p.add_argument("--no-quality", action="store_true", default=False, help="Skip quality scoring.")
     p.add_argument("--quality-model", type=str, default=None, help="HuggingFace quality model.")
+
+    # ---- score ----
+    sc = sub.add_parser(
+        "score",
+        help="Quality-score a finished run's markdown, without re-extracting.",
+    )
+    sc.add_argument("--results", required=True,
+                    help="results.jsonl from a run. Rows are matched to markdown "
+                         "by sha256 and written back with the quality columns "
+                         "filled; every input row reaches the output.")
+    sc.add_argument("--markdown-dir", required=True,
+                    help="Directory of <sha256>.md, i.e. the run's --markdown-dir.")
+    sc.add_argument("--out", required=True, help="Where to write the scored jsonl.")
+    sc.add_argument("--model", default=None,
+                    help="The model the scorer is expected to be serving. Checked "
+                         "against GET /health before any work: two lanes scored by "
+                         "two different models put two scales in one column, and "
+                         "nothing in the data would say so.")
+    sc.add_argument("--workers", type=int, default=4,
+                    help="Concurrent requests (default: 4). The server is "
+                         "threaded and takes them in parallel, but they share one "
+                         "model on one GPU, so the return flattens somewhere — "
+                         "where depends on the box, so measure rather than assume "
+                         "this default is the ceiling.")
+    sc.add_argument("--max-chars", type=int, default=40_000,
+                    help="Clip each document before sending (default: 40000, which "
+                         "is where the server truncates anyway — so the difference "
+                         "never crosses the wire).")
+    sc.add_argument("--resume", action="store_true", default=False,
+                    help="Continue from the checkpoint left by an interrupted run "
+                         "instead of re-scoring what it already did.")
+    sc.add_argument("--rescore", action="store_true", default=False,
+                    help="Score rows that already carry a quality_score, e.g. after "
+                         "changing the model.")
+    sc.add_argument("--overwrite", action="store_true", default=False,
+                    help="Replace an existing --out rather than refusing.")
+
+    # ---- smoke ----
+    sm = sub.add_parser(
+        "smoke",
+        help="Run the whole split pipeline over a tiny generated corpus.",
+    )
+    sm.add_argument("--workdir", default=None,
+                    help="Where to build the corpus and outputs. A temporary "
+                         "directory is used and deleted when this is omitted; "
+                         "give one to keep the artifacts and look at them.")
+    sm.add_argument("--mineru-url", default=None,
+                    help="Validate against a real mineru-api instead of the "
+                         "in-process stub, e.g. http://gpu01:8000.")
+    sm.add_argument("--quality-url", default=None,
+                    help="Validate against a real quality server instead of the "
+                         "in-process stub, e.g. http://gpu01:8765. Note the model "
+                         "check is skipped when you supply one, since a real "
+                         "server serves a real model.")
+    sm.add_argument("-v", "--verbose", action="store_true", default=False,
+                    help="Show what each sub-command printed. Otherwise it is "
+                         "kept and shown only if a check fails.")
 
     # ---- visualize ----
     v = sub.add_parser(
@@ -127,7 +224,20 @@ def build_parser() -> argparse.ArgumentParser:
                             "lane. This is the route for text-ok documents the router "
                             "never sent to MinerU — they leave no *_content_list.json "
                             "behind. Extraction is re-run here (~10ms/page) because a "
-                            "run persists only merged markdown, with no page boundaries.")
+                            "run persists only merged markdown, with no page boundaries. "
+                            "Packages EVERY PDF under the directory, including any the "
+                            "OCR lane owns — use --from-pdf-list to package one lane.")
+    d_src.add_argument("--from-pdf-list", dest="from_pdf_list",
+                       help="File of PDF paths, one per line, packaged through the mupdf "
+                            "lane instead of scanning a directory. This is how the CPU "
+                            "lane packages exactly what it extracted: scanning the corpus "
+                            "root would also mupdf-extract the documents the GPU lane "
+                            "owns, and those doc_ids collide with the GPU shard's. "
+                            "Derive it from the run: "
+                            "jq -r 'select(.extract_backend==\"mupdf\" and .skip_reason==null "
+                            "and .error_class==null) | .pdf_path' results.jsonl")
+    d.add_argument("--path-root", dest="dataset_path_root", default=None,
+                   help="Directory that relative --from-pdf-list entries resolve against.")
     d.add_argument("--to", required=True, dest="to_dir",
                    help="Output dataset directory (pages/ + images/ are created inside).")
     d.add_argument("--shard", default="shard-00000", help="Shard name (default: shard-00000).")
@@ -161,6 +271,21 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--render-dpi", type=int, default=200,
                    help="DPI for page rasters (default: 200, matching the resolution MinerU "
                         "crops at, so a derived crop is pixel-equivalent to a stored one).")
+    d.add_argument("--allow-other-lanes", action="store_true", default=False,
+                   help="Package documents that --meta says a different lane "
+                        "extracted. Normally an error: the same doc_id would end "
+                        "up in two shards, and (doc_id, page_index) is the "
+                        "primary key.")
+    d.add_argument("--allow-missing-crops", action="store_true", default=False,
+                   help="Proceed with --images crops even when the MinerU output "
+                        "has no images/ directories. Normally that means the run "
+                        "used --no-parser-images and the crops were never fetched, "
+                        "so the shard would come out with zero images rather than "
+                        "the figures it advertises.")
+    d.add_argument("--overwrite", action="store_true", default=False,
+                   help="Replace pages/<shard>.parquet if it already exists. Without this "
+                        "a name collision is an error, because several lanes write their "
+                        "shards into one dataset directory and the writer truncates.")
 
     # ---- dataset-validate ----
     dv = sub.add_parser(
@@ -228,44 +353,122 @@ def cmd_init_config() -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    # Load config: YAML file → defaults → CLI overrides.
-    cfg = load_config(args.config) if args.config else default_config()
+    from pathlib import Path
 
-    cfg = apply_cli_overrides(
-        cfg,
-        stages=args.stages,
-        pdf_dir=args.pdf_dir,
-        out_dir=args.out_dir,
-        limit=args.limit,
-        markdown_dir=args.markdown_dir,
-        cache_dir=args.cache_dir,
-        ocr_threshold=args.ocr_threshold,
-        router_weights=args.router_weights,
-        vlm_enabled=args.vlm_enabled,
-        vlm_engine=args.vlm_engine,
-        no_quality=args.no_quality,
-        quality_model=args.quality_model,
-    )
-
-    if not cfg.input.pdf_dir:
-        print("Error: --pdf-dir is required (or set input.pdf_dir in config).", file=sys.stderr)
+    # Load config: YAML file → defaults → CLI overrides. Both raise ValueError
+    # on the same class of typo (an unknown stage or backend), so both are
+    # inside the handler — a traceback from a config file reads like a crash.
+    try:
+        cfg = load_config(args.config) if args.config else default_config()
+        cfg = apply_cli_overrides(
+            cfg,
+            stages=args.stages,
+            pdf_dir=args.pdf_dir,
+            pdf_list=args.pdf_list,
+            path_root=args.path_root,
+            extract_backends=args.extract_backends,
+            resume=args.resume,
+            out_dir=args.out_dir,
+            limit=args.limit,
+            markdown_dir=args.markdown_dir,
+            cache_dir=args.cache_dir,
+            ocr_threshold=args.ocr_threshold,
+            router_weights=args.router_weights,
+            vlm_enabled=args.vlm_enabled,
+            vlm_engine=args.vlm_engine,
+            no_quality=args.no_quality,
+            quality_model=args.quality_model,
+            parser_output_dir=args.parser_output_dir,
+            no_parser_images=args.no_parser_images,
+        )
+    except ValueError as e:
+        # Unknown --stages or --extract-backends value. A traceback here reads
+        # like a crash rather than a typo.
+        print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    if cfg.dropped_stages:
+    if not cfg.input.pdf_dir and not cfg.input.pdf_list:
+        print(
+            "Error: --pdf-dir or --pdf-list is required "
+            "(or set input.pdf_dir / input.pdf_list in config).",
+            file=sys.stderr,
+        )
+        return 1
+    if cfg.input.pdf_list and not Path(cfg.input.pdf_list).is_file():
+        print(f"Error: --pdf-list not found: {cfg.input.pdf_list}", file=sys.stderr)
+        return 1
+    if cfg.input.pdf_list and cfg.input.pdf_dir:
+        print(
+            f"[pdfsys] note: --pdf-list wins; --pdf-dir {cfg.input.pdf_dir} is ignored",
+            file=sys.stderr,
+        )
+    if cfg.input.path_root and not cfg.input.pdf_list:
+        print(
+            "[pdfsys] note: --path-root only applies to --pdf-list; ignoring it",
+            file=sys.stderr,
+        )
+
+    for stage in cfg.dropped_stages:
         # A stage vanishing between what was asked for and what runs is the
         # kind of thing you only notice three hours later, when the output
         # you expected isn't there.
         print(
-            f"[pdfsys] warning: --no-quality also dropped "
-            f"{', '.join(cfg.dropped_stages)} — the L1 parquet's `kept` column "
-            f"is decided by quality_score, so without the scorer there is "
-            f"nothing to write.",
+            f"[pdfsys] warning: dropped stage {stage!r} — "
+            f"{cfg.drop_reasons.get(stage, 'no reason recorded')}.",
+            file=sys.stderr,
+        )
+    if "parquet" in cfg.dropped_stages and cfg.parquet_path.exists():
+        print(
+            f"[pdfsys] warning: {cfg.parquet_path} is left over from an earlier "
+            f"leg and now covers only part of this run — treat it as stale.",
             file=sys.stderr,
         )
 
     # Print run plan.
     print(f"[pdfsys] stages:  {' → '.join(cfg.stages)}")
-    print(f"[pdfsys] input:   {cfg.input.pdf_dir}" + (f" (limit {cfg.input.limit})" if cfg.input.limit else ""))
+    source = cfg.input.pdf_list or cfg.input.pdf_dir
+    print(
+        f"[pdfsys] input:   {source}"
+        + (f" (rooted at {cfg.input.path_root})" if cfg.input.path_root else "")
+        + (f" (limit {cfg.input.limit})" if cfg.input.limit else "")
+    )
+    # Per backend, because pipeline and vlm are configured independently in
+    # YAML — reading only `pipeline` gives a VLM lane a false all-clear.
+    from .runner import parser_output_dirs
+
+    sidecar_dirs = parser_output_dirs(cfg)
+    unset = sorted(b for b, d in sidecar_dirs.items() if not d)
+    if unset:
+        # mineru-api writes its own copy under a task-uuid directory and
+        # garbage-collects it, and the containerised deployment mounts no
+        # volume for it. So without --parser-output-dir the sidecars are gone
+        # by the time anyone goes to package them, and `pdfsys dataset
+        # --from-mineru` reports an empty directory rather than a lost one.
+        print(
+            f"[pdfsys] warning: no output_dir for {', '.join(unset)}, so MinerU's "
+            f"middle.json, content_list.json and figure crops are discarded as "
+            f"they arrive. The markdown survives; nothing `pdfsys dataset "
+            f"--from-mineru` can read does. Set --parser-output-dir.",
+            file=sys.stderr,
+        )
+    for backend, where in sorted(sidecar_dirs.items()):
+        if where:
+            print(f"[pdfsys] sidecars: {where} ({backend})")
+
+    if cfg.extract_backends is not None:
+        print(f"[pdfsys] lane:    {', '.join(cfg.extract_backends)}")
+        if "vlm" in cfg.extract_backends and not cfg.vlm.enabled:
+            # Only stage-B ever says "vlm", and it only says it when
+            # vlm_enabled is set. Without that the lane is empty by
+            # construction — knowable before a single PDF is opened.
+            print(
+                "[pdfsys] warning: lane includes `vlm` but vlm.enabled is false, "
+                "so stage-B can never route anything to it. Add --vlm (and the "
+                "`layout` stage, which is what produces the stage-B decision).",
+                file=sys.stderr,
+            )
+    if cfg.resume:
+        print("[pdfsys] resume:  appending to an existing results.jsonl")
     print(f"[pdfsys] output:  {cfg.jsonl_path}")
     if cfg.markdown_path:
         print(f"[pdfsys] markdown: {cfg.markdown_path}")
@@ -276,28 +479,132 @@ def cmd_run(args: argparse.Namespace) -> int:
     print()
 
     # Run pipeline.
-    summary = run(cfg)
+    from .runner import (
+        CorruptResultsError,
+        LaneConflictError,
+        ParserOutputDirError,
+        RouterWeightsError,
+    )
+
+    try:
+        summary = run(cfg)
+    except (
+        CorruptResultsError,
+        LaneConflictError,
+        ParserOutputDirError,
+        RouterWeightsError,
+    ) as e:
+        # All of these are raised before any document is touched, so nothing
+        # in the out-dir has been written by this leg.
+        print(f"[pdfsys] error: {e}", file=sys.stderr)
+        return 1
 
     # Print summary.
     print()
+    disc = summary.get("discovery", {})
+    if disc.get("by_magic"):
+        print(
+            f"[pdfsys] discovered: {disc['by_suffix']} by extension, "
+            f"{disc['by_magic']} extensionless (recognised by %PDF- header)"
+        )
+    if disc.get("missing"):
+        print(
+            f"[pdfsys] warning: {disc['missing']}/{disc['entries']} listed paths "
+            f"do not exist, e.g. {disc.get('missing_examples', [])[:3]}",
+            file=sys.stderr,
+        )
+    if disc.get("duplicates"):
+        print(
+            f"[pdfsys] warning: {disc['duplicates']}/{disc['entries']} listed paths "
+            f"are repeats, processed once, e.g. "
+            f"{disc.get('duplicate_examples', [])[:3]}",
+            file=sys.stderr,
+        )
+    if summary.get("resumed_rows"):
+        print(
+            f"[pdfsys] resumed:  {summary['resumed_rows']} rows already on disk, "
+            f"{summary['num_skipped_as_done']} inputs skipped as done"
+        )
+        if summary["num_skipped_as_done"] == 0:
+            print(
+                "[pdfsys] warning: carried rows but skipped nothing — the paths on "
+                "disk do not match the paths being processed, so this leg is "
+                "redoing work. Check --pdf-dir / --path-root against the earlier leg.",
+                file=sys.stderr,
+            )
+    if summary.get("repaired_tail_bytes"):
+        print(
+            f"[pdfsys] repaired: dropped {summary['repaired_tail_bytes']} bytes of "
+            f"an interrupted final line from results.jsonl",
+            file=sys.stderr,
+        )
+    if summary.get("resumed_stage_mismatch"):
+        print(
+            f"[pdfsys] warning: resuming a run that was started with stages "
+            f"{' → '.join(summary['resumed_stage_mismatch'])}, now running "
+            f"{' → '.join(cfg.stages)}. Resume skips whole documents, not "
+            f"stages — the {summary['resumed_rows']} rows already on disk keep "
+            f"the old depth. Re-run without --resume to redo them.",
+            file=sys.stderr,
+        )
     print(f"[pdfsys] processed {summary['num_pdfs']} PDFs in {summary['wall_seconds']:.1f}s")
     print(f"[pdfsys] backends:  {summary['by_backend']}")
     if summary.get("by_stage_b"):
         print(f"[pdfsys] stage-b:   {summary['by_stage_b']}")
-    print(f"[pdfsys] extracted={summary['num_extracted']} scored={summary['num_scored']} errors={summary['num_errors']}")
+    print(
+        f"[pdfsys] extracted={summary['num_extracted']} "
+        f"skipped={summary['num_skipped']} "
+        f"scored={summary['num_scored']} errors={summary['num_errors']}"
+    )
+    if summary.get("by_skip_reason"):
+        print(f"[pdfsys] skipped:   {summary['by_skip_reason']}")
+    # Filtering OCR work out of a mupdf lane is the normal hand-off. Filtering
+    # *mupdf* work out of an OCR lane is not: it means this box decided the
+    # document needs no OCR, while the box that queued it decided the opposite
+    # and has already handed it away. It is then in no lane at all.
+    lane = cfg.extract_backends or []
+    stranded = summary.get("by_filtered_backend", {}).get("mupdf", 0)
+    if stranded and lane and "mupdf" not in lane:
+        print(
+            f"[pdfsys] warning: {stranded} documents were routed to mupdf here but "
+            f"queued for lane {', '.join(lane)} by the box that sent them — this "
+            f"box's router disagrees, so they are in NO lane. Check that "
+            f"--ocr-threshold matches ({cfg.router.ocr_threshold}).",
+            file=sys.stderr,
+        )
     if summary.get("avg_quality") is not None:
         print(f"[pdfsys] avg_quality={summary['avg_quality']:.3f}")
     print(f"[pdfsys] jsonl:     {cfg.jsonl_path}")
     print(f"[pdfsys] summary:   {summary.get('summary_path', '')}")
+
+    # Gate on what this invocation *selected*, not on num_pdfs — that counter
+    # includes rows carried in from earlier legs, so a resumed run pointed at
+    # the wrong path would inherit a healthy-looking count and exit 0.
+    if disc.get("selected", summary["num_pdfs"]) == 0:
+        # Almost always a wrong path, or a worklist naming files this machine
+        # did not mount. Exiting 0 lets a fleet script march on through every
+        # bucket reporting success and produce nothing.
+        print(f"[pdfsys] error: no PDFs to process from {source}", file=sys.stderr)
+        return 1
+    if disc.get("entries") and disc.get("missing") == disc.get("entries"):
+        print(
+            f"[pdfsys] error: not one of the {disc['entries']} listed paths exists "
+            f"— wrong --path-root?",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
 def cmd_dataset(args: argparse.Namespace) -> int:
+    import dataclasses
     import json
     from functools import partial
     from pathlib import Path
 
     import pyarrow.parquet as pq
+
+    from pdfsys_core import render_markdown
 
     from .dataset_build import (
         build_from_mineru_dir,
@@ -310,21 +617,32 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     )
     from .dataset_writer import DatasetWriter, pairs_table
 
-    from_pdfs = args.from_pdf_dir is not None
-    src = Path(args.from_pdf_dir if from_pdfs else args.from_mineru)
-    if not src.is_dir():
+    from_list = args.from_pdf_list is not None
+    from_pdfs = from_list or args.from_pdf_dir is not None
+    src = Path(args.from_pdf_list or args.from_pdf_dir or args.from_mineru)
+    if from_list:
+        if not src.is_file():
+            print(f"Error: --from-pdf-list not found: {src}", file=sys.stderr)
+            return 1
+    elif not src.is_dir():
         print(f"Error: not a directory: {src}", file=sys.stderr)
         return 1
+    if args.dataset_path_root and not from_list:
+        print(
+            "[pdfsys dataset] note: --path-root only applies to --from-pdf-list; "
+            "ignoring it",
+            file=sys.stderr,
+        )
 
     # MinerU hands us crops. The mupdf lane rasterises nothing at all, so the
     # only pixels it could ever store are whole-page renders.
     images = args.images or ("pages" if from_pdfs else "crops")
     if from_pdfs and images == "crops":
         print(
-            "Error: --images crops is impossible with --from-pdf-dir — the mupdf "
-            "lane reads the PDF's text layer and never cuts figures out of the "
-            "page. Use --images pages (whole-page rasters, figures addressed by "
-            "bbox) or --images none.",
+            "Error: --images crops is impossible with the mupdf lane — it reads "
+            "the PDF's text layer and never cuts figures out of the page. Use "
+            "--images pages (whole-page rasters, figures addressed by bbox) or "
+            "--images none.",
             file=sys.stderr,
         )
         return 1
@@ -335,12 +653,70 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     # it. Everything downstream is lane-agnostic.
     work: list = []
     pdf_index: dict[str, Path] = {}
+    #: doc_id -> path for the mupdf lane. select_pdfs already hashed every file
+    #: to dedupe by content, so the cross-lane check below reuses that rather
+    #: than reading the whole corpus a second time.
+    lane_doc_ids: dict[str, Path] = {}
+    #: (entries, missing, duplicates) when the input was a worklist.
+    list_stats: tuple[int, int, int] | None = None
 
     if from_pdfs:
-        selected, dropped = select_pdfs(iter_pdfs(src))
+        if from_list:
+            from pdfsys_core import read_pdf_list
+
+            worklist = read_pdf_list(src, path_root=args.dataset_path_root)
+            if worklist.missing:
+                print(
+                    f"[pdfsys dataset] warning: {len(worklist.missing)}/"
+                    f"{worklist.entries} listed paths do not exist, e.g. "
+                    f"{list(worklist.missing[:3])} — wrong --path-root?",
+                    file=sys.stderr,
+                )
+            if worklist.duplicates:
+                print(
+                    f"[pdfsys dataset] warning: {len(worklist.duplicates)}/"
+                    f"{worklist.entries} listed paths are repeats, packaged once",
+                    file=sys.stderr,
+                )
+            list_stats = (
+                worklist.entries, len(worklist.missing), len(worklist.duplicates)
+            )
+            candidates = list(worklist.paths)
+            if not candidates:
+                print(
+                    f"Error: no readable PDF in {src} "
+                    f"({worklist.entries} entries)",
+                    file=sys.stderr,
+                )
+                return 1
+        else:
+            candidates = list(iter_pdfs(src))
+            if not candidates:
+                print(f"Error: no PDF found under {src}", file=sys.stderr)
+                return 1
+        # A list can name anything; the scan already applied the shared rule.
+        # Letting a non-PDF through would package a "document" whose extraction
+        # is whatever mupdf makes of a text file.
+        if from_list:
+            from pdfsys_core import looks_like_pdf
+
+            not_pdfs = [p for p in candidates if not looks_like_pdf(p)]
+            if not_pdfs:
+                print(
+                    f"[pdfsys dataset] warning: {len(not_pdfs)} listed entries are "
+                    f"not PDFs and were skipped, e.g. "
+                    f"{[str(p) for p in not_pdfs[:3]]}",
+                    file=sys.stderr,
+                )
+                candidates = [p for p in candidates if looks_like_pdf(p)]
+
+        selected, dropped = select_pdfs(candidates)
         if not selected:
-            print(f"Error: no *.pdf found under {src}", file=sys.stderr)
+            # Post-dedup: candidates can be non-empty and still leave nothing —
+            # every file unreadable, or every entry a duplicate of one that was.
+            print(f"Error: no readable PDF from {src}", file=sys.stderr)
             return 1
+        lane_doc_ids = dict(selected)
         work = [(str(p), partial(build_from_pdf, p), p) for _, p in selected]
     else:
         if want_rasters:
@@ -358,7 +734,28 @@ def cmd_dataset(args: argparse.Namespace) -> int:
         if not doc_dirs:
             print(f"Error: no *_content_list.json found under {src}", file=sys.stderr)
             return 1
+        # A run with --no-parser-images never fetched them, so the source tree
+        # has no images/ at all. Building `crops` from it produces a shard whose
+        # text points at figures and whose images table is empty — valid, and
+        # completely unlike what was asked for.
+        if (
+            images == "crops"
+            and not args.allow_missing_crops
+            and not any((d / "images").is_dir() for d in doc_dirs)
+        ):
+            print(
+                f"Error: --images crops but no images/ directory anywhere "
+                f"under {src}. The run that produced it likely used "
+                f"--no-parser-images. Use --images pages or none, or pass "
+                f"--allow-missing-crops to build an image-less crops shard.",
+                file=sys.stderr,
+            )
+            return 1
+
         doc_dirs, dropped = select_documents(doc_dirs)
+        # The directory name IS the sha256 our parsers uploaded under, so the
+        # same cross-lane check costs no hashing at all on this side.
+        lane_doc_ids = {d.name: d for d in doc_dirs if _SHA256_NAME.match(d.name)}
         work = [
             (
                 str(doc_dir),
@@ -389,6 +786,65 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     meta = _load_run_meta(Path(args.meta)) if args.meta else {}
     out_dir = Path(args.to_dir)
     lane = "mupdf" if from_pdfs else "mineru"
+
+    # The run knows which lane each document belongs to. Packaging one this lane
+    # did not extract means the other lane's shard holds the same doc_id, and
+    # (doc_id, page_index) is the primary key — the merged dataset is invalid.
+    # Scanning a corpus root with --from-pdf-dir does exactly that, silently,
+    # because mupdf will happily re-extract a scanned PDF into empty pages.
+    if meta and lane_doc_ids:
+        intruders = [
+            (str(path), row)
+            for doc_id, path in lane_doc_ids.items()
+            for row in (meta.get(doc_id),)
+            if row and _owned_by_another_lane(row, lane)
+        ]
+        if intruders and not args.allow_other_lanes:
+            for label, row in intruders[:5]:
+                print(f"Error: {label} — {_lane_conflict_reason(row, lane)}",
+                      file=sys.stderr)
+            print(
+                f"Error: {len(intruders)}/{len(work)} documents are already in "
+                f"another lane's shard according to {args.meta}. Packaging them "
+                f"here puts the same doc_id in two shards, and "
+                f"(doc_id, page_index) is the primary key. Package each lane "
+                f"from its own list, or pass --allow-other-lanes if you meant it.",
+                file=sys.stderr,
+            )
+            return 1
+        if intruders:
+            print(
+                f"[pdfsys dataset] warning: packaging {len(intruders)} documents "
+                f"another lane extracted (--allow-other-lanes)",
+                file=sys.stderr,
+            )
+
+    # Two lanes write into one shard directory, so the shard name is the only
+    # thing keeping them apart. pq.ParquetWriter truncates without asking, so
+    # reusing a name silently replaces the other lane's work with this one's.
+    #
+    # A shard is up to four parquets plus a descriptor, and the media writers
+    # are opened lazily — a rebuild with a different --images mode would
+    # truncate pages/ and leave the previous build's images/ and page_images/
+    # in place, splicing two builds into one shard. So the whole set is both
+    # the collision check and what --overwrite clears.
+    shard_files = [
+        out_dir / sub / f"{args.shard}.parquet"
+        for sub in ("pages", "images", "page_images", "pairs")
+    ] + [out_dir / f"{args.shard}.meta.json"]
+    clashes = [p for p in shard_files if p.exists()]
+    if clashes and not args.overwrite:
+        for p in clashes:
+            print(f"Error: {p} 已存在", file=sys.stderr)
+        print(
+            f"Error: shard 名 {args.shard!r} 已被占用。换一个 --shard 名字，"
+            f"或加 --overwrite 覆盖（会删掉上面这些文件）。",
+            file=sys.stderr,
+        )
+        return 1
+    for p in clashes:
+        p.unlink()
+
     print(f"[pdfsys dataset] lane={lane} images={images} "
           f"{len(work)} documents → {out_dir}"
           + (f"（去重丢弃 {len(dropped)} 份）" if dropped else ""))
@@ -396,6 +852,8 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     docs: list = []
     failures = 0
     missing_pdfs = 0
+    meta_hits = meta_misses = 0
+    empty_builds = 0
     with DatasetWriter(
         out_dir,
         shard=args.shard,
@@ -410,6 +868,11 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 print(f"  ! {label}: {type(e).__name__}: {e}", file=sys.stderr)
                 continue
 
+            if pages and meta:
+                if meta.get(pages[0].doc_id):
+                    meta_hits += 1
+                else:
+                    meta_misses += 1
             pages = tuple(
                 _apply_run_meta(p, meta.get(p.doc_id)) for p in pages
             )
@@ -423,6 +886,16 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 )
                 if pdf_path is None:
                     missing_pdfs += 1
+                    # No raster for this document, so its bbox:// markers point
+                    # into pixels the shard does not have. Re-render its text
+                    # without them — the same thing --images none does, decided
+                    # per document because that is where the raster is decided.
+                    pages = tuple(
+                        dataclasses.replace(
+                            p, text=render_markdown(p.blocks, region_refs=False)
+                        )
+                        for p in pages
+                    )
                 else:
                     rasters = render_page_images(
                         pdf_path, pages, dpi=args.render_dpi
@@ -431,6 +904,11 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                     # id; those are the rows that must be written.
                     pages = tuple(p for p, _ in rasters)
 
+            if not pages:
+                # Built fine, produced nothing. DatasetWriter deliberately does
+                # not count this as a document, so without a counter here it
+                # would appear in neither `documents` nor `failed`.
+                empty_builds += 1
             writer.write(pages, blobs, [(p, b) for p, b in rasters])
             if args.pairs:
                 docs.append(pages)
@@ -445,8 +923,28 @@ def cmd_dataset(args: argparse.Namespace) -> int:
     n_docs, n_pages, n_images, n_page_images = stats
     print(
         f"[pdfsys dataset] documents={n_docs} pages={n_pages} "
-        f"images={n_images} page_images={n_page_images} failed={failures}"
+        f"images={n_images} page_images={n_page_images} "
+        f"empty={empty_builds} failed={failures}"
     )
+    # documents + empty + failed == len(work), so a shortfall is arithmetic
+    # rather than something you have to notice.
+    unaccounted = len(work) - (n_docs + empty_builds + failures)
+    if unaccounted:
+        print(
+            f"[pdfsys dataset] warning: {unaccounted} 份输入既没写进 shard，"
+            f"也没记进 empty/failed —— 这是个 bug，请报告",
+            file=sys.stderr,
+        )
+    if meta:
+        # A shard whose quality columns are all null looks the same whether the
+        # scorer never ran or the --meta file simply covers a different corpus.
+        print(f"[pdfsys dataset] meta matched {meta_hits}/{meta_hits + meta_misses}")
+        if meta_misses:
+            print(
+                f"[pdfsys dataset] warning: {meta_misses} 份文档在 --meta 里没有对应行，"
+                f"质量分等列为空",
+                file=sys.stderr,
+            )
     if missing_pdfs:
         print(
             f"[pdfsys dataset] warning: {missing_pdfs} documents had no matching "
@@ -478,15 +976,78 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 "render_dpi": args.render_dpi if want_rasters else None,
                 "has_blocks": not args.no_blocks,
                 "failed": failures,
+                "empty": empty_builds,
+                "missing_pdfs": missing_pdfs,
+                "inputs": len(work),
+                "deduped": len(dropped),
                 "lane": lane,
                 "source": str(src),
+                # What the worklist asked for versus what it resolved to. On
+                # disk a shard built from a half-resolved list is otherwise
+                # indistinguishable from one built from a complete short list.
+                **(
+                    {
+                        "list_entries": list_stats[0],
+                        "list_missing": list_stats[1],
+                        "list_duplicates": list_stats[2],
+                    }
+                    if list_stats
+                    else {}
+                ),
             },
             ensure_ascii=False,
             indent=2,
         ),
         encoding="utf-8",
     )
+
+    if n_docs == 0:
+        # Same reasoning as cmd_run's empty-corpus guard: a per-bucket fleet job
+        # that packages nothing must not report success.
+        print(
+            f"[pdfsys dataset] error: 没有写出任何文档"
+            f"（输入 {len(work)} 份，失败 {failures}，空 {empty_builds}）",
+            file=sys.stderr,
+        )
+        return 1
     return 0
+
+
+#: Which packaging lane each extraction backend's output belongs to.
+_LANE_OF = {"mupdf": "mupdf", "pipeline": "mineru", "vlm": "mineru"}
+
+#: A MinerU output directory is named for the document's sha256.
+_SHA256_NAME = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _owned_by_another_lane(row: dict, lane: str) -> bool:
+    """Is this document already in a *different* lane's shard?
+
+    Only a rival shard is a conflict. A document nobody extracted — deferred by
+    stage-B, a backend we do not recognise, an encrypted file the router could
+    not open — appears in no shard at all, so packaging it here collides with
+    nothing. Treating those as another lane's would abort a whole 218k-document
+    packaging run over documents it was never going to write, and an encrypted
+    PDF is a certainty at that scale.
+    """
+    if row.get("error_class"):
+        return False  # nothing was produced, so nothing to collide with
+    if row.get("skip_reason") == "lane-filter":
+        # Handed to the lane that runs this backend; it will package it.
+        return _LANE_OF.get(row.get("extract_backend") or "") not in (None, lane)
+    if row.get("skip_reason"):
+        return False  # deferred, unknown-backend: no shard holds it
+    return _LANE_OF.get(row.get("extract_backend") or "", lane) != lane
+
+
+def _lane_conflict_reason(row: dict, lane: str) -> str:
+    backend = row.get("extract_backend") or "unknown"
+    if row.get("skip_reason") == "lane-filter":
+        return (
+            f"was handed to the {_LANE_OF.get(backend, backend)} lane "
+            f"(routed to {backend}), which packages it"
+        )
+    return f"was extracted by {backend}, i.e. the {_LANE_OF.get(backend, backend)} lane"
 
 
 def _index_pdfs_by_sha256(pdf_dir) -> dict:
@@ -497,10 +1058,11 @@ def _index_pdfs_by_sha256(pdf_dir) -> dict:
     it came from; filenames are not stable across ingest.
     """
     import hashlib
-    from pathlib import Path
+
+    from pdfsys_core import iter_pdf_paths
 
     index: dict = {}
-    for path in sorted(Path(pdf_dir).rglob("*.pdf")):
+    for path in iter_pdf_paths(pdf_dir):
         try:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError as e:
@@ -511,10 +1073,17 @@ def _index_pdfs_by_sha256(pdf_dir) -> dict:
 
 
 def _load_run_meta(path) -> dict:
-    """Index a run's results.jsonl by sha256 so dataset rows inherit its columns."""
+    """Index a run's results.jsonl by sha256 so dataset rows inherit its columns.
+
+    Reports what it drops. A results.jsonl from a resumed or re-run job can
+    carry the same sha256 twice (last wins), and rows that never reached a
+    stage that hashes the file have no key at all — both used to be silent,
+    which is how a shard ends up with null quality columns nobody can explain.
+    """
     import json
 
     out: dict = {}
+    n_lines = n_dup = n_nokey = 0
     if not path.exists():
         print(f"Warning: --meta file not found: {path}", file=sys.stderr)
         return out
@@ -527,9 +1096,24 @@ def _load_run_meta(path) -> dict:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            n_lines += 1
             sha = row.get("sha256")
-            if sha:
-                out[sha] = row
+            if not sha:
+                n_nokey += 1
+                continue
+            if sha in out:
+                n_dup += 1
+            out[sha] = row
+    if n_dup:
+        print(
+            f"Warning: --meta {path.name} 有 {n_dup} 个重复 sha256（保留最后一条）",
+            file=sys.stderr,
+        )
+    if n_nokey:
+        print(
+            f"Warning: --meta {path.name} 有 {n_nokey}/{n_lines} 行没有 sha256，已跳过",
+            file=sys.stderr,
+        )
     return out
 
 
@@ -548,11 +1132,15 @@ def _apply_run_meta(page, row):
     return dataclasses.replace(
         page,
         source_uri=page.source_uri or (row.get("pdf_path") or ""),
-        extractor=row.get("extract_backend") or page.extractor,
+        # Additive, not overriding: the builder read the extractor out of the
+        # document's own middle.json, which is what actually produced these
+        # pages. The run row is a second opinion and only fills a blank.
+        extractor=page.extractor or (row.get("extract_backend") or ""),
         doc_n_pages=page.doc_n_pages or int(row.get("num_pages") or 0),
         doc_quality_score=row.get("quality_score"),
         quality_model=row.get("quality_model") or "",
         router_ocr_prob=row.get("ocr_prob"),
+        layout_model=page.layout_model or (row.get("layout_model") or ""),
     )
 
 
@@ -651,6 +1239,12 @@ def main(argv: list[str] | None = None) -> int:
             *(("-o", args.out_dir) if args.out_dir else ()),
             *(("--preview-source", args.preview_source) if args.preview_source else ()),
         ])
+    elif args.command == "score":
+        from .score import cmd_score
+        return cmd_score(args)
+    elif args.command == "smoke":
+        from .smoke import cmd_smoke
+        return cmd_smoke(args)
     elif args.command == "dataset":
         return cmd_dataset(args)
     elif args.command == "dataset-validate":

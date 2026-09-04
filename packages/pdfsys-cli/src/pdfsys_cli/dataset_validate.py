@@ -55,10 +55,16 @@ class Report:
     _counts: Counter = field(default_factory=Counter)
 
     def add(self, severity: str, check: str, message: str) -> None:
-        self._counts[check] += 1
-        if self._counts[check] <= _MAX_PER_CHECK:
+        # Budget per (check, severity), not per check. Several checks emit both
+        # severities under one name — a repeated image_id is an error inside one
+        # parquet and a warning across two — and a shared budget lets a run of
+        # warnings consume the display slots an error needed. Counting them
+        # apart keeps a truncated warning list from hiding an error.
+        key = (check, severity)
+        self._counts[key] += 1
+        if self._counts[key] <= _MAX_PER_CHECK:
             self.findings.append(Finding(severity, check, message))
-        elif self._counts[check] == _MAX_PER_CHECK + 1:
+        elif self._counts[key] == _MAX_PER_CHECK + 1:
             self.findings.append(
                 Finding(severity, check, f"… 同类问题还有更多，仅列出前 {_MAX_PER_CHECK} 条")
             )
@@ -71,11 +77,13 @@ class Report:
 
     @property
     def n_errors(self) -> int:
-        return sum(1 for f in self.findings if f.severity == "error")
+        # From the counters, not the findings list: the verdict must reflect
+        # everything found, not everything printed.
+        return sum(n for (_, sev), n in self._counts.items() if sev == "error")
 
     @property
     def n_warnings(self) -> int:
-        return sum(1 for f in self.findings if f.severity == "warn")
+        return sum(n for (_, sev), n in self._counts.items() if sev == "warn")
 
     @property
     def ok(self) -> bool:
@@ -92,19 +100,23 @@ def validate_shard(shard_dir: Path, *, verify_hashes: bool = True) -> Report:
         report.error("layout", f"缺少 pages/ 目录: {shard_dir}")
         return report
 
-    pages = _read(pages_dir)
-    images = _read(shard_dir / "images")
-    rasters = _read(shard_dir / "page_images")
+    page_groups = _read_grouped(pages_dir)
+    image_groups = _read_grouped(shard_dir / "images")
+    raster_groups = _read_grouped(shard_dir / "page_images")
+    pages = [row for _, rows in page_groups for row in rows]
+    images = [row for _, rows in image_groups for row in rows]
+    rasters = [row for _, rows in raster_groups for row in rows]
     pairs = _read(shard_dir / "pairs")
 
     _check_schema(pages_dir, report)
     _check_keys(pages, report)
+    _check_order(page_groups, report)
     _check_counters(pages, report)
     _check_bboxes(pages, report)
     _check_blocks(pages, report)
     _check_references(pages, images, rasters, report)
     _check_markers(pages, images, rasters, report)
-    _check_media_tables(images, rasters, pages, report, verify_hashes)
+    _check_media_tables(image_groups, raster_groups, pages, report, verify_hashes)
     _check_pairs(pairs, pages, images, report)
     _collect_stats(pages, images, rasters, pairs, report)
     return report
@@ -166,13 +178,29 @@ def _check_schema(pages_dir: Path, report: Report) -> None:
             )
 
 
+def _check_order(groups: list[tuple[str, list[dict]]], report: Report) -> None:
+    """Each parquet must be sorted by ``(doc_id, page_index)`` — per file.
+
+    Sortedness is what makes reassembling a document a sequential scan, and a
+    reader scans one file at a time. Requiring the *concatenation* to be sorted
+    would additionally demand that the files partition the doc_id space in
+    filename order, which the format never promised and which two lanes writing
+    ``cpu-*``/``gpu-*`` shards into one directory can never satisfy.
+    """
+    for name, rows in groups:
+        keys = [(p["doc_id"], p["page_index"]) for p in rows]
+        if keys != sorted(keys):
+            report.error(
+                "order",
+                f"{name} 未按 (doc_id, page_index) 排序，重组文档就不再是顺序扫描",
+            )
+
+
 def _check_keys(pages: list[dict], report: Report) -> None:
     keys = [(p["doc_id"], p["page_index"]) for p in pages]
     for key, n in Counter(keys).items():
         if n > 1:
             report.error("key", f"{key[0][:12]}… 第 {key[1]} 页出现 {n} 次，主键必须唯一")
-    if keys != sorted(keys):
-        report.error("order", "行未按 (doc_id, page_index) 排序，重组文档就不再是顺序扫描")
 
     by_doc: dict[str, list[dict]] = defaultdict(list)
     for p in pages:
@@ -319,12 +347,13 @@ def _check_markers(
 
 
 def _check_media_tables(
-    images: list[dict],
-    rasters: list[dict],
+    image_groups: list[tuple[str, list[dict]]],
+    raster_groups: list[tuple[str, list[dict]]],
     pages: list[dict],
     report: Report,
     verify_hashes: bool,
 ) -> None:
+    rasters = [row for _, rows in raster_groups for row in rows]
     # 只有当同一份文档既存了裁剪图又存了整页光栅时才是浪费。一个 shard 里
     # 有的文档走 crops、有的走 pages 是合法的（比如混了不同链路的产物），
     # 那种情况下没有任何像素被存两遍。
@@ -339,34 +368,67 @@ def _check_media_tables(
         )
 
     referenced = {i for p in pages for i in (p["image_ids"] or ())}
-    for table, name, keyed in ((images, "images", True), (rasters, "page_images", False)):
-        seen = set()
-        for r in table:
-            iid = r["image_id"]
-            if iid in seen:
-                report.error(name, f"{name} 表里 image_id {iid[:12]}… 重复")
-            seen.add(iid)
-            if not _SHA256.match(iid or ""):
-                report.error(name, f"{name} 的 image_id 不是 64 位小写十六进制: {iid!r}")
-            blob = (r["image"] or {}).get("bytes")
-            if not blob:
-                report.error(name, f"{name} 的 {iid[:12]}… 没有字节")
-                continue
-            if r["n_bytes"] != len(blob):
-                report.error(
-                    name, f"{name} 的 {iid[:12]}… n_bytes={r['n_bytes']} 实为 {len(blob)}"
-                )
-            if r["width"] == 0 or r["height"] == 0:
-                report.warn(name, f"{name} 的 {iid[:12]}… 宽高解析失败（format={r['format']}）")
-            if verify_hashes:
-                actual = hashlib.sha256(blob).hexdigest()
-                if actual != iid:
+    for groups, name, keyed in (
+        (image_groups, "images", True),
+        (raster_groups, "page_images", False),
+    ):
+        seen: dict[str, str] = {}  # image_id -> the file it first appeared in
+        for src, table in groups:
+            in_file: set[str] = set()
+            for r in table:
+                iid = r["image_id"]
+                if iid in in_file:
+                    # Only in `images` is image_id the key. page_images is keyed
+                    # on (doc_id, page_index, render_dpi) — checked below — and
+                    # two blank pages legitimately render to the same bytes, so
+                    # a repeat there is duplicated storage, not a broken key.
+                    if keyed:
+                        report.error(
+                            name, f"{src} 的 {name} 表里 image_id {iid[:12]}… 重复"
+                        )
+                    else:
+                        report.warn(
+                            name,
+                            f"{src} 的 {name} 里 {iid[:12]}… 被多页共用，像素存了多遍",
+                        )
+                elif iid in seen:
+                    # 跨文件重复是合法的：两条链路往同一个目录写分片时，共用
+                    # 一张页眉、logo 或空白页的像素是常态。内容寻址保证两份字节
+                    # 完全相同，所以代价是存储，不是正确性。
+                    report.warn(
+                        name,
+                        f"image_id {iid[:12]}… 同时出现在 {seen[iid]} 和 {src}，"
+                        f"同一批像素存了两遍",
+                    )
+                in_file.add(iid)
+                seen.setdefault(iid, src)
+                if not _SHA256.match(iid or ""):
+                    report.error(
+                        name, f"{name} 的 image_id 不是 64 位小写十六进制: {iid!r}"
+                    )
+                blob = (r["image"] or {}).get("bytes")
+                if not blob:
+                    report.error(name, f"{name} 的 {iid[:12]}… 没有字节")
+                    continue
+                if r["n_bytes"] != len(blob):
                     report.error(
                         name,
-                        f"{name} 的 {iid[:12]}… 内容寻址对不上，实际 sha256 是 {actual[:12]}…",
+                        f"{name} 的 {iid[:12]}… n_bytes={r['n_bytes']} 实为 {len(blob)}",
                     )
+                if r["width"] == 0 or r["height"] == 0:
+                    report.warn(
+                        name, f"{name} 的 {iid[:12]}… 宽高解析失败（format={r['format']}）"
+                    )
+                if verify_hashes:
+                    actual = hashlib.sha256(blob).hexdigest()
+                    if actual != iid:
+                        report.error(
+                            name,
+                            f"{name} 的 {iid[:12]}… 内容寻址对不上，"
+                            f"实际 sha256 是 {actual[:12]}…",
+                        )
         if keyed:
-            for iid in seen - referenced:
+            for iid in set(seen) - referenced:
                 report.warn("orphan", f"images 表里的 {iid[:12]}… 没有任何页引用")
 
     raster_keys = Counter((r["doc_id"], r["page_index"], r["render_dpi"]) for r in rasters)
@@ -429,10 +491,20 @@ def _collect_stats(
     )
 
 
-def _read(directory: Path) -> list[dict]:
+def _read_grouped(directory: Path) -> list[tuple[str, list[dict]]]:
+    """Read every parquet in *directory*, keeping each file's rows separate.
+
+    A shard directory holds one parquet per writer. Some of the contract is
+    per-file (each file is sorted) and some is directory-wide (a page key
+    appears once across all of them); telling them apart needs the grouping.
+    """
     if not directory.is_dir():
         return []
-    rows: list[dict] = []
-    for path in sorted(directory.glob("*.parquet")):
-        rows.extend(pq.read_table(path).to_pylist())
-    return rows
+    return [
+        (path.name, pq.read_table(path).to_pylist())
+        for path in sorted(directory.glob("*.parquet"))
+    ]
+
+
+def _read(directory: Path) -> list[dict]:
+    return [row for _, rows in _read_grouped(directory) for row in rows]
