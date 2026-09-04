@@ -10,7 +10,10 @@ CPU 机和 GPU 机不共享磁盘时,整条流水线怎么跑。
 
 ## 0. 三秒确认环境没问题
 
+新机器上先拉路由权重 —— `models/` 是 gitignore 的(那是 FinePDFs 的 IP,不该由我们分发),所以**每个新 clone 都缺**:
+
 ```bash
+python -m pdfsys_router.download_weights   # ~257 KB,一次就够
 pdfsys smoke
 ```
 
@@ -272,6 +275,7 @@ pdfsys mnbvc-export --from-shard ./dataset/v2 --to ./mnbvc/out.parquet --dialect
 
 | 信息(片段) | 含义 | 处理 |
 |---|---|---|
+| `XGBoost weights not found at X` | 这台机器没拉路由权重。**开跑前**拦下 | `python -m pdfsys_router.download_weights` |
 | `no PDFs to process from X` | 路径错,或清单指向这台机器没挂载的地方。清单里是**相对**路径时,`--path-root` 写错也报这个(绝对路径不受 `--path-root` 影响,写错了也不会触发) | 查 `--pdf-dir` / `--path-root`;紧邻的上一行 `warning: N/N listed paths do not exist, e.g. [...]` 会告诉你漏了多少、漏了哪些 |
 | `no output_dir for pipeline` | 会跑 MinerU 但没地方放 sidecar。**仅警告,运行继续** | 加 `--parser-output-dir`,否则事后无法打包 |
 | `sidecar directory X is not usable` | 路径不可写或是个文件。**开跑前**拦下 | 换路径。不拦的话每份文档抽完之后才失败,连 markdown 一起丢 |

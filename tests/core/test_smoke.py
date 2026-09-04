@@ -8,7 +8,19 @@ into a failed check rather than a green one.
 
 from __future__ import annotations
 
+import pytest
+
 from pdfsys_cli.smoke import build_corpus, run_smoke
+from pdfsys_router.xgb_model import default_weights_path
+
+# Every test here routes real PDFs, and the router's weights are gitignored —
+# they are FinePDFs' to distribute. Without them classify() returns `deferred`
+# with an error for every document instead of raising, so these would fail as
+# "the corpus only exercises one lane" and say nothing about the real cause.
+pytestmark = pytest.mark.skipif(
+    not default_weights_path().is_file(),
+    reason="router weights absent — run `python -m pdfsys_router.download_weights`",
+)
 
 
 def test_the_corpus_covers_both_lanes_and_the_awkward_shapes(tmp_path):

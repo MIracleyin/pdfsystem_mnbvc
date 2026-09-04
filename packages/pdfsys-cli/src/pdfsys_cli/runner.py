@@ -118,6 +118,33 @@ def _check_parser_output_dirs(cfg: RunConfig) -> None:
             ) from e
 
 
+def _check_router_weights(cfg: RunConfig, comps: Components) -> None:
+    """Load the router's weights before document 1, not lazily at document 1.
+
+    ``classify()`` promises never to raise, so a weights file that is missing
+    or unreadable does not stop anything: it comes back as ``decision.error``
+    on every document, each row is counted as an error, every backend reads
+    ``deferred``, and the run exits 0. A whole corpus can go through that and
+    report success having extracted nothing.
+
+    Which would be a rare enough accident if the weights shipped with the
+    code. They do not — they are FinePDFs' to distribute, so ``models/`` is
+    gitignored and *every fresh checkout starts in exactly this state*. The
+    first thing a new colleague runs is the thing this catches.
+    """
+    if "router" not in cfg.stages:
+        return
+    model = getattr(comps.router, "_model", None)
+    if model is None:
+        # A router that keeps its weights somewhere else is not something to
+        # guess about; the per-document error path still reports it.
+        return
+    try:
+        model.model  # noqa: B018 — resolving the lazy property IS the check
+    except Exception as e:
+        raise RouterWeightsError(str(e)) from e
+
+
 class Components:
     """Lazy container for all pipeline components. Loads only what's needed."""
 
@@ -224,6 +251,7 @@ def run(cfg: RunConfig) -> dict[str, Any]:
     _check_parser_output_dirs(cfg)
 
     comps = Components(cfg)
+    _check_router_weights(cfg, comps)
     inputs, discovery = resolve_inputs(cfg)
 
     summary: dict[str, Any] = {
@@ -731,6 +759,10 @@ class LaneConflictError(RuntimeError):
 
 class ParserOutputDirError(RuntimeError):
     """The configured sidecar directory cannot be written to."""
+
+
+class RouterWeightsError(RuntimeError):
+    """The router's weights are missing or will not load."""
 
 
 def scan_jsonl(

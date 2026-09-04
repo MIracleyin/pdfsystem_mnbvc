@@ -89,4 +89,10 @@ jobs:
         with:
           version: "latest"
       - run: uv sync --locked
+      # models/ is gitignored — the router's XGBoost weights are FinePDFs' to
+      # distribute, not ours to vendor. Without this step every document
+      # routes to `deferred` and the tests that exercise the real router fail
+      # for a reason that looks nothing like the cause.
+      - name: Fetch router weights
+        run: uv run python -m pdfsys_router.download_weights
       - run: uv run pytest tests/ -v

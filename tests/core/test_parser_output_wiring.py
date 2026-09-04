@@ -269,3 +269,55 @@ def test_no_sidecar_dir_configured_needs_no_check(tmp_path):
         default_config(), stages="router,extract", pdf_dir=str(corpus),
         out_dir=str(tmp_path / "out"), extract_backends="mupdf",
     ))
+
+
+# ---------------------------------------------------------------------------
+# the state every fresh checkout starts in
+# ---------------------------------------------------------------------------
+
+
+def test_missing_router_weights_stop_the_run_instead_of_deferring_everything(tmp_path):
+    """``models/`` is gitignored — the XGBoost weights are FinePDFs' to
+    distribute, so a fresh clone has none. ``classify()`` promises never to
+    raise, so without this check the weights being absent is not an error but
+    a *verdict*: every document comes back ``deferred``, every row counts as
+    an error, nothing is extracted, and the run exits 0. A whole corpus can go
+    through that and report success. Caught by CI, where it looked like the
+    smoke corpus had stopped covering both lanes."""
+    from pdfsys_cli.runner import RouterWeightsError, run
+
+    corpus = tmp_path / "corpus"
+    _pdf(corpus / "a.pdf")
+    out = tmp_path / "out"
+
+    cfg = apply_cli_overrides(
+        default_config(), stages="router,extract", pdf_dir=str(corpus),
+        out_dir=str(out), router_weights=str(tmp_path / "absent.ubj"),
+    )
+
+    with pytest.raises(RouterWeightsError, match="download_weights"):
+        run(cfg)
+
+    # Before the first document, so the leg leaves no half-written results.
+    assert not (out / "results.jsonl").exists()
+
+
+def test_the_weights_check_is_skipped_when_the_router_stage_is_not_running(tmp_path):
+    """Refusing to start for want of a router that will not be used would be a
+    new way to fail. Every ``--stages`` value resolves to something containing
+    `router`, so this is reachable only programmatically — which is exactly
+    when a guard nobody can see is worth pinning."""
+    from pdfsys_cli.runner import Components, _check_router_weights
+
+    cfg = apply_cli_overrides(
+        default_config(), stages="extract", pdf_dir=str(tmp_path),
+        out_dir=str(tmp_path / "out"), router_weights=str(tmp_path / "absent.ubj"),
+    )
+    from pdfsys_cli.runner import RouterWeightsError
+
+    assert "router" in cfg.stages, "the CLI always implies router"
+    with pytest.raises(RouterWeightsError):
+        _check_router_weights(cfg, Components(cfg))  # the guard is live here
+
+    cfg.stages = [s for s in cfg.stages if s != "router"]
+    _check_router_weights(cfg, Components(cfg))  # must not raise

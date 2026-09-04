@@ -483,13 +483,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         CorruptResultsError,
         LaneConflictError,
         ParserOutputDirError,
+        RouterWeightsError,
     )
 
     try:
         summary = run(cfg)
-    except (CorruptResultsError, LaneConflictError, ParserOutputDirError) as e:
-        # Both are raised before any document is touched, so nothing in the
-        # out-dir has been written by this leg.
+    except (
+        CorruptResultsError,
+        LaneConflictError,
+        ParserOutputDirError,
+        RouterWeightsError,
+    ) as e:
+        # All of these are raised before any document is touched, so nothing
+        # in the out-dir has been written by this leg.
         print(f"[pdfsys] error: {e}", file=sys.stderr)
         return 1
 
