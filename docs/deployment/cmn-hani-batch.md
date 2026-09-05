@@ -96,6 +96,8 @@ ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/cmn-hani && ./07-package.sh gpu /hdd_com
 
 **别在第 2 步还在跑的时候做第 4 步传输。** 两者读同一块 HDD,并行只会互相拖慢。
 
+**第 3 步会拦住没跑完的交接。** 「没有 worker 在跑」不等于「跑完了」—— 可能是被杀掉或机器重启。两种情况产出的清单长得一模一样,而半截的 `gpu_lane.txt` 会让第 4 步传一个子集、第 5 步高高兴兴处理完:全程无报错,只是语料悄悄少了一块。所以第 3 步会拿合并行数和 `all_paths.txt` 比对,不足就拒绝;确实只想交接一部分时用 `ALLOW_PARTIAL=1`。
+
 **`pkill -f pdfsys` 会杀掉你自己。** 你的 ssh 命令行里就含这个字符串。脚本里一律匹配 `--pdf-list $RUN/bucket-`,那是 worker 独有的。
 
 ---
@@ -104,7 +106,9 @@ ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/cmn-hani && ./07-package.sh gpu /hdd_com
 
 xsy-01 上已经部署好 `/root/pdfsys-main`(smoke 11/11 绿),清单和 32 个分片已生成。
 
-**CPU 通道跑到 62,330 / 217,997(28.6%)后被主动停下**,产出留在 `/hdd_common/pdfsys-run/`。直接跑 `02-cpu-lane.sh` 会用 `--resume` 从这里接着跑,省约 1.2 小时 —— **但只在沿用同一套 32 分片时有效**(每个 worker 的续跑靠自己的 `--out-dir`)。要从头开始就先 `rm -rf /hdd_common/pdfsys-run/{p1,markdown}` 再跑 `01-inventory.sh`。
+**CPU 通道跑到 62,330 / 217,997(28.6%)后被主动停下**,产出留在 `/hdd_common/pdfsys-run/`(`p1/` 里 62,330 行结果,`markdown/` 里 39,137 个文件)。直接跑 `02-cpu-lane.sh` 会用 `--resume` 从这里接着跑,省约 1.2 小时 —— **但只在沿用同一套 32 分片时有效**(每个 worker 的续跑靠自己的 `--out-dir`)。想从头来就先 `rm -rf /hdd_common/pdfsys-run/{p1,markdown}` 再跑 `01-inventory.sh`。
+
+那次部分运行的实测数据和抽样一致:OCR 占比 **35.3%**(21,838 / 61,814),路由错误 516 份(0.83%)。由它产出的半截清单已删除,以免被误当成完整清单使用。
 
 xsy-02 上 `/hdd_common/pdfsys-lane/{pdfs,p2}` 已建好,是空的。**xsy-02 尚未部署新代码,跑第 5 步前要先在那台上跑 `00-deploy.sh`。**
 
