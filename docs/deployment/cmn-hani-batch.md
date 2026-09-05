@@ -82,8 +82,11 @@ ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./06-s
 ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./06-score.sh gpu'
 
 # ── 打包:两条道写进同一个数据集,不同 shard ─────────────────
-ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./07-package.sh cpu /hdd_common/dataset/v2'
-ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./07-package.sh gpu /hdd_common/dataset/v2'
+ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./07-package.sh cpu'
+ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./07-package.sh gpu'
+
+# ── 合并:两台不共享磁盘,第 7 步只能各自打包自己那一半 ──────────
+ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./08-merge.sh'
 ```
 
 参数改 `ops/split-run/sites/cmn-hani.sh`,或用环境变量覆盖(`WORKERS=16 ./02-cpu-lane.sh`)。
@@ -104,9 +107,17 @@ ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./07-p
 
 **第 3 步会拦住没跑完的交接。** 「没有 worker 在跑」不等于「跑完了」—— 可能是被杀掉或机器重启。两种情况产出的清单长得一模一样,而半截的 `gpu_lane.txt` 会让第 4 步传一个子集、第 5 步高高兴兴处理完:全程无报错,只是语料悄悄少了一块。所以第 3 步会拿合并行数和 `all_paths.txt` 比对,不足就拒绝;确实只想交接一部分时用 `ALLOW_PARTIAL=1`。
 
+**第 7 步之后必须跑第 8 步。** 两台机不共享磁盘,第 7 步只能把各自那一条道打包到**本机**的 `$DATASET`。而 `dataset-validate` 在任何一台上都会通过 —— 每一半本身就是一个合法数据集,只是描述的语料少了另一条道的文档,**没有任何东西会说明另一半存在**。第 8 步把 GPU 机的 shard 取回来,并第一次对完整数据集做校验。
+
 **`pkill -f pdfsys` 会杀掉你自己。** 你的 ssh 命令行里就含这个字符串。脚本里一律匹配 `--pdf-list $RUN/bucket-`,那是 worker 独有的。
 
 ---
+
+## 验证到什么程度
+
+**01–08 全部实跑过。** 2026-09-05 用一个 30 份的临时站点把整条链走通:30 份 → 路由成 22 份 mupdf + 8 份 mineru → 两条道打到同一个模型 → 各自打包 → 合并成 30 份 / 652 页 / 无重复文档,`dataset-validate` 通过。第 8 步的重复检测也用复制 shard 的办法验过会拒绝(rc=1)。
+
+真实语料上 `02-cpu-lane.sh` 跑到 62,330 / 217,997 后停下,其余步骤只在小语料上验过 —— **规模相关的问题(4 小时的 32 路并发、511 GB 的传输、7.9 万份的 MinerU 队列)仍未验证**。
 
 ## 当前状态(2026-09-05)
 
