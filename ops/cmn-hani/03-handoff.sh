@@ -16,7 +16,21 @@ cd "$RUN"
 
 # Each worker owned its own --out-dir, so this is concatenation, not interleave.
 cat p1/bucket-*/results.jsonl > results.jsonl
-echo "  merged $(wc -l < results.jsonl) rows"
+rows=$(wc -l < results.jsonl)
+echo "  merged $rows rows"
+
+# No worker is running, but that does not mean they finished — they may have
+# been killed, or the box rebooted. The worklists derived below look identical
+# either way, and a partial gpu_lane.txt means step 4 ships a subset and step
+# 5 processes it: no error anywhere, just a corpus quietly missing a slice.
+want=$(wc -l < all_paths.txt)
+if [ "$rows" -lt "$want" ]; then
+  echo "refusing: $rows of $want documents processed — the CPU lane did not" >&2
+  echo "  finish. Re-run 02-cpu-lane.sh (it resumes), or set ALLOW_PARTIAL=1" >&2
+  echo "  if you deliberately want to hand off a subset." >&2
+  [ "${ALLOW_PARTIAL:-0}" = "1" ] || exit 1
+  echo "  ALLOW_PARTIAL=1 — continuing with a partial handoff" >&2
+fi
 
 # The GPU worklist. Relative to the corpus root: that is what lets the same
 # file be read on a box that mounted the corpus somewhere else (--path-root).
