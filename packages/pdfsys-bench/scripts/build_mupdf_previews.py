@@ -32,7 +32,7 @@ REPLACEMENT = "\ufffd"
 
 def extract_one(pdf_path: Path) -> dict:
     """Extract per-page text + parser markdown + stats for a single PDF."""
-    import pymupdf  # noqa: WPS433
+    import pymupdf
 
     result: dict = {
         "error": None,
@@ -81,7 +81,7 @@ def extract_one(pdf_path: Path) -> dict:
 
     # Run the full parser to get the final markdown, if available.
     try:
-        from pdfsys_parser_mupdf import extract_doc  # noqa: WPS433
+        from pdfsys_parser_mupdf import extract_doc
 
         extracted = extract_doc(pdf_path)
         result["markdown"] = extracted.markdown

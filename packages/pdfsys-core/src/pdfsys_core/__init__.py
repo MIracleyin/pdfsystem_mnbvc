@@ -76,7 +76,11 @@ from .types import Backend, PdfRecord, RegionType
 
 __version__ = "0.0.1"
 
-__all__ = [
+# Grouped by what each name is for, not alphabetically: this list is the map
+# of the package's public surface, and the comments are the legend. Sorting it
+# would file `BBox` and `blocks_from_content_list` next to each other and put
+# `crop_region` three sections from the layout types it operates on.
+__all__ = [  # noqa: RUF022
     # version
     "__version__",
     # enums

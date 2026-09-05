@@ -190,10 +190,13 @@ def detect_special_issues(
             issues.append("has_table")
         if type_counts.get("formula", 0) > 0 and "has_formula" not in issues:
             issues.append("has_formula")
-        if type_counts.get("image", 0) > 0 and "has_figure_with_text" not in issues:
-            # Check if images co-exist with text (likely figure with captions)
-            if type_counts.get("text", 0) > 0:
-                issues.append("has_figure_with_text")
+        # Images co-existing with text are likely figures with captions.
+        if (
+            type_counts.get("image", 0) > 0
+            and "has_figure_with_text" not in issues
+            and type_counts.get("text", 0) > 0
+        ):
+            issues.append("has_figure_with_text")
 
     # From preview text stats
     if preview and not preview.get("error"):
@@ -202,9 +205,12 @@ def detect_special_issues(
             issues.append("garbled_text")
         pages = preview.get("page_count", 0)
         text_pages = preview.get("pages_with_text", 0)
-        if pages > 0 and text_pages < pages and text_pages > 0:
-            if "partial_text_pages" not in issues:
-                issues.append("partial_text_pages")
+        if (
+            pages > 0
+            and 0 < text_pages < pages
+            and "partial_text_pages" not in issues
+        ):
+            issues.append("partial_text_pages")
 
     return issues
 

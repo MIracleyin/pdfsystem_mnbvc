@@ -46,14 +46,14 @@ from pdfsys_core import (
 __all__ = [
     "BBOX_TYPE",
     "BLOCK_TYPE",
-    "IMAGE_TYPE",
-    "PAGE_SCHEMA",
     "IMAGE_SCHEMA",
+    "IMAGE_TYPE",
     "PAGE_IMAGE_SCHEMA",
+    "PAGE_SCHEMA",
     "PAIR_SCHEMA",
     "DatasetWriter",
-    "page_to_row",
     "image_to_row",
+    "page_to_row",
     "pairs_table",
 ]
 

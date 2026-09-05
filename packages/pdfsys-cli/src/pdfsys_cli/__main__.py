@@ -780,7 +780,7 @@ def cmd_dataset(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        for path, doc_id, why in dropped:
+        for path, _doc_id, why in dropped:
             print(f"  - 跳过 {path}: {why}", file=sys.stderr)
 
     meta = _load_run_meta(Path(args.meta)) if args.meta else {}

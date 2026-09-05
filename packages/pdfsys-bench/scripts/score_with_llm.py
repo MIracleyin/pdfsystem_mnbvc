@@ -102,7 +102,7 @@ def _score_one(
     t0 = time.perf_counter()
     try:
         res = scorer.score(text)
-    except Exception as e:  # noqa: BLE001 — keep the batch going
+    except Exception as e:
         return {
             "sha256": sha,
             "score": None,

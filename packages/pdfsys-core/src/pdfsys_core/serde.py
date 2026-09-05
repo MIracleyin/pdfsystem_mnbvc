@@ -74,7 +74,11 @@ def from_dict(cls: Any, data: Any) -> Any:
         args = get_args(cls)
         if len(args) == 2 and args[1] is Ellipsis:
             return tuple(from_dict(args[0], v) for v in data)
-        return tuple(from_dict(a, v) for a, v in zip(args, data))
+        # strict: a fixed-length tuple type says how many elements there are.
+        # Without it, decoding a tuple[float, float, float, float] from three
+        # values yields a 3-tuple and reports success — a bbox missing an edge,
+        # carried into the shard as if it were fine.
+        return tuple(from_dict(a, v) for a, v in zip(args, data, strict=True))
 
     # list[X]
     if origin is list:

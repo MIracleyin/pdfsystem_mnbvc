@@ -21,6 +21,7 @@ any POSIX filesystem.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -87,9 +88,7 @@ class LayoutCache:
                 json.dump(to_dict(doc), f, ensure_ascii=False)
             os.replace(tmp_path, path)
         except BaseException:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
             raise
         return path

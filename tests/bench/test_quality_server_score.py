@@ -14,7 +14,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from pdfsys_bench._quality_server import _logits_to_score
+# The import has to follow importorskip: at module level it
+# would make collection fail on a box without torch instead of skipping.
+from pdfsys_bench._quality_server import _logits_to_score  # noqa: E402
 
 
 def test_single_logit_regression_passes_through():

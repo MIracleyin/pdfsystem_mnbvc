@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tempfile
 import traceback
 from pathlib import Path
 
@@ -44,7 +43,6 @@ from pipeline import (  # noqa: E402 — must come after sys.path surgery
     render_first_page_with_bboxes,
     run_pipeline,
 )
-
 
 # ------------------------------------------------------------------ constants
 
@@ -113,7 +111,10 @@ def process_pdf(
     pdf_file: str | None,
     run_quality: bool,
     ocr_threshold: float,
-    progress: gr.Progress = gr.Progress(),
+    # Not a bug: Gradio inspects this default to decide whether to
+    # wire up progress reporting. A module-level singleton or a call inside
+    # the body turns the progress bar off.
+    progress: gr.Progress = gr.Progress(),  # noqa: B008
 ):
     """Main Gradio callback. Returns one value per output component."""
     empty_segments = [[0, 0, "-", "-", 0, ""]]
@@ -144,7 +145,7 @@ def process_pdf(
         progress(0.7, desc="Rendering first page…")
         preview = render_first_page_with_bboxes(pdf_path, result, page_index=0)
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         tb = traceback.format_exc()
         err_json = {"error": str(e), "traceback": tb.splitlines()[-6:]}
         return (

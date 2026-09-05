@@ -18,14 +18,14 @@ from .xgb_model import XgbRouterModel, default_weights_path
 __version__ = "0.0.1"
 
 __all__ = [
-    "__version__",
+    "PDFFeatureExtractor",
     "Router",
     "RouterDecision",
     "StageBDecision",
+    "XgbRouterModel",
+    "__version__",
     "decide",
     "decide_from_cache",
-    "PDFFeatureExtractor",
-    "flatten_per_page_features",
-    "XgbRouterModel",
     "default_weights_path",
+    "flatten_per_page_features",
 ]

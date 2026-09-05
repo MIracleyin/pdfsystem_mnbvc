@@ -18,8 +18,8 @@ from pdfsys_types.layout import (
 
 __all__ = [
     "BBox",
-    "LayoutRegion",
-    "LayoutPage",
     "LayoutDocument",
+    "LayoutPage",
+    "LayoutRegion",
     "make_region_id",
 ]
