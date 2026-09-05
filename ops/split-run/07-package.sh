@@ -24,6 +24,7 @@ IMAGES=${IMAGES:-none}
 
 case "$LANE_KIND" in
   cpu)
+    _require_host "$CPU_HOST"
     # --from-pdf-list, not --from-pdf-dir: the corpus root also holds the GPU
     # lane's documents, and mupdf would extract those scans into pages of
     # nothing carrying doc_ids the GPU shard already owns.
@@ -33,6 +34,7 @@ case "$LANE_KIND" in
       --to "$TO" --shard cpu-00 \
       --meta "$RUN/results.scored.jsonl" ;;
   gpu)
+    _require_host "$GPU_HOST"
     uv --directory "$PDFSYS" run pdfsys dataset \
       --from-mineru "$LANE/p2/mineru" \
       --images "$IMAGES" \

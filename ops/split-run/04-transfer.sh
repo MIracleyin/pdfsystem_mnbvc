@@ -10,6 +10,7 @@
 # Do NOT run this while step 2 is still going: both read the same HDD.
 set -e
 cd "$(dirname "$0")" && source ./config.sh
+_require_host "$CPU_HOST"
 
 [ -s "$RUN/gpu_lane.txt" ] || { echo "run 03-handoff.sh first" >&2; exit 1; }
 

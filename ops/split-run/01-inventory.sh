@@ -6,6 +6,7 @@
 # of these 217,997 documents and reports success.
 set -e
 cd "$(dirname "$0")" && source ./config.sh
+_require_host "$CPU_HOST"
 
 mkdir -p "$RUN"/{p1,logs,markdown}
 

@@ -2,6 +2,7 @@
 # Step 3 — derive the two lanes' worklists. Run on xsy-01, after step 2 ends.
 set -e
 cd "$(dirname "$0")" && source ./config.sh
+_require_host "$CPU_HOST"
 
 # The guard matches the workers' --pdf-list argument. Matching "pdfsys" would
 # match this script's own ssh command line — that mistake has cost two

@@ -13,8 +13,10 @@ set -e
 cd "$(dirname "$0")" && source ./config.sh
 
 case "${1:-}" in
-  cpu) RESULTS="$RUN/results.jsonl";  MD="$RUN/markdown";  OUT="$RUN/results.scored.jsonl" ;;
-  gpu) RESULTS="$LANE/results.jsonl"; MD="$LANE/markdown"; OUT="$LANE/results.scored.jsonl"
+  cpu) _require_host "$CPU_HOST"
+       RESULTS="$RUN/results.jsonl";  MD="$RUN/markdown";  OUT="$RUN/results.scored.jsonl" ;;
+  gpu) _require_host "$GPU_HOST"
+       RESULTS="$LANE/results.jsonl"; MD="$LANE/markdown"; OUT="$LANE/results.scored.jsonl"
        # The GPU lane ran as several workers, each with its own out-dir.
        [ -f "$RESULTS" ] || cat "$LANE"/p2/gbucket-*/results.jsonl > "$RESULTS" ;;
   *) echo "usage: $0 cpu|gpu" >&2; exit 1 ;;

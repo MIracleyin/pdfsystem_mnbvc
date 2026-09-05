@@ -6,6 +6,7 @@
 # thrown away once (LayoutCache is written but never read back).
 set -e
 cd "$(dirname "$0")" && source ./config.sh
+_require_host "$GPU_HOST"
 
 [ -s "$LANE/gpu_lane.txt" ] || { echo "no worklist at $LANE/gpu_lane.txt" >&2; exit 1; }
 mkdir -p "$LANE"/{p2,logs,markdown}

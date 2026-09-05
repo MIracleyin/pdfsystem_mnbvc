@@ -12,6 +12,7 @@
 # the GPU box's worklist. Without the flag they would really be sent to MinerU.
 set -e
 cd "$(dirname "$0")" && source ./config.sh
+_require_host "$CPU_HOST"
 
 [ -f "$RUN/bucket-00" ] || { echo "run 01-inventory.sh first" >&2; exit 1; }
 
