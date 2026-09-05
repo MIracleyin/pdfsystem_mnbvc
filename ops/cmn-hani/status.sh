@@ -2,6 +2,8 @@
 # Progress and rate for the CPU lane. Safe to run at any time.
 cd "$(dirname "$0")" && source ./config.sh
 
+# wc prints nothing when the file is missing, so this one does need a literal
+# fallback — unlike pgrep -c, which prints 0 and *also* exits nonzero.
 TOTAL=$(wc -l < "$RUN/all_paths.txt" 2>/dev/null || echo 0)
 n1=$(cat "$RUN"/p1/*/results.jsonl 2>/dev/null | wc -l)
 sleep 30
@@ -14,7 +16,7 @@ echo "  rate      ${rate} docs/s"
 echo "  markdown  $(ls "$RUN/markdown" 2>/dev/null | wc -l) files"
 # The pattern matches the worker's own --pdf-list argument, which this script
 # does not have — checking for "pdfsys" would match the checker.
-echo "  workers   $(pgrep -fc -- "--pdf-list $RUN/bucket-" || echo 0) alive"
+echo "  workers   $(pgrep -fc -- "--pdf-list $RUN/bucket-" || true) alive"
 echo "  load      $(cut -d' ' -f1-3 /proc/loadavg)"
 echo "  disk      $(df -h "$RUN" | tail -1 | awk '{print $4}') free"
 

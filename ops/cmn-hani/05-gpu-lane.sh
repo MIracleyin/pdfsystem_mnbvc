@@ -38,7 +38,7 @@ for b in gbucket-*; do
 done
 
 sleep 10
-echo "  launched $(pgrep -fc -- "--pdf-list $LANE/gbucket-" || echo 0) workers"
+echo "  launched $(pgrep -fc -- "--pdf-list $LANE/gbucket-" || true) workers"
 echo
 echo "  Watch mineru-api's queue and raise GPU_WORKERS if it stays at 0:"
 echo "    curl -s --noproxy '*' $MINERU_URL/health | jq '{queued_tasks,processing_tasks}'"
