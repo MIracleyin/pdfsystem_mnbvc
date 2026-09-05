@@ -1,6 +1,8 @@
 # cmn_Hani 全量批跑
 
-21.8 万份 / 708 GB 的具体执行流程。脚本在 [`ops/cmn-hani/`](../../ops/cmn-hani/),按编号跑。
+21.8 万份 / 708 GB 的具体执行流程 —— 这是 [`ops/split-run/`](../../ops/split-run/) 通用流程的**一个站点**,配置在 `ops/split-run/sites/cmn-hani.sh`。
+
+换机器跑请看 [`ops/split-run/README.md`](../../ops/split-run/README.md):复制 `sites/example.sh`、改成自己的机器和路径、`export PDFSYS_SITE=<名字>`,其余步骤完全一样。
 
 通用的拆分原理、参数含义、报错对照在 [`split-run.md`](split-run.md);这一份只讲**这个语料、这几台机器**怎么跑,以及实测出来的数字。
 
@@ -56,9 +58,12 @@ ssh 必须用别名(`ssh mnbvcgpu1`)。`ssh root@10.253.253.1` 会绕过全部�
 ```bash
 # ── xsy-01 ────────────────────────────────────────────────
 ssh mnbvcgpu1
-cd /root/pdfsys-main/ops/cmn-hani
+cd /root/pdfsys-main/ops/split-run
+export PDFSYS_SITE=cmn-hani
 
 ./00-deploy.sh        # clone + uv sync + 拉权重 + smoke ×2      ~10 分钟
+                      # ↑ 两台机都要跑,再往下走
+./preflight.sh        # 两台机、两个服务、两份配置比对,只读       ~30 秒
 ./01-inventory.sh     # 217,997 条清单,切成 32 片                 ~7 秒
 ./02-cpu-lane.sh      # 32 路并行:分类 + mupdf 抽取               ~4 小时
 ./status.sh           # 随时看进度/速率/错误(可重复跑)
@@ -67,20 +72,21 @@ cd /root/pdfsys-main/ops/cmn-hani
 
 # ── xsy-02 ────────────────────────────────────────────────
 ssh mnbvcgpu2
-cd /root/pdfsys-main/ops/cmn-hani     # 这台也要先跑 00-deploy.sh
+cd /root/pdfsys-main/ops/split-run
+export PDFSYS_SITE=cmn-hani
 
 ./05-gpu-lane.sh      # MinerU 跑 7.9 万份扫描件                  ← 时间取决于卡数
 
 # ── 打分:两条道打到同一个模型 ──────────────────────────────
-ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/cmn-hani && ./06-score.sh cpu'
-ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/cmn-hani && ./06-score.sh gpu'
+ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./06-score.sh cpu'
+ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./06-score.sh gpu'
 
 # ── 打包:两条道写进同一个数据集,不同 shard ─────────────────
-ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/cmn-hani && ./07-package.sh cpu /hdd_common/dataset/v2'
-ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/cmn-hani && ./07-package.sh gpu /hdd_common/dataset/v2'
+ssh mnbvcgpu1 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./07-package.sh cpu /hdd_common/dataset/v2'
+ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/split-run && PDFSYS_SITE=cmn-hani ./07-package.sh gpu /hdd_common/dataset/v2'
 ```
 
-参数改 `ops/cmn-hani/config.sh`,或用环境变量覆盖(`WORKERS=16 ./02-cpu-lane.sh`)。
+参数改 `ops/split-run/sites/cmn-hani.sh`,或用环境变量覆盖(`WORKERS=16 ./02-cpu-lane.sh`)。
 
 ---
 
@@ -104,13 +110,16 @@ ssh mnbvcgpu2 'cd /root/pdfsys-main/ops/cmn-hani && ./07-package.sh gpu /hdd_com
 
 ## 当前状态(2026-09-05)
 
+
 xsy-01 上已经部署好 `/root/pdfsys-main`(smoke 11/11 绿),清单和 32 个分片已生成。
 
 **CPU 通道跑到 62,330 / 217,997(28.6%)后被主动停下**,产出留在 `/hdd_common/pdfsys-run/`(`p1/` 里 62,330 行结果,`markdown/` 里 39,137 个文件)。直接跑 `02-cpu-lane.sh` 会用 `--resume` 从这里接着跑,省约 1.2 小时 —— **但只在沿用同一套 32 分片时有效**(每个 worker 的续跑靠自己的 `--out-dir`)。想从头来就先 `rm -rf /hdd_common/pdfsys-run/{p1,markdown}` 再跑 `01-inventory.sh`。
 
 那次部分运行的实测数据和抽样一致:OCR 占比 **35.3%**(21,838 / 61,814),路由错误 516 份(0.83%)。由它产出的半截清单已删除,以免被误当成完整清单使用。
 
-xsy-02 上 `/hdd_common/pdfsys-lane/{pdfs,p2}` 已建好,是空的。**xsy-02 尚未部署新代码,跑第 5 步前要先在那台上跑 `00-deploy.sh`。**
+**xsy-02 也已部署好** `/root/pdfsys-main`,两轮 smoke 都 11/11;`/hdd_common/pdfsys-lane/{pdfs,p2}` 已建好,是空的。`preflight.sh` 现在全绿。
+
+> 部署 xsy-02 时踩到一个坑,值得记下来:那台机器的全局 git 配置把 GitHub 重写到了 `ghfast.top` 这个**已经失效**的国内镜像,于是 `git clone` 会对着一个没人输入过的 URL 报 SSL 超时。`00-deploy.sh` 现在会探测这种坏重写并用 `GIT_CONFIG_GLOBAL=/dev/null` 绕过去,**不去改别人机器的全局配置**。
 
 ---
 
