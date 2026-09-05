@@ -30,7 +30,7 @@ spec = importlib.util.spec_from_file_location("demo_app", _demo_module_path)
 _demo_module = importlib.util.module_from_spec(spec)
 sys.modules["demo_app"] = _demo_module
 spec.loader.exec_module(_demo_module)
-demo = _demo_module.demo  # noqa: F401 — re-exported for HF Spaces
+demo = _demo_module.demo
 
 if __name__ == "__main__":
     import os

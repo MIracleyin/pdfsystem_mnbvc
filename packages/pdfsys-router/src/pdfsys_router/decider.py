@@ -52,7 +52,7 @@ def decide(
     """
     cfg = config or RouterConfig()
 
-    from pdfsys_core import RegionType  # noqa: PLC0415
+    from pdfsys_core import RegionType
 
     complex_types = (RegionType.TABLE, RegionType.FORMULA)
     total_regions = 0

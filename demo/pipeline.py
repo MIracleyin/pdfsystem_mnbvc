@@ -24,7 +24,6 @@ from typing import Any
 import pymupdf
 from PIL import Image, ImageDraw
 
-
 # ------------------------------------------------------------------ singletons
 
 _ROUTER: Any = None
@@ -195,7 +194,7 @@ def run_pipeline(
             result.markdown = extracted.markdown
             result.extract_stats = dict(extracted.stats)
             result.wall_ms_extract = (t3 - t2) * 1000.0
-        except Exception as e:  # noqa: BLE001 — surface to UI
+        except Exception as e:
             result.extract_error = f"{type(e).__name__}: {e}"
 
     # -- Quality scoring (optional, heavy) ------------------------------------
@@ -209,7 +208,7 @@ def run_pipeline(
             result.quality_num_tokens = q.num_tokens
             result.quality_model = q.model
             result.wall_ms_quality = (t5 - t4) * 1000.0
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             result.quality_error = f"{type(e).__name__}: {e}"
 
     return result

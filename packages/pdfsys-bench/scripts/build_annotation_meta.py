@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 
 BENCH_ROOT = Path(__file__).resolve().parent.parent

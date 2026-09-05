@@ -55,10 +55,26 @@ bypass-selection = true
 target-version = "py311"
 line-length = 100
 src = ["packages/*/src"]
+extend-exclude = [
+    "external",   # a submodule; its lint belongs to its own repo, and fixes
+                  # made here could not be committed anyway
+    ".claude",    # agent worktrees and scratch, never part of a checkout
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501"]  # line length handled by formatter
+
+# RUF001-003 exist to catch homoglyph attacks — Cyrillic `а` wearing Latin
+# `a`'s face. They keep doing that. What they must not do is flag the
+# punctuation this codebase writes on purpose: docstrings, error messages and
+# comments here are bilingual, and rewriting `，` to `,` would damage the
+# Chinese rather than clarify it. The typographic characters are listed for
+# the same reason — `×` in "4×4090" is the character that belongs there.
+allowed-confusables = [
+    "，", "（", "）", "：", "；", "。", "、", "！", "？",
+    "–", "—", "−", "×", "“", "”", "‘", "’",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = [

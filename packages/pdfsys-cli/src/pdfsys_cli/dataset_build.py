@@ -49,15 +49,15 @@ IMAGE_MODES = ("crops", "pages", "none")
 
 __all__ = [
     "IMAGE_MODES",
-    "build_from_mineru_dir",
     "build_from_extracted",
+    "build_from_mineru_dir",
     "build_from_pdf",
     "iter_mineru_dirs",
     "iter_pdfs",
-    "select_documents",
-    "select_pdfs",
     "page_geometry_from_pdf",
     "render_page_images",
+    "select_documents",
+    "select_pdfs",
 ]
 
 

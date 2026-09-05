@@ -54,7 +54,7 @@ import argparse
 import json
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -129,7 +129,7 @@ def reshape(jsonl_path: Path, markdown_dir: Path | None) -> dict:
 
     return {
         "schema_version": "quality_handoff_matrix.v1",
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "source_run": jsonl_path.parent.name,
         "stats": {
             "num_pdfs": len(files),

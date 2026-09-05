@@ -71,7 +71,7 @@ def _run_one(
         sha = doc.sha256
         md = doc.markdown
         char_count = len(md)
-    except Exception as e:  # noqa: BLE001 — we want every parser-side failure captured
+    except Exception as e:
         err = f"{type(e).__name__}: {e}"
 
     wall_ms = (time.monotonic() - t0) * 1000.0
@@ -186,12 +186,12 @@ def main(argv: list[str] | None = None) -> int:
         if pipeline is not None:
             try:
                 pipeline.close()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 _LOG.warning("pipeline.close() raised: %s", e)
         if vlm is not None:
             try:
                 vlm.close()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 _LOG.warning("vlm.close() raised: %s", e)
 
     wall = time.time() - t_total

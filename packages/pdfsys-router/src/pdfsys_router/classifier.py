@@ -12,6 +12,7 @@ caching, no I/O side effects — pure in, pure out.
 
 from __future__ import annotations
 
+import contextlib
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,7 +88,7 @@ class Router:
         path = Path(pdf_path)
         try:
             doc = pymupdf.open(str(path))
-        except Exception as e:  # noqa: BLE001 — we want to capture anything
+        except Exception as e:
             return RouterDecision(
                 backend=Backend.DEFERRED,
                 ocr_prob=float("nan"),
@@ -102,10 +103,8 @@ class Router:
         try:
             return self._classify_doc(doc)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 doc.close()
-            except Exception:
-                pass
 
     def classify_bytes(self, pdf_bytes: bytes) -> RouterDecision:
         """Same as :meth:`classify`, but from an in-memory buffer."""
@@ -113,7 +112,7 @@ class Router:
 
         try:
             doc = pymupdf.open(stream=io.BytesIO(pdf_bytes), filetype="pdf")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return RouterDecision(
                 backend=Backend.DEFERRED,
                 ocr_prob=float("nan"),
@@ -127,10 +126,8 @@ class Router:
         try:
             return self._classify_doc(doc)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 doc.close()
-            except Exception:
-                pass
 
     # --------------------------------------------------------------- internal
 
@@ -145,7 +142,7 @@ class Router:
         """
         try:
             return len(doc)
-        except Exception:  # noqa: BLE001 — a page count is never worth raising for
+        except Exception:
             return 0
 
     def _classify_doc(self, doc: pymupdf.Document) -> RouterDecision:
@@ -196,7 +193,7 @@ class Router:
                 needs_password=bool(doc.needs_pass),
                 features=flat,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return RouterDecision(
                 backend=Backend.DEFERRED,
                 ocr_prob=float("nan"),

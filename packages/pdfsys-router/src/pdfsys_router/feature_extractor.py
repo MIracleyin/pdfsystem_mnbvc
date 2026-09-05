@@ -29,7 +29,6 @@ from typing import Any
 import numpy as np
 import pymupdf
 
-
 # Keep this list in sync with FinePDFs upstream. These strings are
 # lowercased substring-matched against PDF metadata creator/producer to
 # flag scanner-origin PDFs which almost always need OCR.
@@ -197,10 +196,10 @@ class PDFFeatureExtractor:
         metadata = doc.metadata or {}
         creator = (metadata.get("creator") or "").lower()
         producer = (metadata.get("producer") or "").lower()
-        for keyword in KNOWN_SCANNER_STRINGS:
-            if keyword in creator or keyword in producer:
-                return True
-        return False
+        return any(
+            keyword in creator or keyword in producer
+            for keyword in KNOWN_SCANNER_STRINGS
+        )
 
     def _extract_document_level_stats_from_sampled_pages(
         self, doc: pymupdf.Document, sampled_page_indices: list[int]
@@ -285,21 +284,17 @@ class PDFFeatureExtractor:
             full_w = page_width > 0 and cur_w >= page_width * 0.9
             full_h = page_height > 0 and cur_h >= page_height * 0.9
 
-            can_merge = False
-            if full_w:
-                if (
-                    abs(lx0 - x0) <= MERGE_MAX_OFFSET
-                    and abs(lx1 - x1) <= MERGE_MAX_OFFSET
-                    and abs(y0 - ly1) <= MERGE_MAX_GAP
-                ):
-                    can_merge = True
+            can_merge = full_w and (
+                abs(lx0 - x0) <= MERGE_MAX_OFFSET
+                and abs(lx1 - x1) <= MERGE_MAX_OFFSET
+                and abs(y0 - ly1) <= MERGE_MAX_GAP
+            )
             if not can_merge and full_h:
-                if (
+                can_merge = (
                     abs(ly0 - y0) <= MERGE_MAX_OFFSET
                     and abs(ly1 - y1) <= MERGE_MAX_OFFSET
                     and abs(x0 - lx1) <= MERGE_MAX_GAP
-                ):
-                    can_merge = True
+                )
 
             if can_merge:
                 merged[-1] = [
@@ -469,9 +464,12 @@ class PDFFeatureExtractor:
                     for item in path.get("items", []):
                         if item[0] in ("l", "c", "q"):
                             stroke_count += 1
-                    if path.get("rect") or path.get("quad"):
-                        if path.get("stroke_opacity", 1) > 0 and path.get("color"):
-                            stroke_count += 1
+                    if (
+                        (path.get("rect") or path.get("quad"))
+                        and path.get("stroke_opacity", 1) > 0
+                        and path.get("color")
+                    ):
+                        stroke_count += 1
             except Exception:
                 pass
             features["page_level_drawing_strokes_count"].append(stroke_count)

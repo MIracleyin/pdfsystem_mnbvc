@@ -60,9 +60,9 @@ __all__ = [
     "DIALECTS",
     "LEGACY_SCHEMA",
     "V2_SCHEMA",
-    "schema_for",
-    "page_row_to_block",
     "export_shard",
+    "page_row_to_block",
+    "schema_for",
 ]
 
 #: ``v2`` first: it is what upstream writes now, so it is the default.

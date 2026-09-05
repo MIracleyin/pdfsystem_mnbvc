@@ -42,20 +42,19 @@ Output layout::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import time
-import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 # --------------------------------------------------------------------------- #
 # Lazy imports — keep the module importable even when deps are missing
 # --------------------------------------------------------------------------- #
 
 def _import_hf_hub():
-    import huggingface_hub  # noqa: F401 — side-effect
+    import huggingface_hub
 
     return huggingface_hub
 
@@ -223,10 +222,8 @@ def append_to_manifest(out_dir: Path, record: PipelineRecord) -> None:
     manifest_path = out_dir / "manifest.json"
     manifest: list[dict[str, Any]] = []
     if manifest_path.is_file():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, OSError):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            pass
     manifest.append(record.to_dict())
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -270,7 +267,10 @@ def process_pdf_bytes(
     t_start = time.perf_counter()
 
     # Write to a temporary file — run_pipeline() expects a file path
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    # run_pipeline_func takes a path, so the file has to outlive the
+    # statement that made it. delete=False is why, and the finally below
+    # closes and unlinks it.
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)  # noqa: SIM115
     try:
         tmp.write(pdf_bytes)
         tmp.flush()
@@ -311,7 +311,7 @@ def process_pdf_bytes(
             errors=errors,
             wall_ms=wall_ms,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         wall_ms = (time.perf_counter() - t_start) * 1000.0
         record = PipelineRecord(
             source_path=source_name,
@@ -442,13 +442,10 @@ def run(
         if not pdf_cache.is_dir():
             print(f"  ERROR: cache directory {pdf_cache} does not exist.")
             return
-        count = 0
         for pdf_path in sorted(pdf_cache.glob("*.pdf")):
-            if max_files is not None and count >= max_files:
+            if max_files is not None and len(pdfs_to_process) >= max_files:
                 break
-            pdf_bytes = pdf_path.read_bytes()
-            pdfs_to_process.append((pdf_path.name, pdf_bytes))
-            count += 1
+            pdfs_to_process.append((pdf_path.name, pdf_path.read_bytes()))
         print(f"  Loaded {len(pdfs_to_process)} PDF(s) from cache.")
     else:
         # Filter files to download

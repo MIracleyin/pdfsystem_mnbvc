@@ -20,12 +20,12 @@ from pdfsys_types.config import (
 )
 
 __all__ = [
-    "PdfsysConfig",
-    "PathsConfig",
-    "RouterConfig",
     "LayoutConfig",
     "MupdfConfig",
+    "PathsConfig",
+    "PdfsysConfig",
     "PipelineConfig",
-    "VlmConfig",
+    "RouterConfig",
     "RuntimeConfig",
+    "VlmConfig",
 ]

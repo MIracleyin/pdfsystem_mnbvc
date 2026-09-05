@@ -12,7 +12,6 @@ Usage::
 
 from __future__ import annotations
 
-import socket
 import sys
 import urllib.request
 from pathlib import Path
@@ -34,13 +33,13 @@ def download(force: bool = False, timeout: int = 30) -> Path:
         print(f"[download_weights] already present: {dst}")
         return dst
     dst.parent.mkdir(parents=True, exist_ok=True)
-    
+
     last_error = None
     for url in WEIGHTS_URLS:
         print(f"[download_weights] fetching {url}")
         try:
             # 设置超时
-            with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310 — pinned URL
+            with urllib.request.urlopen(url, timeout=timeout) as r:
                 data = r.read()
             if len(data) < 10_000:
                 raise RuntimeError(
@@ -50,11 +49,11 @@ def download(force: bool = False, timeout: int = 30) -> Path:
             dst.write_bytes(data)
             print(f"[download_weights] wrote {len(data)} bytes -> {dst}")
             return dst
-        except (urllib.error.URLError, socket.timeout) as e:
+        except (TimeoutError, urllib.error.URLError) as e:
             last_error = e
             print(f"[download_weights] failed for {url}: {e}")
             continue
-    
+
     raise RuntimeError(f"Failed to download weights from all URLs: {last_error}")
 
 
