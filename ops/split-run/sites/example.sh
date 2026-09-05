@@ -42,6 +42,12 @@ OCR_THRESHOLD=0.05
 # its /health: if it stays 0, the server is idle and this is too low.
 # GPU_WORKERS=4
 
+# Where the finished dataset lands. Both lanes package into a directory of
+# this name on their own box, and 08-merge.sh brings the GPU box's shard back
+# here — the two machines share no disk, so "one dataset directory" is not
+# something step 7 can achieve by itself.
+DATASET=/data/dataset/v2
+
 # crops | pages | none. `pages` rasterises every page at 200 dpi (~311 KiB
 # per page) — check the arithmetic against your disk before choosing it.
 # `none` leaves mnbvc-export's 图片 column null.

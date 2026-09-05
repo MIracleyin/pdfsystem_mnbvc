@@ -39,4 +39,4 @@ done
 
 sleep 10
 echo "  launched, $(pgrep -fc -- "--pdf-list $RUN/bucket-" || true) workers alive"
-echo "  watch with: ops/cmn-hani/status.sh"
+echo "  watch with: ./status.sh"

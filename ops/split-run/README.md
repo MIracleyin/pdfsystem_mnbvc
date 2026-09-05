@@ -42,10 +42,16 @@ was measured against are in
 # on the GPU box
 ./05-gpu-lane.sh        # MinerU
 
-# each box scores and packages its own lane, into one dataset directory
+# each box scores and packages its own lane
 ./06-score.sh   cpu|gpu
-./07-package.sh cpu|gpu /path/to/dataset
+./07-package.sh cpu|gpu          # writes $DATASET on THIS box
+
+# on the CPU box: bring the GPU box's shard back and validate the whole
+./08-merge.sh
 ```
+
+Step 7 cannot put both lanes in one directory — the boxes share no disk. Step
+8 is what does, and it is the first thing to see the complete dataset.
 
 Each step refuses to run on the wrong box (`hostname` against `CPU_HOST` /
 `GPU_HOST`), so `05` on the CPU box stops instead of quietly doing nothing.
@@ -66,6 +72,8 @@ IMAGES=pages ./07-package.sh gpu /data/dataset/v2
 | `preflight.sh` checks the served model name | Two lanes scored by two models put two scales in one column, and nothing in the data says so. |
 | `_require_host` in every step | A step run on the wrong box reads empty directories and reports success. |
 | `03-handoff.sh` compares processed rows to the inventory | "No workers running" is not "finished". A killed run yields a short worklist, the next steps process the subset happily, and the corpus is quietly missing a slice. |
+| `08-merge.sh` validates the merged dataset, not a half | `dataset-validate` passes on either box alone — each shard IS a valid dataset, describing a corpus missing the other lane. Nothing says the other half exists. |
+| `08-merge.sh` checks no doc_id is in two shards | `(doc_id, page_index)` is the primary key. |
 | `pdfsys run` refuses without router weights | `classify()` never raises, so missing weights route the whole corpus to `deferred` and exit 0. |
 
 ## Notes that have cost time here
