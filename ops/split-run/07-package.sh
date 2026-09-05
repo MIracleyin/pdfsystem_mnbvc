@@ -12,8 +12,11 @@ set -e
 cd "$(dirname "$0")" && source ./config.sh
 
 LANE_KIND="${1:-}"
-TO="${2:-}"
-[ -n "$TO" ] || { echo "usage: $0 cpu|gpu <dataset-dir>" >&2; exit 1; }
+# Defaults to the site's DATASET so both boxes cannot be pointed at different
+# names by a typo. Each box packages into a directory of this name on ITS OWN
+# disk — 08-merge.sh brings them together, because they share no filesystem.
+TO="${2:-$DATASET}"
+[ -n "$LANE_KIND" ] || { echo "usage: $0 cpu|gpu [dataset-dir]" >&2; exit 1; }
 
 # --images is passed explicitly on purpose. The defaults are `pages` for
 # --from-pdf-list and `crops` for --from-mineru, and `pages` means rasterising
@@ -40,7 +43,14 @@ case "$LANE_KIND" in
       --images "$IMAGES" \
       --to "$TO" --shard gpu-00 \
       --meta "$LANE/results.scored.jsonl" ;;
-  *) echo "usage: $0 cpu|gpu <dataset-dir>" >&2; exit 1 ;;
+  *) echo "usage: $0 cpu|gpu [dataset-dir]" >&2; exit 1 ;;
 esac
 
 uv --directory "$PDFSYS" run pdfsys dataset-validate --shard "$TO"
+
+# That validated THIS box's half. It says nothing about the other lane, which
+# is on a machine this one cannot see. Run 08-merge.sh on the CPU box before
+# believing the dataset is whole.
+echo
+echo "  this is one lane's shard. 08-merge.sh (on $CPU_HOST) brings the two"
+echo "  together and validates the result."

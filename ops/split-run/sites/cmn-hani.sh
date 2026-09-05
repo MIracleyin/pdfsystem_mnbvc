@@ -32,3 +32,5 @@ OCR_THRESHOLD=0.05
 # 36% of these documents need OCR but they are 72% of the bytes, and `pages`
 # would add ~1 TB of rasters on top. The disk does not have it.
 IMAGES=none
+
+DATASET=/hdd_common/dataset/v2

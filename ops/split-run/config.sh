@@ -42,6 +42,7 @@ SITE_SUM=$(md5sum "$SITE_FILE" 2>/dev/null | cut -d' ' -f1 \
 : "${GPU_WORKERS:=4}"
 : "${OCR_THRESHOLD:=0.05}"
 : "${IMAGES:=none}"
+: "${DATASET:=$RUN/dataset}"
 : "${QUALITY_MODEL:=miracleyin/mnbvc-pdf-quality-scorer-modernbert}"
 : "${MINERU_URL:=http://$GPU_HOST:8000}"
 : "${QUALITY_URL_:=http://$GPU_HOST:8765}"
